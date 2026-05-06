@@ -1,0 +1,15 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: omniflow-db
+    environment:
+      POSTGRES_DB: omniflow
+      POSTGRES_USER: omniflow
+      POSTGRES_PASSWORD: omniflow123
+    ports:
+      - "5432:5432"
+    volumes:
+      - omniflow_data:/var/lib/postgresql/data
+
+volumes:
+  omniflow_data:
