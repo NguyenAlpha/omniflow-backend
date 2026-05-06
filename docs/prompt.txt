@@ -1,0 +1,137 @@
+VAI TRÒ: Bạn là một Database Architect senior với 10+ năm kinh nghiệm thiết kế hệ thống production. Hãy đánh giá schema database dưới đây một cách nghiêm túc, khách quan.
+
+SCHEMA CẦN ĐÁNH GIÁ:
+[Dán schema của bạn vào đây — DDL, ERD mô tả, hoặc danh sách bảng/cột/quan hệ]
+
+YÊU CẦU ĐÁNH GIÁ — Chấm điểm từng tiêu chí (0–10), kèm nhận xét ngắn và ví dụ cụ thể:
+
+1. Chuẩn hóa dữ liệu — 1NF/2NF/3NF/BCNF, dư thừa, phụ thuộc hàm
+2. Khóa & ràng buộc — PK, FK, UNIQUE, NOT NULL, CHECK constraints
+3. Kiểu dữ liệu — phù hợp thực tế, tránh lãng phí, edge case
+4. Đặt tên — nhất quán, rõ nghĩa, convention
+5. Index & hiệu năng — đúng chỗ, thiếu/thừa, composite index
+6. Toàn vẹn dữ liệu — cascade, soft delete, orphan records, audit trail
+7. Bảo mật — dữ liệu nhạy cảm, encryption hint, phân quyền
+8. Khả năng mở rộng — scale lớn, partitioning, multi-tenant
+9. Phản ánh nghiệp vụ — domain logic, edge case, flexibility
+10. Khả năng bảo trì — migration, coupling giữa bảng
+
+FORMAT OUTPUT:
+1. Bảng tổng hợp điểm: Tiêu chí | Điểm | Nhận xét 1 dòng
+2. Điểm trung bình tổng thể /10
+3. Top 3 vấn đề nghiêm trọng nhất — mô tả + hậu quả nếu không sửa
+4. Điểm mạnh đáng giữ lại
+5. Gợi ý mở rộng — 3–5 hướng thêm vào schema (kèm lý do nghiệp vụ)
+6. Refactor priorities — Gấp / Nên làm / Tùy chọn
+
+CONTEXT BỔ SUNG (tùy chọn điền):
+— Loại ứng dụng: [web app / mobile / microservices / monolith]
+— Database engine: [PostgreSQL / MySQL / SQLite / MongoDB...]
+— Quy mô dự kiến: [số user, lượng dữ liệu/tháng]
+— Tính năng đặc thù: [realtime / analytics / multi-tenant / high write...]
+
+=======================================================================
+
+VAI TRÒ: Bạn là Database Architect chuyên PostgreSQL, có kinh nghiệm thực tế với Spring Data JPA. Hãy đánh giá schema dưới đây theo tiêu chí Query-friendliness — schema có thiết kế thuận lợi cho việc truy vấn không, đặc biệt trong ngữ cảnh JPA/Hibernate.
+
+SCHEMA & CONTEXT:
+[Dán schema vào đây — DDL hoặc mô tả bảng/cột/quan hệ]
+
+Stack: PostgreSQL · Spring Boot · Spring Data JPA (Hibernate)
+[Thêm nếu có: các query/repository method phổ biến nhất trong app]
+
+ĐÁNH GIÁ THEO 5 NHÓM NHỎ — mỗi nhóm chấm 0–10:
+
+11a. JOIN complexity
+Các tác vụ nghiệp vụ phổ biến cần JOIN bao nhiêu bảng? Có bảng trung gian thừa không? Có thể truy vấn thực thể chính mà không JOIN quá 3 bảng không?
+
+11b. N+1 query risk
+Các @OneToMany / @ManyToMany có khả năng gây N+1 ở đâu? Cấu trúc có buộc dùng EAGER loading không cần thiết không? Đề xuất chỗ nên dùng JOIN FETCH hoặc @EntityGraph.
+
+11c. Filter / sort / pagination
+Các cột thường dùng trong WHERE, ORDER BY, BETWEEN có được index cover không? Schema có hỗ trợ keyset pagination (cursor-based) không, hay chỉ dùng được OFFSET?
+
+11d. Aggregation & reporting
+Query tổng hợp (SUM, COUNT, GROUP BY theo ngày/tháng) có cần full scan không? Có nên thêm summary table hoặc materialized view cho PostgreSQL không?
+
+11e. JPA-specific anti-patterns
+Schema có dấu hiệu của: EAV, polymorphic FK không ràng buộc, JSON blob che giấu data cần filter, quá nhiều nullable FK tạo cartesian join risk không?
+
+FORMAT OUTPUT:
+1. Bảng điểm: Nhóm | Điểm /10 | Vấn đề chính (1 dòng)
+2. Điểm trung bình tiêu chí 11 /10
+3. Vấn đề cụ thể: chỉ rõ bảng/cột, query bị ảnh hưởng, hậu quả khi data lớn
+4. Fix đề xuất theo ưu tiên: Gấp / Nên làm / Tùy chọn — kèm ví dụ SQL hoặc JPA snippet
+5. Query mẫu nguy hiểm: 2–3 query JPQL/SQL mà schema hiện tại sẽ thực thi kém, giải thích tại sao
+
+=====================================================================
+VAI TRÒ: Bạn là Software Architect có kinh nghiệm thiết kế hệ thống local-first / offline-first với sync engine. Stack mục tiêu: PostgreSQL (server) + SQLite (desktop/mobile offline) + Spring Data JPA. Hãy đánh giá schema dưới đây xem có sẵn sàng cho kiến trúc này chưa, và cần thêm/sửa gì.
+
+SCHEMA & CONTEXT:
+[Dán schema vào đây — DDL hoặc mô tả bảng/cột/quan hệ]
+
+Mục tiêu sync: [multi-device / collaborative / single-user multi-device]
+Conflict tolerance: [last-write-wins được không, hay cần merge thủ công?]
+Bảng nào cần offline nhất: [ví dụ: orders, products, notes...]
+
+ĐÁNH GIÁ THEO 5 NHÓM — mỗi nhóm chấm 0–10:
+
+S1. Timestamp & versioning
+Mọi bảng có created_at, updated_at không? Có sync_version / sequence_number để client biết cần pull từ đâu không? Kiểu dữ liệu có đủ precision (timestamp with timezone) không?
+
+S2. Soft delete readiness
+Bảng nào đang dùng hard delete? Hard delete phá vỡ sync vì client offline không biết record bị xóa. Cần thêm deleted_at ở đâu? Có query/index nào cần cập nhật theo không?
+
+S3. Conflict detection
+Schema có đủ thông tin để phát hiện conflict không? Cần device_id / client_id không? PK có dùng UUID không (integer PK sẽ conflict khi 2 device insert cùng lúc)?
+
+S4. Change tracking
+Có cần bảng change_log / sync_queue không? Bảng nào có quan hệ phức tạp (cascade) có thể gây ra partial sync? FK constraints có cần điều chỉnh cho offline insert order không?
+
+S5. Sync scope & performance
+Có thể sync theo từng user/store/tenant không, hay phải sync toàn bộ? Lượng data delta mỗi lần sync có thể lớn không? Cần partition hay filter theo updated_at > last_sync hiệu quả không?
+
+FORMAT OUTPUT:
+1. Bảng điểm: Nhóm | Điểm /10 | Vấn đề chính (1 dòng)
+2. Điểm sync-readiness tổng thể /10
+3. Danh sách thay đổi schema cần thiết — phân loại:
+   - Bắt buộc: thiếu thì sync không hoạt động được
+   - Nên có: thiếu thì sync không ổn định
+   - Tùy chọn: cải thiện hiệu năng / UX
+4. Migration SQL cụ thể — DDL mẫu cho các cột/bảng cần thêm (PostgreSQL syntax)
+5. Cảnh báo conflict risk — bảng/quan hệ nào dễ gây data conflict nhất khi 2 device cùng edit offline, và gợi ý chiến lược giải quyết phù hợp với nghiệp vụ
+
+=====================================================================
+VAI TRÒ: Bạn là DBA / Backend Architect có kinh nghiệm vận hành PostgreSQL production. Hãy đánh giá schema dưới đây theo góc độ migration safety — tức là khi cần thay đổi schema trong tương lai, có thể thực hiện zero-downtime hay không, và những điểm nào sẽ gây đau. Stack: PostgreSQL + Spring Boot + Flyway hoặc Liquibase.
+
+SCHEMA & CONTEXT:
+[Dán schema vào đây — DDL hoặc mô tả bảng/cột/quan hệ]
+
+Migration tool: [Flyway / Liquibase / chưa dùng]
+Môi trường: [single instance / multiple instance / container/k8s]
+Lượng data dự kiến: [bảng lớn nhất khoảng bao nhiêu row?]
+
+ĐÁNH GIÁ THEO 5 NHÓM — mỗi nhóm chấm 0–10:
+
+M1. NOT NULL & default value
+Cột nào là NOT NULL mà không có DEFAULT? Thêm cột NOT NULL không DEFAULT vào bảng lớn sẽ lock toàn bộ bảng trên PostgreSQL cũ. Liệt kê các cột nguy hiểm và gợi ý pattern thêm an toàn (add nullable → backfill → set NOT NULL).
+
+M2. Kiểu dữ liệu & resize risk
+Cột nào có kiểu dữ liệu dễ phải đổi sau (VARCHAR quá ngắn, INT thay vì BIGINT cho PK, FLOAT thay vì NUMERIC cho tiền tệ)? Đổi kiểu dữ liệu trên bảng lớn cần rewrite toàn bộ — đánh dấu những điểm này.
+
+M3. FK & constraint lock risk
+Thêm FK constraint trên bảng lớn sẽ scan toàn bộ bảng để validate. Có FK nào chưa có index đi kèm không? Gợi ý dùng NOT VALID + VALIDATE CONSTRAINT tách biệt để tránh lock.
+
+M4. Rename & drop safety
+Bảng/cột nào có tên dễ bị rename sau (quá generic, sai domain)? Rename column trong PostgreSQL an toàn nhưng break JPA entity ngay lập tức nếu không dùng @Column(name=...). Có cột/bảng nào trông như "sẽ bị drop" không — và drop có cascade risk không?
+
+M5. Zero-downtime migration readiness
+Schema có hỗ trợ expand/contract pattern không? Tức là: thêm cột mới song song cột cũ → migrate data → xóa cột cũ, mà app vẫn chạy suốt quá trình. Có bảng nào coupling quá chặt khiến pattern này không áp dụng được không?
+
+FORMAT OUTPUT:
+1. Bảng điểm: Nhóm | Điểm /10 | Rủi ro chính (1 dòng)
+2. Điểm migration safety tổng thể /10
+3. Danh sách điểm nguy hiểm cụ thể — tên bảng/cột, loại rủi ro, hậu quả (downtime / data loss / silent bug)
+4. Migration script mẫu — với các thay đổi nguy hiểm nhất, viết Flyway-compatible SQL theo pattern an toàn
+5. Checklist trước khi migrate production — các bước nên làm với schema này cụ thể
+

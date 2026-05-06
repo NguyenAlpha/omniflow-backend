@@ -1,0 +1,201 @@
+# Project OmniFlow — POS & Inventory System
+
+## 1. Tổng quan dự án
+
+**OmniFlow** là hệ thống quản lý bán hàng và kho vận đa tenant (multi-tenant B2B SaaS), tập trung vào tính chính xác của dữ liệu tài chính, phân quyền theo vai trò, và khả năng mở rộng cho App Mobile.
+
+- **Tên dự án:** OmniFlow
+- **Mô hình:** Multi-tenant B2B SaaS — 1 hệ thống phục vụ nhiều chủ cửa hàng, dữ liệu tách biệt hoàn toàn theo `store_id`
+- **Trạng thái:** Phase 1 — Core API + Database Schema
+
+---
+
+## 2. Tech Stack
+
+| Thành phần | Công nghệ | Lý do |
+|:---|:---|:---|
+| **Backend** | Java 21 / Spring Boot 3.x | Ổn định, bảo mật, virtual threads sẵn sàng |
+| **Database** | PostgreSQL 16 | TIMESTAMPTZ, JSONB, materialized views, partial index |
+| **ORM** | Spring Data JPA + Hibernate 6 | `@EntityGraph`, `JOIN FETCH`, `@JdbcTypeCode` cho JSONB |
+| **Migration** | Flyway | Schema versioning, không dùng `ddl-auto=create/update` |
+| **Auth** | Spring Security + JWT (JJWT) | Stateless, encode `storeId` + `role` vào token |
+| **Web Admin** | React.js / Tailwind CSS | Dashboard quản lý (Phase 1) |
+| **Mobile** | React Native (Phase 2) | Android/iOS, tái dụng logic từ Web |
+| **Offline** | SQLite (Mobile) / H2 (Desktop) | Lưu tạm khi mất kết nối |
+
+---
+
+## 3. Cấu trúc Package
+
+- **Group ID:** `com.omniflow`
+- **Artifact ID:** `omniflow-backend`
+- **Base Package:** `com.omniflow.backend`
+
+```
+com.omniflow.backend
+├── controller/     — REST endpoints (@RestController)
+├── service/        — Business logic (@Service, @Transactional)
+├── repository/     — JPA repositories (extends JpaRepository)
+├── entity/         — JPA entities (@Entity)
+├── dto/            — Request/Response DTOs
+│   ├── request/
+│   └── response/
+├── config/         — Spring config (Security, Cache, JWT filter)
+├── event/          — Domain events (OrderCompletedEvent, ...)
+└── exception/      — Custom exceptions + GlobalExceptionHandler
+```
+
+---
+
+## 4. Các Module chức năng
+
+### 4.1 Xác thực & Phân quyền
+- Đăng ký / đăng nhập — trả về JWT encode `userId` + `storeId` + `role`
+- RBAC: `OWNER` / `MANAGER` / `STAFF` (trong store) và `SUPER_ADMIN` / `SUPPORT` (system)
+- 1 user có thể là thành viên của nhiều store với role khác nhau
+- Admin system quản lý qua `admin_profiles` — tách biệt hoàn toàn với store logic
+
+### 4.2 Quản lý Cửa hàng & Subscription
+- Tạo store → tự động tạo `store_members` với role `OWNER` + `subscriptions` gói FREE
+- Gói: `FREE` / `BASIC` / `PRO` — giới hạn số nhân viên, sản phẩm, kho, đơn hàng/tháng
+- Lịch sử thanh toán subscription lưu trong `subscription_invoices`
+
+### 4.3 Quản lý Danh mục & Đơn vị tính
+- Danh mục sản phẩm per-store (`categories`)
+- Đơn vị tính (`units`): system units (NULL store_id, SUPER_ADMIN quản lý) + custom units per-store
+- Query units: `WHERE (store_id = :storeId OR store_id IS NULL) AND deleted_at IS NULL`
+
+### 4.4 Quản lý Sản phẩm
+- SKU unique theo store (partial UNIQUE `WHERE deleted_at IS NULL`)
+- Lịch sử thay đổi giá (`price_history`) — bắt buộc ghi khi sửa giá để tính margin đúng
+- Soft delete — không xoá vật lý
+
+### 4.5 Quản lý Kho
+- Multi-warehouse per store (`warehouses`)
+- Tồn kho theo cặp `(product, warehouse)` — bảng `inventory`
+- Mọi biến động tồn kho ghi vào `inventory_transactions` (immutable)
+- Loại giao dịch: `IN` / `OUT` / `TRANSFER` / `ADJUSTMENT`
+- Cảnh báo tồn kho thấp qua `min_stock_level` và materialized view `mv_inventory_summary`
+
+### 4.6 Quản lý Đơn hàng bán
+- Tạo đơn → tính `subtotal`, `discount`, `tax`, `total_amount`, `debt_amount`
+- Trạng thái: `PENDING` → `COMPLETED` / `CANCELLED` (không xoá)
+- Khi `COMPLETED`: cập nhật tồn kho (OUT) + `customers.debt_balance` trong cùng 1 transaction
+
+### 4.7 Hoàn trả hàng
+- Đơn hoàn trả liên kết với đơn gốc (`original_order_id`)
+- Khi `COMPLETED`: hoàn tồn kho (IN) + điều chỉnh `customers.debt_balance`
+- Hình thức hoàn: `CASH` / `BANK_TRANSFER` / `STORE_CREDIT`
+
+### 4.8 Quản lý Nhập hàng
+- Đơn nhập từ nhà cung cấp (`purchase_orders`)
+- Khi `RECEIVED`: cập nhật tồn kho (IN) + `suppliers.debt_balance`
+- Trạng thái: `PENDING` → `RECEIVED` / `CANCELLED` (không xoá)
+
+### 4.9 Quản lý Công nợ & Thanh toán
+- Bảng `payments` ghi nhận thu tiền khách hoặc trả tiền nhà cung cấp
+- `customers.debt_balance` và `suppliers.debt_balance` là denorm — bắt buộc cập nhật trong cùng transaction (xem `debt_balance` Invariant Rules trong DATABASE_SCHEMA.md)
+- Một payment chỉ thuộc về 1 trong 2: customer hoặc supplier (CHECK constraint)
+
+### 4.10 Báo cáo & Dashboard
+- Materialized views refresh định kỳ — không aggregate trực tiếp trên bảng lớn:
+  - `mv_monthly_revenue` — doanh thu theo tháng/store
+  - `mv_inventory_summary` — tồn kho + cảnh báo thấp
+- Báo cáo công nợ dùng `debt_balance` denorm + partial index — không cần JOIN
+
+### 4.11 Audit Log
+- Mọi thao tác nhạy cảm (sửa giá, huỷ đơn, thay đổi role, thay đổi subscription) ghi vào `audit_logs`
+- Lưu `old_data` / `new_data` dạng JSONB + `ip_address` — immutable
+
+---
+
+## 5. Dependencies (pom.xml)
+
+### Đã có
+| Dependency | Dùng cho |
+|:---|:---|
+| `spring-boot-starter-data-jpa` | JPA/Hibernate |
+| `spring-boot-starter-security` | Spring Security |
+| `spring-boot-starter-validation` | Bean Validation (`@Valid`, `@NotNull`) |
+| `spring-boot-starter-web` | REST API |
+| `flyway-core` + `flyway-database-postgresql` | Schema migration |
+| `postgresql` | JDBC driver |
+| `lombok` | Boilerplate reduction |
+
+### Cần thêm
+
+**JWT — bắt buộc (auth chưa hoạt động nếu thiếu):**
+```xml
+<dependency>
+    <groupId>io.jsonwebtoken</groupId>
+    <artifactId>jjwt-api</artifactId>
+    <version>0.12.6</version>
+</dependency>
+<dependency>
+    <groupId>io.jsonwebtoken</groupId>
+    <artifactId>jjwt-impl</artifactId>
+    <version>0.12.6</version>
+    <scope>runtime</scope>
+</dependency>
+<dependency>
+    <groupId>io.jsonwebtoken</groupId>
+    <artifactId>jjwt-jackson</artifactId>
+    <version>0.12.6</version>
+    <scope>runtime</scope>
+</dependency>
+```
+
+**Cache — nên thêm sớm (subscription check gọi mỗi request):**
+```xml
+<dependency>
+    <groupId>org.springframework.boot</groupId>
+    <artifactId>spring-boot-starter-cache</artifactId>
+</dependency>
+<dependency>
+    <groupId>com.github.ben-manes.caffeine</groupId>
+    <artifactId>caffeine</artifactId>
+</dependency>
+```
+
+> Caffeine là in-memory cache — không cần Redis infrastructure. Đủ cho monolith single-instance.
+> Nếu sau này scale multi-instance → đổi sang Redis (`spring-boot-starter-data-redis`).
+
+### Không cần thêm (đã được cover)
+
+| Tính năng | Lý do không cần dep riêng |
+|:---|:---|
+| JSONB mapping (`audit_logs.old_data`) | Hibernate 6 hỗ trợ native qua `@JdbcTypeCode(SqlTypes.JSON)` + Jackson có sẵn từ `spring-boot-starter-web` |
+| DTO mapping | Làm thủ công hoặc dùng `MapStruct` (optional) — không bắt buộc cho Phase 1 |
+| Materialized view refresh | Gọi native query qua `EntityManager` — không cần dep |
+
+---
+
+## 6. Lộ trình phát triển (Roadmap)
+
+| Giai đoạn | Nội dung |
+|:---|:---|
+| **Phase 1** | Core API (Spring Boot) + Database Schema + JWT Auth + Web Admin |
+| **Phase 2** | Tích hợp ngoại vi (máy in hóa đơn, máy quét mã vạch) |
+| **Phase 3** | App Mobile (React Native) + Offline sync |
+| **Phase 4** | Cloud deployment (Docker + AWS/GCP) + Read replica |
+
+---
+
+## 7. Ghi chú quan trọng cho lập trình viên
+
+### Database
+- **Migration:** Chỉ dùng Flyway — đặt file tại `src/main/resources/db/migration/V{n}__{mô_tả}.sql`. Không dùng `ddl-auto=create/update`.
+- **Soft delete:** Mọi query trên bảng có `deleted_at` phải thêm `AND deleted_at IS NULL`. Dùng `@Where(clause = "deleted_at IS NULL")` trên entity hoặc thêm condition vào từng repository method.
+- **Immutable tables:** `orders`, `purchase_orders`, `payments`, `inventory_transactions`, `price_history`, `audit_logs` — không xoá, chỉ huỷ qua `status`.
+
+### `debt_balance` — invariant bắt buộc
+`customers.debt_balance` và `suppliers.debt_balance` là denorm — **phải cập nhật trong cùng `@Transactional`** với sự kiện gây ra thay đổi. Xem bảng invariant rules đầy đủ trong `docs/DATABASE_SCHEMA.md § 12`.
+
+### JPA / Performance
+- **N+1:** Các quan hệ `Order → items → product`, `PurchaseOrder → items → product`, `ReturnOrder → items → product` đều nguy cơ N+1. Dùng `JOIN FETCH` hoặc `@EntityGraph` — không để lazy load trong vòng lặp.
+- **`units` query:** Phải lấy cả system units và store units: `WHERE (store_id = :storeId OR store_id IS NULL) AND deleted_at IS NULL`.
+- **Pagination:** Dùng keyset (cursor-based) thay vì `Page<T>` OFFSET cho các bảng lớn (`orders`, `inventory_transactions`).
+
+### Security
+- JWT encode `userId` + `storeId` + `role` — tránh JOIN `store_members` trên mỗi request.
+- Mọi query nghiệp vụ phải filter `store_id = storeId từ JWT` — không để user truy cập data của store khác.
