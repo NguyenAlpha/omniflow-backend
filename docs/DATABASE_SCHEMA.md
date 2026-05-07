@@ -61,6 +61,11 @@
 | `position_title` | VARCHAR(100) | | Chức danh hiển thị (VD: Thu ngân, Thủ kho) |
 | `joined_date` | DATE | | Ngày gia nhập cửa hàng |
 | `is_active` | BOOLEAN | NOT NULL, DEFAULT true | Trạng thái trong cửa hàng này |
+| `public_id` | UUID | NOT NULL, UNIQUE | Khóa sync ổn định |
+| `sync_version` | BIGINT | NOT NULL, DEFAULT 0 | Version sync |
+| `last_modified_at` | TIMESTAMPTZ | NOT NULL | Lần sửa cuối |
+| `last_modified_by_user` | BIGINT | FK → users | Người sửa cuối |
+| `last_modified_by_device` | UUID | | Thiết bị sửa cuối |
 | `created_at` | TIMESTAMPTZ | NOT NULL | Thời điểm tạo |
 | `updated_at` | TIMESTAMPTZ | NOT NULL | Thời điểm cập nhật |
 | `deleted_at` | TIMESTAMPTZ | | Thời điểm xoá mềm — null = chưa xoá |
@@ -104,6 +109,11 @@
 | `store_id` | BIGINT | FK → stores, NOT NULL | Cửa hàng sở hữu |
 | `name` | VARCHAR(100) | NOT NULL | Tên danh mục (VD: Đồ uống, Thực phẩm) |
 | `description` | TEXT | | Mô tả thêm |
+| `public_id` | UUID | NOT NULL, UNIQUE | Khóa sync ổn định |
+| `sync_version` | BIGINT | NOT NULL, DEFAULT 0 | Version sync |
+| `last_modified_at` | TIMESTAMPTZ | NOT NULL | Lần sửa cuối |
+| `last_modified_by_user` | BIGINT | FK → users | Người sửa cuối |
+| `last_modified_by_device` | UUID | | Thiết bị sửa cuối |
 | `created_by` | BIGINT | FK → users, NOT NULL | Người tạo |
 | `created_at` | TIMESTAMPTZ | NOT NULL | Thời điểm tạo |
 | `updated_at` | TIMESTAMPTZ | NOT NULL | Thời điểm cập nhật |
@@ -118,6 +128,11 @@
 | `store_id` | BIGINT | FK → stores | Cửa hàng sở hữu — **null = system unit** (dùng chung, không sửa/xoá được) |
 | `name` | VARCHAR(50) | NOT NULL | Tên đơn vị (VD: Cái, Kg, Thùng, Hộp) |
 | `abbreviation` | VARCHAR(10) | NOT NULL | Ký hiệu viết tắt (VD: kg, pcs, box) |
+| `public_id` | UUID | NOT NULL, UNIQUE | Khóa sync ổn định |
+| `sync_version` | BIGINT | NOT NULL, DEFAULT 0 | Version sync |
+| `last_modified_at` | TIMESTAMPTZ | NOT NULL | Lần sửa cuối |
+| `last_modified_by_user` | BIGINT | FK → users | Người sửa cuối |
+| `last_modified_by_device` | UUID | | Thiết bị sửa cuối |
 | `deleted_at` | TIMESTAMPTZ | | Thời điểm xoá mềm — null = chưa xoá |
 
 > **UNIQUE(name, store_id) WHERE deleted_at IS NULL** — cho phép Store A và Store B đều có unit tên "Thùng" riêng; system units (store_id IS NULL) cũng unique theo name.
@@ -149,6 +164,12 @@
 | `selling_price` | NUMERIC(15,2) | NOT NULL | Giá bán lẻ |
 | `min_stock_level` | INTEGER | NOT NULL, DEFAULT 0 | Tồn kho tối thiểu — cảnh báo khi dưới mức này |
 | `is_active` | BOOLEAN | NOT NULL, DEFAULT true | Trạng thái — false = ngừng kinh doanh |
+| `search_vector` | TSVECTOR | | Phục vụ tìm kiếm toàn văn |
+| `public_id` | UUID | NOT NULL, UNIQUE | Khóa sync ổn định |
+| `sync_version` | BIGINT | NOT NULL, DEFAULT 0 | Version sync |
+| `last_modified_at` | TIMESTAMPTZ | NOT NULL | Lần sửa cuối |
+| `last_modified_by_user` | BIGINT | FK → users | Người sửa cuối |
+| `last_modified_by_device` | UUID | | Thiết bị sửa cuối |
 | `created_at` | TIMESTAMPTZ | NOT NULL | Thời điểm tạo |
 | `updated_at` | TIMESTAMPTZ | NOT NULL | Thời điểm cập nhật |
 | `deleted_at` | TIMESTAMPTZ | | Thời điểm xoá mềm — null = chưa xoá |
@@ -182,6 +203,11 @@
 | `name` | VARCHAR(100) | NOT NULL | Tên kho (VD: Kho chính, Kho chi nhánh Q1) |
 | `address` | TEXT | | Địa chỉ kho |
 | `is_active` | BOOLEAN | NOT NULL, DEFAULT true | Trạng thái hoạt động |
+| `public_id` | UUID | NOT NULL, UNIQUE | Khóa sync ổn định |
+| `sync_version` | BIGINT | NOT NULL, DEFAULT 0 | Version sync |
+| `last_modified_at` | TIMESTAMPTZ | NOT NULL | Lần sửa cuối |
+| `last_modified_by_user` | BIGINT | FK → users | Người sửa cuối |
+| `last_modified_by_device` | UUID | | Thiết bị sửa cuối |
 | `created_at` | TIMESTAMPTZ | NOT NULL | Thời điểm tạo |
 | `updated_at` | TIMESTAMPTZ | NOT NULL | Thời điểm cập nhật |
 | `deleted_at` | TIMESTAMPTZ | | Thời điểm xoá mềm — null = chưa xoá |
@@ -192,8 +218,15 @@
 | `id` | BIGSERIAL | PK | Khóa chính |
 | `product_id` | BIGINT | FK → products, NOT NULL | Sản phẩm |
 | `warehouse_id` | BIGINT | FK → warehouses, NOT NULL | Kho chứa |
+| `store_id` | BIGINT | FK → stores, NOT NULL | Cửa hàng sở hữu |
 | `quantity` | NUMERIC(15,2) | NOT NULL, DEFAULT 0 | Số lượng tồn kho hiện tại |
+| `public_id` | UUID | NOT NULL, UNIQUE | Khóa sync ổn định |
+| `sync_version` | BIGINT | NOT NULL, DEFAULT 0 | Version sync |
+| `last_modified_at` | TIMESTAMPTZ | NOT NULL | Lần sửa cuối |
+| `last_modified_by_user` | BIGINT | FK → users | Người sửa cuối |
+| `last_modified_by_device` | UUID | | Thiết bị sửa cuối |
 | `updated_at` | TIMESTAMPTZ | NOT NULL | Thời điểm cập nhật gần nhất |
+| `deleted_at` | TIMESTAMPTZ | | Thời điểm xoá mềm — null = chưa xoá |
 
 > **UNIQUE(product_id, warehouse_id)**
 
@@ -211,6 +244,7 @@
 | `note` | TEXT | | Ghi chú thêm |
 | `created_by` | BIGINT | FK → users, NOT NULL | Người thực hiện |
 | `created_at` | TIMESTAMPTZ | NOT NULL | Thời điểm giao dịch |
+| `updated_at` | TIMESTAMPTZ | NOT NULL | Thời điểm cập nhật |
 
 > Không cho phép xoá — dữ liệu lịch sử kho.
 > `order_id` và `purchase_order_id` đều nullable — cả 2 null khi type = `MANUAL` (kiểm kê tay).
@@ -230,6 +264,12 @@
 | `email` | VARCHAR(100) | | Email |
 | `address` | TEXT | | Địa chỉ |
 | `debt_balance` | NUMERIC(15,2) | NOT NULL, DEFAULT 0 | Tổng tiền khách đang nợ cửa hàng |
+| `search_vector` | TSVECTOR | | Phục vụ tìm kiếm toàn văn |
+| `public_id` | UUID | NOT NULL, UNIQUE | Khóa sync ổn định |
+| `sync_version` | BIGINT | NOT NULL, DEFAULT 0 | Version sync |
+| `last_modified_at` | TIMESTAMPTZ | NOT NULL | Lần sửa cuối |
+| `last_modified_by_user` | BIGINT | FK → users | Người sửa cuối |
+| `last_modified_by_device` | UUID | | Thiết bị sửa cuối |
 | `created_by` | BIGINT | FK → users, NOT NULL | Người tạo |
 | `created_at` | TIMESTAMPTZ | NOT NULL | Thời điểm tạo |
 | `updated_at` | TIMESTAMPTZ | NOT NULL | Thời điểm cập nhật |
@@ -248,6 +288,11 @@
 | `email` | VARCHAR(100) | | Email |
 | `address` | TEXT | | Địa chỉ |
 | `debt_balance` | NUMERIC(15,2) | NOT NULL, DEFAULT 0 | Tổng tiền cửa hàng đang nợ nhà cung cấp |
+| `public_id` | UUID | NOT NULL, UNIQUE | Khóa sync ổn định |
+| `sync_version` | BIGINT | NOT NULL, DEFAULT 0 | Version sync |
+| `last_modified_at` | TIMESTAMPTZ | NOT NULL | Lần sửa cuối |
+| `last_modified_by_user` | BIGINT | FK → users | Người sửa cuối |
+| `last_modified_by_device` | UUID | | Thiết bị sửa cuối |
 | `created_by` | BIGINT | FK → users, NOT NULL | Người tạo |
 | `created_at` | TIMESTAMPTZ | NOT NULL | Thời điểm tạo |
 | `updated_at` | TIMESTAMPTZ | NOT NULL | Thời điểm cập nhật |
@@ -270,11 +315,17 @@
 | `status` | VARCHAR(20) | NOT NULL | Trạng thái: `PENDING` / `COMPLETED` / `CANCELLED` |
 | `subtotal` | NUMERIC(15,2) | NOT NULL | Tổng tiền hàng trước chiết khấu/thuế |
 | `discount` | NUMERIC(15,2) | NOT NULL, DEFAULT 0 | Chiết khấu |
+| `discount_type` | VARCHAR(10) | NOT NULL, DEFAULT 'FIXED' | Kiểu giảm giá: `FIXED` / `PERCENT` |
 | `tax` | NUMERIC(15,2) | NOT NULL, DEFAULT 0 | Thuế VAT |
 | `total_amount` | NUMERIC(15,2) | NOT NULL | Tổng tiền phải thu (subtotal - discount + tax) |
 | `paid_amount` | NUMERIC(15,2) | NOT NULL, DEFAULT 0 | Số tiền đã thanh toán |
 | `debt_amount` | NUMERIC(15,2) | NOT NULL, DEFAULT 0 | Số tiền còn nợ (total_amount - paid_amount) |
 | `note` | TEXT | | Ghi chú đơn hàng |
+| `public_id` | UUID | NOT NULL, UNIQUE | Khóa sync ổn định |
+| `sync_version` | BIGINT | NOT NULL, DEFAULT 0 | Version sync |
+| `last_modified_at` | TIMESTAMPTZ | NOT NULL | Lần sửa cuối |
+| `last_modified_by_user` | BIGINT | FK → users | Người sửa cuối |
+| `last_modified_by_device` | UUID | | Thiết bị sửa cuối |
 | `created_by` | BIGINT | FK → users, NOT NULL | Nhân viên tạo đơn |
 | `created_at` | TIMESTAMPTZ | NOT NULL | Thời điểm tạo |
 | `updated_at` | TIMESTAMPTZ | NOT NULL | Thời điểm cập nhật |
@@ -287,10 +338,18 @@
 | `id` | BIGSERIAL | PK | Khóa chính |
 | `order_id` | BIGINT | FK → orders, NOT NULL | Đơn hàng chứa dòng này |
 | `product_id` | BIGINT | FK → products, NOT NULL | Sản phẩm |
+| `store_id` | BIGINT | FK → stores, NOT NULL | Cửa hàng sở hữu |
 | `quantity` | NUMERIC(15,2) | NOT NULL | Số lượng bán |
 | `unit_price` | NUMERIC(15,2) | NOT NULL | Đơn giá tại thời điểm bán (snapshot) |
 | `discount` | NUMERIC(15,2) | NOT NULL, DEFAULT 0 | Chiết khấu theo dòng |
+| `discount_type` | VARCHAR(10) | NOT NULL, DEFAULT 'FIXED' | Kiểu giảm giá: `FIXED` / `PERCENT` |
 | `total_price` | NUMERIC(15,2) | NOT NULL | Thành tiền = quantity × unit_price - discount |
+| `public_id` | UUID | NOT NULL, UNIQUE | Khóa sync ổn định |
+| `sync_version` | BIGINT | NOT NULL, DEFAULT 0 | Version sync |
+| `last_modified_at` | TIMESTAMPTZ | NOT NULL | Lần sửa cuối |
+| `last_modified_by_user` | BIGINT | FK → users | Người sửa cuối |
+| `last_modified_by_device` | UUID | | Thiết bị sửa cuối |
+| `deleted_at` | TIMESTAMPTZ | | Thời điểm xoá mềm — null = chưa xoá |
 
 ---
 
@@ -309,6 +368,11 @@
 | `total_refund` | NUMERIC(15,2) | NOT NULL | Tổng tiền hoàn lại cho khách |
 | `refund_method` | VARCHAR(20) | NOT NULL | Hình thức hoàn: `CASH` / `BANK_TRANSFER` / `STORE_CREDIT` |
 | `note` | TEXT | | Ghi chú thêm |
+| `public_id` | UUID | NOT NULL, UNIQUE | Khóa sync ổn định |
+| `sync_version` | BIGINT | NOT NULL, DEFAULT 0 | Version sync |
+| `last_modified_at` | TIMESTAMPTZ | NOT NULL | Lần sửa cuối |
+| `last_modified_by_user` | BIGINT | FK → users | Người sửa cuối |
+| `last_modified_by_device` | UUID | | Thiết bị sửa cuối |
 | `created_by` | BIGINT | FK → users, NOT NULL | Người tạo đơn hoàn trả |
 | `created_at` | TIMESTAMPTZ | NOT NULL | Thời điểm tạo |
 | `updated_at` | TIMESTAMPTZ | NOT NULL | Thời điểm cập nhật |
@@ -345,6 +409,11 @@
 | `paid_amount` | NUMERIC(15,2) | NOT NULL, DEFAULT 0 | Số tiền đã trả |
 | `debt_amount` | NUMERIC(15,2) | NOT NULL, DEFAULT 0 | Số tiền còn nợ nhà cung cấp |
 | `note` | TEXT | | Ghi chú |
+| `public_id` | UUID | NOT NULL, UNIQUE | Khóa sync ổn định |
+| `sync_version` | BIGINT | NOT NULL, DEFAULT 0 | Version sync |
+| `last_modified_at` | TIMESTAMPTZ | NOT NULL | Lần sửa cuối |
+| `last_modified_by_user` | BIGINT | FK → users | Người sửa cuối |
+| `last_modified_by_device` | UUID | | Thiết bị sửa cuối |
 | `created_by` | BIGINT | FK → users, NOT NULL | Người tạo đơn |
 | `created_at` | TIMESTAMPTZ | NOT NULL | Thời điểm tạo |
 | `updated_at` | TIMESTAMPTZ | NOT NULL | Thời điểm cập nhật |
@@ -357,9 +426,11 @@
 | `id` | BIGSERIAL | PK | Khóa chính |
 | `purchase_order_id` | BIGINT | FK → purchase_orders, NOT NULL | Đơn nhập chứa dòng này |
 | `product_id` | BIGINT | FK → products, NOT NULL | Sản phẩm |
+| `store_id` | BIGINT | FK → stores, NOT NULL | Cửa hàng sở hữu |
 | `quantity` | NUMERIC(15,2) | NOT NULL | Số lượng nhập |
 | `unit_price` | NUMERIC(15,2) | NOT NULL | Đơn giá nhập |
 | `total_price` | NUMERIC(15,2) | NOT NULL | Thành tiền = quantity × unit_price |
+| `deleted_at` | TIMESTAMPTZ | | Thời điểm xoá mềm — null = chưa xoá |
 
 ---
 
@@ -375,8 +446,14 @@
 | `amount` | NUMERIC(15,2) | NOT NULL, CHECK > 0 | Số tiền thanh toán |
 | `payment_method` | VARCHAR(20) | NOT NULL | Hình thức: `CASH` / `BANK_TRANSFER` |
 | `note` | TEXT | | Ghi chú |
+| `public_id` | UUID | NOT NULL, UNIQUE | Khóa sync ổn định |
+| `sync_version` | BIGINT | NOT NULL, DEFAULT 0 | Version sync |
+| `last_modified_at` | TIMESTAMPTZ | NOT NULL | Lần sửa cuối |
+| `last_modified_by_user` | BIGINT | FK → users | Người sửa cuối |
+| `last_modified_by_device` | UUID | | Thiết bị sửa cuối |
 | `created_by` | BIGINT | FK → users, NOT NULL | Người ghi nhận |
 | `created_at` | TIMESTAMPTZ | NOT NULL | Thời điểm thanh toán |
+| `updated_at` | TIMESTAMPTZ | NOT NULL | Thời điểm cập nhật |
 
 > Không cho phép xoá — dữ liệu tài chính.
 > **CHECK:** `(customer_id IS NOT NULL) != (supplier_id IS NOT NULL)` — bắt buộc đúng 1 trong 2 phải có giá trị.
@@ -398,6 +475,7 @@
 | `new_data` | JSONB | | Dữ liệu sau khi thay đổi — null nếu action = DELETE |
 | `ip_address` | VARCHAR(45) | | IP của người thực hiện |
 | `created_at` | TIMESTAMPTZ | NOT NULL | Thời điểm thực hiện |
+| `updated_at` | TIMESTAMPTZ | NOT NULL | Thời điểm cập nhật |
 
 > Không cho phép xoá hay sửa — đây là bằng chứng audit.
 > Chỉ ghi log cho các hành động nhạy cảm: sửa giá, huỷ đơn, xoá khách hàng, thay đổi role, thay đổi subscription.
@@ -416,8 +494,21 @@
 | `period_end` | TIMESTAMPTZ | NOT NULL | Kết thúc kỳ thanh toán |
 | `paid_at` | TIMESTAMPTZ | | Thời điểm thanh toán thành công — null nếu chưa trả |
 | `created_at` | TIMESTAMPTZ | NOT NULL | Thời điểm tạo invoice |
+| `updated_at` | TIMESTAMPTZ | NOT NULL | Thời điểm cập nhật |
 
 > Không cho phép xoá — lịch sử billing.
+
+### `sync_change_log` — Nhật ký sync delta
+| Tên cột | Kiểu | Ràng buộc | Ý nghĩa |
+|---|---|---|---|
+| `id` | BIGSERIAL | PK | Khoá chính |
+| `store_id` | BIGINT | FK → stores, NOT NULL | Tenant sở hữu |
+| `table_name` | VARCHAR(50) | NOT NULL | Bảng bị thay đổi |
+| `record_public_id` | UUID | NOT NULL | Khóa sync của bản ghi |
+| `operation` | VARCHAR(10) | NOT NULL | `INSERT` / `UPDATE` / `DELETE` |
+| `sync_version` | BIGINT | NOT NULL | Version tăng dần theo store |
+| `changed_at` | TIMESTAMPTZ | NOT NULL | Thời điểm thay đổi |
+| `changed_by_device` | UUID | | Thiết bị gây thay đổi |
 
 ---
 
@@ -507,6 +598,10 @@ CREATE INDEX idx_audit_logs_performed_by       ON audit_logs (performed_by, crea
 -- subscription_invoices
 CREATE INDEX idx_sub_invoices_store_id         ON subscription_invoices (store_id, created_at DESC);
 CREATE INDEX idx_sub_invoices_status           ON subscription_invoices (store_id, status) WHERE status = 'PENDING';
+
+-- full-text search
+CREATE INDEX idx_products_search_vector  ON products  USING GIN (search_vector);
+CREATE INDEX idx_customers_search_vector ON customers USING GIN (search_vector);
 ```
 
 ---
@@ -565,6 +660,11 @@ ALTER TABLE subscription_invoices ADD CONSTRAINT chk_sub_invoices_amount
   CHECK (amount >= 0);
 ALTER TABLE subscription_invoices ADD CONSTRAINT chk_sub_invoices_period
   CHECK (period_end > period_start);
+
+ALTER TABLE orders       ADD CONSTRAINT chk_orders_discount_type
+  CHECK (discount_type IN ('FIXED', 'PERCENT'));
+ALTER TABLE order_items  ADD CONSTRAINT chk_order_items_discount_type
+  CHECK (discount_type IN ('FIXED', 'PERCENT'));
 ```
 
 ---
@@ -690,32 +790,16 @@ HAVING ABS(
 - [ ] Integration test: chạy invariant verification query sau mỗi scenario, assert kết quả rỗng
 
 ---
+### 13. DDL mẫu quan trọng (Local-first)
+```sql
+-- 1) Thêm cột sync chuẩn (ví dụ: products)
+ALTER TABLE products
+  ADD COLUMN public_id UUID NOT NULL DEFAULT gen_random_uuid(),
+  ADD COLUMN sync_version BIGINT NOT NULL DEFAULT 0,
+  ADD COLUMN last_modified_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  ADD COLUMN last_modified_by_user BIGINT,
+  ADD COLUMN last_modified_by_device UUID;
 
-## Sơ đồ quan hệ (tóm tắt)
-
-```
-users ── admin_profiles
-  │
-  └──< store_members >── stores ── subscriptions
-                            │
-                            ├──< categories ──< products >── units
-                            │                      │
-                            ├──< warehouses ──< inventory
-                            │                      │
-                            │          inventory_transactions
-                            │
-                            ├──< customers ──< orders >── warehouses
-                            │                    │
-                            │               order_items >── products
-                            │
-                            ├──< suppliers ──< purchase_orders >── warehouses
-                            │                        │
-                            │          purchase_order_items >── products
-                            │
-                            ├──< payments
-                            ├──< return_orders >── orders
-                            │         └──< return_order_items >── products
-                            └──< subscription_invoices
-
-users ──> audit_logs (performed_by)
+CREATE UNIQUE INDEX ux_products_public_id ON products (public_id);
+CREATE INDEX idx_products_sync_version ON products (sync_version);
 ```

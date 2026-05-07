@@ -15,13 +15,13 @@
 | Thành phần | Công nghệ | Lý do |
 |:---|:---|:---|
 | **Backend** | Java 21 / Spring Boot 3.x | Ổn định, bảo mật, virtual threads sẵn sàng |
-| **Database** | PostgreSQL 16 | TIMESTAMPTZ, JSONB, materialized views, partial index |
+| **Database** | PostgreSQL 16 | TIMESTAMPTZ, JSONB, materialized views, partial index; dùng thêm GIN/tsvector cho full-text và extension `pgcrypto` / `uuid-ossp` cho UUID nếu cần |
 | **ORM** | Spring Data JPA + Hibernate 6 | `@EntityGraph`, `JOIN FETCH`, `@JdbcTypeCode` cho JSONB |
 | **Migration** | Flyway | Schema versioning, không dùng `ddl-auto=create/update` |
 | **Auth** | Spring Security + JWT (JJWT) | Stateless, encode `storeId` + `role` vào token |
 | **Web Admin** | React.js / Tailwind CSS | Dashboard quản lý (Phase 1) |
 | **Mobile** | React Native (Phase 2) | Android/iOS, tái dụng logic từ Web |
-| **Offline** | SQLite (Mobile) / H2 (Desktop) | Lưu tạm khi mất kết nối |
+| **Offline / Sync** | SQLite (Mobile) / H2 (Desktop) + sync engine | Lưu tạm khi mất kết nối; server side uses `public_id` (UUID), `sync_version`, `sync_change_log` to reconcile deltas |
 
 ---
 
@@ -69,6 +69,7 @@ com.omniflow.backend
 - SKU unique theo store (partial UNIQUE `WHERE deleted_at IS NULL`)
 - Lịch sử thay đổi giá (`price_history`) — bắt buộc ghi khi sửa giá để tính margin đúng
 - Soft delete — không xoá vật lý
+- Thêm hỗ trợ tìm kiếm nhanh: `search_vector` (tsvector) trên `products` và `customers` với GIN index; backend tạo/maintain trigger (`tsvector_update_trigger`) hoặc cập nhật trường này khi tên/sku/description thay đổi — giúp search tốc độ cao cho POS
 
 ### 4.5 Quản lý Kho
 - Multi-warehouse per store (`warehouses`)
@@ -78,9 +79,13 @@ com.omniflow.backend
 - Cảnh báo tồn kho thấp qua `min_stock_level` và materialized view `mv_inventory_summary`
 
 ### 4.6 Quản lý Đơn hàng bán
-- Tạo đơn → tính `subtotal`, `discount`, `tax`, `total_amount`, `debt_amount`
+- Tạo đơn → tính `subtotal`, `discount`, `discount_type`, `tax`, `total_amount`, `debt_amount`
+- `discount_type` hỗ trợ:
+  - `FIXED`: `total_amount = subtotal - discount + tax`
+  - `PERCENT`: `total_amount = subtotal - (subtotal * discount / 100) + tax`
 - Trạng thái: `PENDING` → `COMPLETED` / `CANCELLED` (không xoá)
 - Khi `COMPLETED`: cập nhật tồn kho (OUT) + `customers.debt_balance` trong cùng 1 transaction
+- `order_items` có `discount` và `discount_type` (cùng logic) để hỗ trợ giảm theo dòng
 
 ### 4.7 Hoàn trả hàng
 - Đơn hoàn trả liên kết với đơn gốc (`original_order_id`)
@@ -106,6 +111,7 @@ com.omniflow.backend
 ### 4.11 Audit Log
 - Mọi thao tác nhạy cảm (sửa giá, huỷ đơn, thay đổi role, thay đổi subscription) ghi vào `audit_logs`
 - Lưu `old_data` / `new_data` dạng JSONB + `ip_address` — immutable
+- Ngoài ra hệ thống lưu `sync_change_log` trên server để hỗ trợ delta sync: ghi `public_id`, `operation`, `sync_version` theo `store_id` để client có thể kéo delta an toàn
 
 ---
 
@@ -185,7 +191,24 @@ com.omniflow.backend
 
 ### Database
 - **Migration:** Chỉ dùng Flyway — đặt file tại `src/main/resources/db/migration/V{n}__{mô_tả}.sql`. Không dùng `ddl-auto=create/update`.
-- **Soft delete:** Mọi query trên bảng có `deleted_at` phải thêm `AND deleted_at IS NULL`. Dùng `@Where(clause = "deleted_at IS NULL")` trên entity hoặc thêm condition vào từng repository method.
+- **Thêm cột sync & migration an toàn:** nhiều bảng bổ sung `public_id UUID`, `sync_version BIGINT`, `last_modified_at`, `last_modified_by_user`, `last_modified_by_device` — khi migrate trên production lớn, thêm cột nullable / with default, backfill giá trị (gen_random_uuid()) rồi tạo unique index; tránh đặt NOT NULL không DEFAULT trực tiếp trên bảng lớn.
+- **Full-text search:** tạo `search_vector` TSVECTOR và GIN index cho `products`/`customers`. Thêm trigger mẫu:
+
+```sql
+-- ví dụ trigger (Postgres):
+CREATE FUNCTION products_tsvector_trigger() RETURNS trigger AS $$
+begin
+  new.search_vector := to_tsvector('simple', coalesce(new.name,'') || ' ' || coalesce(new.sku,'') || ' ' || coalesce(new.description,''));
+  return new;
+end
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER tsvectorupdate BEFORE INSERT OR UPDATE
+  ON products FOR EACH ROW EXECUTE FUNCTION products_tsvector_trigger();
+```
+
+- **Offline / sync write contract:** Service layer phải đảm bảo: tăng `sync_version` atomically, ghi một hàng vào `sync_change_log(store_id, table_name, record_public_id, operation, sync_version)` trong cùng transaction; client chỉ pull theo `(store_id, sync_version)`.
+- **Soft delete:** Mọi query trên bảng có `deleted_at` phải thêm `AND deleted_at IS NULL` hoặc dùng `@Where` trên entity.
 - **Immutable tables:** `orders`, `purchase_orders`, `payments`, `inventory_transactions`, `price_history`, `audit_logs` — không xoá, chỉ huỷ qua `status`.
 
 ### `debt_balance` — invariant bắt buộc
