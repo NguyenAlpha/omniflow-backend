@@ -46,8 +46,8 @@ public class AuthService {
                 .phone(request.phone())
                 .build();
 
-        userRepository.save(user);
-        return buildAuthResponse(user);
+        User saved = userRepository.save(user);
+        return buildAuthResponse(saved);
     }
 
     public AuthResponse login(LoginRequest request) {
