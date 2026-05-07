@@ -18,6 +18,8 @@ public interface StoreMemberRepository extends JpaRepository<StoreMember, Long> 
 
     List<StoreMember> findByUserId(Long userId);
 
+    List<StoreMember> findByUserIdAndDeletedAtIsNull(Long userId);
+
     Optional<StoreMember> findByUserIdAndStoreId(Long userId, Long storeId);
 
     Optional<StoreMember> findByUserIdAndStoreIdAndDeletedAtIsNull(Long userId, Long storeId);
