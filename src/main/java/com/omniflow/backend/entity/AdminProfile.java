@@ -3,6 +3,7 @@ package com.omniflow.backend.entity;
 import lombok.*;
 import jakarta.persistence.*;
 import java.time.LocalDateTime;
+import com.omniflow.backend.entity.enums.SystemRole;
 
 @Entity
 @Table(name = "admin_profiles")
@@ -22,7 +23,8 @@ public class AdminProfile {
     private User user;
 
     @Column(nullable = false, length = 20)
-    private String systemRole; // SUPER_ADMIN, SUPPORT
+    @Enumerated(EnumType.STRING)
+    private SystemRole systemRole; // SUPER_ADMIN, SUPPORT
 
     @Column(length = 100)
     private String department;
@@ -39,4 +41,3 @@ public class AdminProfile {
     @Column(columnDefinition = "TIMESTAMPTZ")
     private LocalDateTime deletedAt;
 }
-
