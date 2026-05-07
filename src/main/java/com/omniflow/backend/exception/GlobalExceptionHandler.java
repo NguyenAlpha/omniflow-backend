@@ -1,10 +1,8 @@
-package com.omniflow.backend.config;
+package com.omniflow.backend.exception;
 
 import com.omniflow.backend.dto.response.common.ApiResult;
 import com.omniflow.backend.dto.response.common.ErrorCode;
 import com.omniflow.backend.dto.response.common.ErrorDetail;
-import com.omniflow.backend.exception.ForbiddenException;
-import com.omniflow.backend.exception.ResourceNotFoundException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.authentication.BadCredentialsException;
