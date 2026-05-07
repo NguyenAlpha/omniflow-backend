@@ -61,8 +61,7 @@ CREATE TABLE store_members (
     deleted_at TIMESTAMPTZ,
     CONSTRAINT fk_store_members_user FOREIGN KEY (user_id) REFERENCES users(id),
     CONSTRAINT fk_store_members_store FOREIGN KEY (store_id) REFERENCES stores(id),
-    CONSTRAINT fk_store_members_modified_by FOREIGN KEY (last_modified_by_user) REFERENCES users(id),
-    CONSTRAINT ux_store_members_user_store UNIQUE (user_id, store_id) WHERE deleted_at IS NULL
+    CONSTRAINT fk_store_members_modified_by FOREIGN KEY (last_modified_by_user) REFERENCES users(id)
 );
 
 CREATE TABLE subscriptions (
@@ -102,8 +101,7 @@ CREATE TABLE categories (
     deleted_at TIMESTAMPTZ,
     CONSTRAINT fk_categories_store FOREIGN KEY (store_id) REFERENCES stores(id),
     CONSTRAINT fk_categories_modified_by FOREIGN KEY (last_modified_by_user) REFERENCES users(id),
-    CONSTRAINT fk_categories_created_by FOREIGN KEY (created_by) REFERENCES users(id),
-    CONSTRAINT ux_categories_store_name UNIQUE (store_id, name) WHERE deleted_at IS NULL
+    CONSTRAINT fk_categories_created_by FOREIGN KEY (created_by) REFERENCES users(id)
 );
 
 CREATE TABLE units (
@@ -118,8 +116,7 @@ CREATE TABLE units (
     last_modified_by_device UUID,
     deleted_at TIMESTAMPTZ,
     CONSTRAINT fk_units_store FOREIGN KEY (store_id) REFERENCES stores(id),
-    CONSTRAINT fk_units_modified_by FOREIGN KEY (last_modified_by_user) REFERENCES users(id),
-    CONSTRAINT ux_units_store_name UNIQUE (COALESCE(store_id, 0), name) WHERE deleted_at IS NULL
+    CONSTRAINT fk_units_modified_by FOREIGN KEY (last_modified_by_user) REFERENCES users(id)
 );
 
 -- ============================================================================
@@ -150,8 +147,7 @@ CREATE TABLE products (
     CONSTRAINT fk_products_store FOREIGN KEY (store_id) REFERENCES stores(id),
     CONSTRAINT fk_products_category FOREIGN KEY (category_id) REFERENCES categories(id),
     CONSTRAINT fk_products_unit FOREIGN KEY (unit_id) REFERENCES units(id),
-    CONSTRAINT fk_products_modified_by FOREIGN KEY (last_modified_by_user) REFERENCES users(id),
-    CONSTRAINT ux_products_store_sku UNIQUE (store_id, sku) WHERE deleted_at IS NULL
+    CONSTRAINT fk_products_modified_by FOREIGN KEY (last_modified_by_user) REFERENCES users(id)
 );
 
 CREATE TABLE price_history (
@@ -255,8 +251,7 @@ CREATE TABLE customers (
     deleted_at TIMESTAMPTZ,
     CONSTRAINT fk_customers_store FOREIGN KEY (store_id) REFERENCES stores(id),
     CONSTRAINT fk_customers_modified_by FOREIGN KEY (last_modified_by_user) REFERENCES users(id),
-    CONSTRAINT fk_customers_created_by FOREIGN KEY (created_by) REFERENCES users(id),
-    CONSTRAINT ux_customers_store_code UNIQUE (store_id, code) WHERE deleted_at IS NULL
+    CONSTRAINT fk_customers_created_by FOREIGN KEY (created_by) REFERENCES users(id)
 );
 
 CREATE TABLE suppliers (
@@ -279,8 +274,7 @@ CREATE TABLE suppliers (
     deleted_at TIMESTAMPTZ,
     CONSTRAINT fk_suppliers_store FOREIGN KEY (store_id) REFERENCES stores(id),
     CONSTRAINT fk_suppliers_modified_by FOREIGN KEY (last_modified_by_user) REFERENCES users(id),
-    CONSTRAINT fk_suppliers_created_by FOREIGN KEY (created_by) REFERENCES users(id),
-    CONSTRAINT ux_suppliers_store_code UNIQUE (store_id, code) WHERE deleted_at IS NULL
+    CONSTRAINT fk_suppliers_created_by FOREIGN KEY (created_by) REFERENCES users(id)
 );
 
 -- ============================================================================
@@ -497,6 +491,14 @@ CREATE TABLE sync_change_log (
 );
 
 -- ============================================================================
+-- Section 8b: Deferred FK constraints (tables created after inventory_transactions)
+-- ============================================================================
+
+ALTER TABLE inventory_transactions
+    ADD CONSTRAINT fk_inv_tx_order FOREIGN KEY (order_id) REFERENCES orders(id),
+    ADD CONSTRAINT fk_inv_tx_po FOREIGN KEY (purchase_order_id) REFERENCES purchase_orders(id);
+
+-- ============================================================================
 -- Section 9: Indexes - Foreign Keys
 -- ============================================================================
 
@@ -549,6 +551,14 @@ CREATE INDEX idx_audit_logs_table_record ON audit_logs(table_name, record_id);
 CREATE INDEX idx_audit_logs_performed_by ON audit_logs(performed_by, created_at DESC);
 CREATE INDEX idx_sub_invoices_store_id ON subscription_invoices(store_id, created_at DESC);
 CREATE INDEX idx_sub_invoices_status ON subscription_invoices(store_id, status) WHERE status = 'PENDING';
+
+-- Partial UNIQUE indexes for soft-delete semantics
+CREATE UNIQUE INDEX ux_store_members_user_store ON store_members(user_id, store_id) WHERE deleted_at IS NULL;
+CREATE UNIQUE INDEX ux_categories_store_name ON categories(store_id, name) WHERE deleted_at IS NULL;
+CREATE UNIQUE INDEX ux_units_store_name ON units(COALESCE(store_id, 0), name) WHERE deleted_at IS NULL;
+CREATE UNIQUE INDEX ux_products_store_sku ON products(store_id, sku) WHERE deleted_at IS NULL;
+CREATE UNIQUE INDEX ux_customers_store_code ON customers(store_id, code) WHERE deleted_at IS NULL;
+CREATE UNIQUE INDEX ux_suppliers_store_code ON suppliers(store_id, code) WHERE deleted_at IS NULL;
 
 -- ============================================================================
 -- Section 11: Full-Text Search Indexes (GIN)
