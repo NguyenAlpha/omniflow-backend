@@ -1,5 +1,6 @@
 package com.omniflow.backend.entity;
 
+import com.omniflow.backend.entity.enums.StoreRole;
 import lombok.*;
 import jakarta.persistence.*;
 import org.hibernate.annotations.Where;
@@ -32,8 +33,9 @@ public class StoreMember {
     @JoinColumn(name = "store_id", nullable = false)
     private Store store;
 
+    @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
-    private String role; // OWNER, MANAGER, STAFF
+    private StoreRole role;
 
     @Column(length = 100)
     private String positionTitle;

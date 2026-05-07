@@ -6,6 +6,7 @@ import com.omniflow.backend.dto.response.auth.AuthResponse;
 import com.omniflow.backend.dto.response.auth.UserSummaryResponse;
 import com.omniflow.backend.dto.response.store.StoreMemberResponse;
 import com.omniflow.backend.entity.User;
+import com.omniflow.backend.entity.enums.StoreRole;
 import com.omniflow.backend.repository.StoreMemberRepository;
 import com.omniflow.backend.repository.UserRepository;
 import com.omniflow.backend.security.JwtService;

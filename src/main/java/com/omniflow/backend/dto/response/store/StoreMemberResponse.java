@@ -1,5 +1,6 @@
 package com.omniflow.backend.dto.response.store;
 
+import com.omniflow.backend.entity.enums.StoreRole;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.UUID;
@@ -10,7 +11,7 @@ public record StoreMemberResponse(
     Long userId,
     String username,
     Long storeId,
-    String role,
+    StoreRole role,
     String positionTitle,
     LocalDate joinedDate,
     Boolean isActive,

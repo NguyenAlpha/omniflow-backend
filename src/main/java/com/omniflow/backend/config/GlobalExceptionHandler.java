@@ -3,6 +3,8 @@ package com.omniflow.backend.config;
 import com.omniflow.backend.dto.response.common.ApiResult;
 import com.omniflow.backend.dto.response.common.ErrorCode;
 import com.omniflow.backend.dto.response.common.ErrorDetail;
+import com.omniflow.backend.exception.ForbiddenException;
+import com.omniflow.backend.exception.ResourceNotFoundException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.authentication.BadCredentialsException;
@@ -43,6 +45,20 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ApiResult<?>> handleDisabled(DisabledException ex) {
         return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(
                 ApiResult.fail(ErrorDetail.of(ErrorCode.INVALID_CREDENTIALS, "Account is disabled"))
+        );
+    }
+
+    @ExceptionHandler(ResourceNotFoundException.class)
+    public ResponseEntity<ApiResult<?>> handleNotFound(ResourceNotFoundException ex) {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(
+                ApiResult.fail(ErrorDetail.of(ex.getErrorCode(), ex.getMessage()))
+        );
+    }
+
+    @ExceptionHandler(ForbiddenException.class)
+    public ResponseEntity<ApiResult<?>> handleForbidden(ForbiddenException ex) {
+        return ResponseEntity.status(HttpStatus.FORBIDDEN).body(
+                ApiResult.fail(ErrorDetail.of(ex.getErrorCode(), ex.getMessage()))
         );
     }
 
