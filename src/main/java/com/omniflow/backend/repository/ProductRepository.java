@@ -45,13 +45,13 @@ public interface ProductRepository extends JpaRepository<Product, Long> {
 
     // Using PostgreSQL full-text search
     @Query(value = """
-        SELECT p FROM Product p 
-        WHERE p.store.id = :storeId 
-        AND p.deletedAt IS NULL 
-        AND to_tsvector('simple', COALESCE(p.name, '') || ' ' || COALESCE(p.sku, '')) @@ 
+        SELECT * FROM products p
+        WHERE p.store_id = :storeId
+        AND p.deleted_at IS NULL
+        AND to_tsvector('simple', COALESCE(p.name, '') || ' ' || COALESCE(p.sku, '')) @@
             plainto_tsquery('simple', :searchTerm)
         ORDER BY p.name ASC
-    """, nativeQuery = false)
+    """, nativeQuery = true)
     List<Product> fullTextSearch(
         @Param("storeId") Long storeId,
         @Param("searchTerm") String searchTerm
