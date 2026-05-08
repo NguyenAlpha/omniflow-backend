@@ -5,7 +5,7 @@ import com.omniflow.backend.dto.response.catalog.ProductResponse;
 import com.omniflow.backend.dto.response.common.ErrorCode;
 import com.omniflow.backend.dto.response.common.PagedResult;
 import com.omniflow.backend.entity.*;
-import com.omniflow.backend.entity.enums.StoreRole;
+import com.omniflow.backend.entity.enums.RoleName;
 import com.omniflow.backend.exception.ForbiddenException;
 import com.omniflow.backend.exception.ResourceNotFoundException;
 import com.omniflow.backend.repository.*;
@@ -27,7 +27,7 @@ public class ProductService {
 
     private final ProductRepository productRepository;
     private final StoreRepository storeRepository;
-    private final StoreMemberRepository storeMemberRepository;
+    private final UserRoleRepository userRoleRepository;
     private final CategoryRepository categoryRepository;
     private final UnitRepository unitRepository;
     private final PriceHistoryRepository priceHistoryRepository;
@@ -63,7 +63,7 @@ public class ProductService {
     @Transactional
     public ProductResponse create(Long storeId, ProductUpsertRequest request, User currentUser) {
         Store store = findStoreOrThrow(storeId);
-        requireRole(storeId, currentUser.getId(), StoreRole.OWNER, StoreRole.MANAGER);
+        requireRole(storeId, currentUser.getId(), RoleName.OWNER, RoleName.MANAGER);
 
         if (productRepository.findByStoreIdAndSkuAndDeletedAtIsNull(storeId, request.sku()).isPresent()) {
             throw new IllegalArgumentException("SKU already exists in this store");
@@ -93,7 +93,7 @@ public class ProductService {
     @Transactional
     public ProductResponse update(Long storeId, UUID publicId, ProductUpsertRequest request, User currentUser) {
         findStoreOrThrow(storeId);
-        requireRole(storeId, currentUser.getId(), StoreRole.OWNER, StoreRole.MANAGER);
+        requireRole(storeId, currentUser.getId(), RoleName.OWNER, RoleName.MANAGER);
 
         Product product = findProductOrThrow(publicId);
 
@@ -122,7 +122,7 @@ public class ProductService {
     @Transactional
     public void delete(Long storeId, UUID publicId, User currentUser) {
         findStoreOrThrow(storeId);
-        requireRole(storeId, currentUser.getId(), StoreRole.OWNER, StoreRole.MANAGER);
+        requireRole(storeId, currentUser.getId(), RoleName.OWNER, RoleName.MANAGER);
 
         Product product = findProductOrThrow(publicId);
         product.setDeletedAt(LocalDateTime.now());
@@ -169,16 +169,19 @@ public class ProductService {
 
     private void requireMembership(Long storeId, Long userId) {
         if (isSystemAdmin()) return;
-        storeMemberRepository.findByUserIdAndStoreIdAndDeletedAtIsNull(userId, storeId)
+        userRoleRepository.findByUserIdAndStoreIdAndIsActiveTrueAndDeletedAtIsNull(userId, storeId)
                 .orElseThrow(() -> new ForbiddenException(ErrorCode.FORBIDDEN, "You are not a member of this store"));
     }
 
-    private void requireRole(Long storeId, Long userId, StoreRole... roles) {
+    private void requireRole(Long storeId, Long userId, RoleName... roles) {
         if (isSystemAdmin()) return;
-        var member = storeMemberRepository.findByUserIdAndStoreIdAndDeletedAtIsNull(userId, storeId)
+        UserRole userRole = userRoleRepository
+                .findByUserIdAndStoreIdAndIsActiveTrueAndDeletedAtIsNull(userId, storeId)
                 .orElseThrow(() -> new ForbiddenException(ErrorCode.FORBIDDEN, "You are not a member of this store"));
-        for (StoreRole role : roles) {
-            if (role == member.getRole()) return;
+
+        RoleName actual = userRole.getRole().getName();
+        for (RoleName role : roles) {
+            if (role == actual) return;
         }
         throw new ForbiddenException(ErrorCode.FORBIDDEN, "Insufficient role to perform this action");
     }

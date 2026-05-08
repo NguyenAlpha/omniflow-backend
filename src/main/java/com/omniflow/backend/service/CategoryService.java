@@ -6,12 +6,13 @@ import com.omniflow.backend.dto.response.common.ErrorCode;
 import com.omniflow.backend.entity.Category;
 import com.omniflow.backend.entity.Store;
 import com.omniflow.backend.entity.User;
-import com.omniflow.backend.entity.enums.StoreRole;
+import com.omniflow.backend.entity.UserRole;
+import com.omniflow.backend.entity.enums.RoleName;
 import com.omniflow.backend.exception.ForbiddenException;
 import com.omniflow.backend.exception.ResourceNotFoundException;
 import com.omniflow.backend.repository.CategoryRepository;
-import com.omniflow.backend.repository.StoreMemberRepository;
 import com.omniflow.backend.repository.StoreRepository;
+import com.omniflow.backend.repository.UserRoleRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -28,7 +29,7 @@ public class CategoryService {
 
     private final CategoryRepository categoryRepository;
     private final StoreRepository storeRepository;
-    private final StoreMemberRepository storeMemberRepository;
+    private final UserRoleRepository userRoleRepository;
 
     @Transactional(readOnly = true)
     public List<CategoryResponse> list(Long storeId, User currentUser) {
@@ -42,7 +43,7 @@ public class CategoryService {
     @Transactional
     public CategoryResponse create(Long storeId, CategoryUpsertRequest request, User currentUser) {
         Store store = findStoreOrThrow(storeId);
-        requireRole(storeId, currentUser.getId(), StoreRole.OWNER, StoreRole.MANAGER);
+        requireRole(storeId, currentUser.getId(), RoleName.OWNER, RoleName.MANAGER);
 
         if (categoryRepository.findByStoreIdAndNameAndDeletedAtIsNull(storeId, request.name()).isPresent()) {
             throw new IllegalArgumentException("Category name already exists in this store");
@@ -63,7 +64,7 @@ public class CategoryService {
     @Transactional
     public CategoryResponse update(Long storeId, UUID publicId, CategoryUpsertRequest request, User currentUser) {
         findStoreOrThrow(storeId);
-        requireRole(storeId, currentUser.getId(), StoreRole.OWNER, StoreRole.MANAGER);
+        requireRole(storeId, currentUser.getId(), RoleName.OWNER, RoleName.MANAGER);
 
         Category category = categoryRepository.findByPublicId(publicId)
                 .orElseThrow(() -> new ResourceNotFoundException(ErrorCode.CATEGORY_NOT_FOUND, "Category not found"));
@@ -84,7 +85,7 @@ public class CategoryService {
     @Transactional
     public void delete(Long storeId, UUID publicId, User currentUser) {
         findStoreOrThrow(storeId);
-        requireRole(storeId, currentUser.getId(), StoreRole.OWNER, StoreRole.MANAGER);
+        requireRole(storeId, currentUser.getId(), RoleName.OWNER, RoleName.MANAGER);
 
         Category category = categoryRepository.findByPublicId(publicId)
                 .orElseThrow(() -> new ResourceNotFoundException(ErrorCode.CATEGORY_NOT_FOUND, "Category not found"));
@@ -100,16 +101,19 @@ public class CategoryService {
 
     private void requireMembership(Long storeId, Long userId) {
         if (isSystemAdmin()) return;
-        storeMemberRepository.findByUserIdAndStoreIdAndDeletedAtIsNull(userId, storeId)
+        userRoleRepository.findByUserIdAndStoreIdAndIsActiveTrueAndDeletedAtIsNull(userId, storeId)
                 .orElseThrow(() -> new ForbiddenException(ErrorCode.FORBIDDEN, "You are not a member of this store"));
     }
 
-    private void requireRole(Long storeId, Long userId, StoreRole... roles) {
+    private void requireRole(Long storeId, Long userId, RoleName... roles) {
         if (isSystemAdmin()) return;
-        var member = storeMemberRepository.findByUserIdAndStoreIdAndDeletedAtIsNull(userId, storeId)
+        UserRole userRole = userRoleRepository
+                .findByUserIdAndStoreIdAndIsActiveTrueAndDeletedAtIsNull(userId, storeId)
                 .orElseThrow(() -> new ForbiddenException(ErrorCode.FORBIDDEN, "You are not a member of this store"));
-        for (StoreRole role : roles) {
-            if (role == member.getRole()) return;
+
+        RoleName actual = userRole.getRole().getName();
+        for (RoleName role : roles) {
+            if (role == actual) return;
         }
         throw new ForbiddenException(ErrorCode.FORBIDDEN, "Insufficient role to perform this action");
     }

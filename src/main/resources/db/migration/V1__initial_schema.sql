@@ -19,17 +19,19 @@ CREATE TABLE users (
     deleted_at TIMESTAMPTZ
 );
 
-CREATE TABLE admin_profiles (
+CREATE TABLE roles (
     id BIGSERIAL PRIMARY KEY,
-    user_id BIGINT NOT NULL UNIQUE,
-    system_role VARCHAR(20) NOT NULL,
-    department VARCHAR(100),
-    is_active BOOLEAN NOT NULL DEFAULT true,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-    deleted_at TIMESTAMPTZ,
-    CONSTRAINT fk_admin_profiles_user FOREIGN KEY (user_id) REFERENCES users(id)
+    name VARCHAR(50) NOT NULL UNIQUE,
+    description TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+INSERT INTO roles (name, description) VALUES
+    ('SUPER_ADMIN', 'Quản trị viên hệ thống — toàn quyền'),
+    ('SUPPORT',     'Nhân viên hỗ trợ hệ thống'),
+    ('OWNER',       'Chủ cửa hàng — toàn quyền trong cửa hàng'),
+    ('MANAGER',     'Quản lý cửa hàng'),
+    ('STAFF',       'Nhân viên cửa hàng');
 
 CREATE TABLE stores (
     id BIGSERIAL PRIMARY KEY,
@@ -47,7 +49,6 @@ CREATE TABLE store_members (
     id BIGSERIAL PRIMARY KEY,
     user_id BIGINT NOT NULL,
     store_id BIGINT NOT NULL,
-    role VARCHAR(20) NOT NULL,
     position_title VARCHAR(100),
     joined_date DATE,
     is_active BOOLEAN NOT NULL DEFAULT true,
@@ -62,6 +63,22 @@ CREATE TABLE store_members (
     CONSTRAINT fk_store_members_user FOREIGN KEY (user_id) REFERENCES users(id),
     CONSTRAINT fk_store_members_store FOREIGN KEY (store_id) REFERENCES stores(id),
     CONSTRAINT fk_store_members_modified_by FOREIGN KEY (last_modified_by_user) REFERENCES users(id)
+);
+
+CREATE TABLE user_roles (
+    id BIGSERIAL PRIMARY KEY,
+    user_id BIGINT NOT NULL,
+    role_id BIGINT NOT NULL,
+    store_id BIGINT,
+    granted_by BIGINT,
+    is_active BOOLEAN NOT NULL DEFAULT true,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    deleted_at TIMESTAMPTZ,
+    CONSTRAINT fk_user_roles_user FOREIGN KEY (user_id) REFERENCES users(id),
+    CONSTRAINT fk_user_roles_role FOREIGN KEY (role_id) REFERENCES roles(id),
+    CONSTRAINT fk_user_roles_store FOREIGN KEY (store_id) REFERENCES stores(id),
+    CONSTRAINT fk_user_roles_granted_by FOREIGN KEY (granted_by) REFERENCES users(id)
 );
 
 CREATE TABLE subscriptions (
@@ -502,9 +519,11 @@ ALTER TABLE inventory_transactions
 -- Section 9: Indexes - Foreign Keys
 -- ============================================================================
 
-CREATE INDEX idx_admin_profiles_user_id ON admin_profiles(user_id);
 CREATE INDEX idx_store_members_user_id ON store_members(user_id);
 CREATE INDEX idx_store_members_store_id ON store_members(store_id);
+CREATE INDEX idx_user_roles_user_id ON user_roles(user_id);
+CREATE INDEX idx_user_roles_role_id ON user_roles(role_id);
+CREATE INDEX idx_user_roles_store_id ON user_roles(store_id) WHERE store_id IS NOT NULL;
 CREATE INDEX idx_categories_store_id ON categories(store_id) WHERE deleted_at IS NULL;
 CREATE INDEX idx_products_store_id ON products(store_id) WHERE deleted_at IS NULL;
 CREATE INDEX idx_products_category_id ON products(category_id);
@@ -554,6 +573,8 @@ CREATE INDEX idx_sub_invoices_status ON subscription_invoices(store_id, status) 
 
 -- Partial UNIQUE indexes for soft-delete semantics
 CREATE UNIQUE INDEX ux_store_members_user_store ON store_members(user_id, store_id) WHERE deleted_at IS NULL;
+-- COALESCE(store_id, 0): treat NULL store_id as 0 so global roles are also unique per (user, role)
+CREATE UNIQUE INDEX ux_user_roles ON user_roles(user_id, role_id, COALESCE(store_id, 0)) WHERE deleted_at IS NULL;
 CREATE UNIQUE INDEX ux_categories_store_name ON categories(store_id, name) WHERE deleted_at IS NULL;
 CREATE UNIQUE INDEX ux_units_store_name ON units(COALESCE(store_id, 0), name) WHERE deleted_at IS NULL;
 CREATE UNIQUE INDEX ux_products_store_sku ON products(store_id, sku) WHERE deleted_at IS NULL;
@@ -572,10 +593,6 @@ CREATE INDEX idx_customers_search_vector ON customers USING GIN(search_vector);
 -- ============================================================================
 
 ALTER TABLE users ADD CONSTRAINT chk_users_email_format CHECK (email ~ '^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}$');
-
-ALTER TABLE admin_profiles ADD CONSTRAINT chk_admin_system_role CHECK (system_role IN ('SUPER_ADMIN', 'SUPPORT'));
-
-ALTER TABLE store_members ADD CONSTRAINT chk_store_members_role CHECK (role IN ('OWNER', 'MANAGER', 'STAFF'));
 
 ALTER TABLE subscriptions ADD CONSTRAINT chk_subscriptions_plan CHECK (plan IN ('FREE', 'BASIC', 'PRO'));
 ALTER TABLE subscriptions ADD CONSTRAINT chk_subscriptions_status CHECK (status IN ('ACTIVE', 'EXPIRED', 'CANCELLED'));

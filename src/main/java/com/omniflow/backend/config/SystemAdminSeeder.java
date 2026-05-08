@@ -1,10 +1,12 @@
 package com.omniflow.backend.config;
 
-import com.omniflow.backend.entity.AdminProfile;
+import com.omniflow.backend.entity.Role;
 import com.omniflow.backend.entity.User;
-import com.omniflow.backend.entity.enums.SystemRole;
-import com.omniflow.backend.repository.AdminProfileRepository;
+import com.omniflow.backend.entity.UserRole;
+import com.omniflow.backend.entity.enums.RoleName;
+import com.omniflow.backend.repository.RoleRepository;
 import com.omniflow.backend.repository.UserRepository;
+import com.omniflow.backend.repository.UserRoleRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.ApplicationArguments;
@@ -18,7 +20,8 @@ import org.springframework.transaction.annotation.Transactional;
 public class SystemAdminSeeder implements ApplicationRunner {
 
     private final UserRepository userRepository;
-    private final AdminProfileRepository adminProfileRepository;
+    private final UserRoleRepository userRoleRepository;
+    private final RoleRepository roleRepository;
     private final PasswordEncoder passwordEncoder;
 
     @Value("${admin.seed.enabled:false}")
@@ -39,9 +42,6 @@ public class SystemAdminSeeder implements ApplicationRunner {
     @Value("${admin.seed.role:SUPER_ADMIN}")
     private String role;
 
-    @Value("${admin.seed.department:}")
-    private String department;
-
     @Value("${admin.seed.phone:}")
     private String phone;
 
@@ -57,9 +57,9 @@ public class SystemAdminSeeder implements ApplicationRunner {
             throw new IllegalStateException("Admin seed requires username, email, password, and full-name");
         }
 
-        SystemRole systemRole;
+        RoleName roleName;
         try {
-            systemRole = SystemRole.valueOf(role);
+            roleName = RoleName.valueOf(role);
         } catch (IllegalArgumentException ex) {
             throw new IllegalStateException("Invalid admin.seed.role: " + role, ex);
         }
@@ -72,24 +72,21 @@ public class SystemAdminSeeder implements ApplicationRunner {
                         .fullName(fullName)
                         .phone(isBlank(phone) ? null : phone)
                         .isActive(active)
-                        .createdAt(java.time.LocalDateTime.now())
-                        .updatedAt(java.time.LocalDateTime.now())
                         .build()));
 
-        if (adminProfileRepository.findByUserIdAndDeletedAtIsNull(user.getId()).isPresent()) {
+        if (userRoleRepository.existsByUserIdAndStoreIsNullAndDeletedAtIsNull(user.getId())) {
             return;
         }
 
-        AdminProfile profile = AdminProfile.builder()
-                .user(user)
-                .systemRole(systemRole)
-                .department(isBlank(department) ? null : department)
-                .isActive(active)
-                .createdAt(java.time.LocalDateTime.now())
-                .updatedAt(java.time.LocalDateTime.now())
-                .build();
+        Role roleEntity = roleRepository.findByName(roleName)
+                .orElseThrow(() -> new IllegalStateException("Role not found in DB: " + roleName));
 
-        adminProfileRepository.save(profile);
+        userRoleRepository.save(UserRole.builder()
+                .user(user)
+                .role(roleEntity)
+                .store(null)
+                .isActive(active)
+                .build());
     }
 
     private static boolean isBlank(String value) {
