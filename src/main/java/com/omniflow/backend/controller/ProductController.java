@@ -12,6 +12,7 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
@@ -26,6 +27,7 @@ public class ProductController {
     private final ProductService productService;
 
     @GetMapping
+    @PreAuthorize("@storeAccess.isMember(#storeId, authentication)")
     public ResponseEntity<ApiResult<List<ProductResponse>>> list(
             @PathVariable Long storeId,
             @RequestParam(required = false) Boolean isActive,
@@ -34,6 +36,7 @@ public class ProductController {
     }
 
     @GetMapping("/search")
+    @PreAuthorize("@storeAccess.isMember(#storeId, authentication)")
     public ResponseEntity<ApiResult<PagedResult<ProductResponse>>> search(
             @PathVariable Long storeId,
             @RequestParam String q,
@@ -45,6 +48,7 @@ public class ProductController {
     }
 
     @GetMapping("/{publicId}")
+    @PreAuthorize("@storeAccess.isMember(#storeId, authentication)")
     public ResponseEntity<ApiResult<ProductResponse>> get(
             @PathVariable Long storeId,
             @PathVariable UUID publicId,
@@ -53,6 +57,7 @@ public class ProductController {
     }
 
     @PostMapping
+    @PreAuthorize("@storeAccess.isOwnerOrManager(#storeId, authentication)")
     public ResponseEntity<ApiResult<ProductResponse>> create(
             @PathVariable Long storeId,
             @Valid @RequestBody ProductUpsertRequest request,
@@ -62,6 +67,7 @@ public class ProductController {
     }
 
     @PutMapping("/{publicId}")
+    @PreAuthorize("@storeAccess.isOwnerOrManager(#storeId, authentication)")
     public ResponseEntity<ApiResult<ProductResponse>> update(
             @PathVariable Long storeId,
             @PathVariable UUID publicId,
@@ -71,6 +77,7 @@ public class ProductController {
     }
 
     @DeleteMapping("/{publicId}")
+    @PreAuthorize("@storeAccess.isOwnerOrManager(#storeId, authentication)")
     public ResponseEntity<ApiResult<Void>> delete(
             @PathVariable Long storeId,
             @PathVariable UUID publicId,

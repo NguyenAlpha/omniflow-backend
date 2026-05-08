@@ -11,6 +11,7 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
@@ -38,6 +39,7 @@ public class StoreController {
     }
 
     @GetMapping("/{storeId}")
+    @PreAuthorize("@storeAccess.isMember(#storeId, authentication)")
     public ResponseEntity<ApiResult<StoreResponse>> getStore(
             @PathVariable Long storeId,
             @AuthenticationPrincipal User currentUser) {
@@ -45,6 +47,7 @@ public class StoreController {
     }
 
     @PutMapping("/{storeId}")
+    @PreAuthorize("@storeAccess.isOwnerOrManager(#storeId, authentication)")
     public ResponseEntity<ApiResult<StoreResponse>> updateStore(
             @PathVariable Long storeId,
             @Valid @RequestBody StoreCreateRequest request,
@@ -53,6 +56,7 @@ public class StoreController {
     }
 
     @GetMapping("/{storeId}/members")
+    @PreAuthorize("@storeAccess.isMember(#storeId, authentication)")
     public ResponseEntity<ApiResult<List<StoreMemberResponse>>> getMembers(
             @PathVariable Long storeId,
             @AuthenticationPrincipal User currentUser) {
@@ -60,6 +64,7 @@ public class StoreController {
     }
 
     @PostMapping("/{storeId}/members")
+    @PreAuthorize("@storeAccess.isOwner(#storeId, authentication)")
     public ResponseEntity<ApiResult<StoreMemberResponse>> addMember(
             @PathVariable Long storeId,
             @Valid @RequestBody StoreMemberUpsertRequest request,
@@ -69,6 +74,7 @@ public class StoreController {
     }
 
     @PutMapping("/{storeId}/members/{memberId}")
+    @PreAuthorize("@storeAccess.isOwner(#storeId, authentication)")
     public ResponseEntity<ApiResult<StoreMemberResponse>> updateMember(
             @PathVariable Long storeId,
             @PathVariable Long memberId,
@@ -78,6 +84,7 @@ public class StoreController {
     }
 
     @DeleteMapping("/{storeId}/members/{memberId}")
+    @PreAuthorize("@storeAccess.isOwner(#storeId, authentication)")
     public ResponseEntity<ApiResult<Void>> removeMember(
             @PathVariable Long storeId,
             @PathVariable Long memberId,

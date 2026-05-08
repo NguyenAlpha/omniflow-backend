@@ -9,6 +9,7 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
@@ -23,6 +24,7 @@ public class CategoryController {
     private final CategoryService categoryService;
 
     @GetMapping
+    @PreAuthorize("@storeAccess.isMember(#storeId, authentication)")
     public ResponseEntity<ApiResult<List<CategoryResponse>>> list(
             @PathVariable Long storeId,
             @AuthenticationPrincipal User currentUser) {
@@ -30,6 +32,7 @@ public class CategoryController {
     }
 
     @PostMapping
+    @PreAuthorize("@storeAccess.isOwnerOrManager(#storeId, authentication)")
     public ResponseEntity<ApiResult<CategoryResponse>> create(
             @PathVariable Long storeId,
             @Valid @RequestBody CategoryUpsertRequest request,
@@ -39,6 +42,7 @@ public class CategoryController {
     }
 
     @PutMapping("/{publicId}")
+    @PreAuthorize("@storeAccess.isOwnerOrManager(#storeId, authentication)")
     public ResponseEntity<ApiResult<CategoryResponse>> update(
             @PathVariable Long storeId,
             @PathVariable UUID publicId,
@@ -48,6 +52,7 @@ public class CategoryController {
     }
 
     @DeleteMapping("/{publicId}")
+    @PreAuthorize("@storeAccess.isOwnerOrManager(#storeId, authentication)")
     public ResponseEntity<ApiResult<Void>> delete(
             @PathVariable Long storeId,
             @PathVariable UUID publicId,

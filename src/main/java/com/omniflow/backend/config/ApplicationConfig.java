@@ -1,5 +1,7 @@
 package com.omniflow.backend.config;
 
+import com.omniflow.backend.entity.AdminProfile;
+import com.omniflow.backend.repository.AdminProfileRepository;
 import com.omniflow.backend.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
@@ -13,16 +15,33 @@ import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
+import org.springframework.security.core.GrantedAuthority;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
+
+import java.util.ArrayList;
+import java.util.List;
+
 @Configuration
 @RequiredArgsConstructor
 public class ApplicationConfig {
 
     private final UserRepository userRepository;
+    private final AdminProfileRepository adminProfileRepository;
 
     @Bean
     public UserDetailsService userDetailsService() {
-        return username -> userRepository.findByUsernameOrEmail(username, username)
-                .orElseThrow(() -> new UsernameNotFoundException("User not found: " + username));
+        return username -> {
+            var user = userRepository.findByUsernameOrEmail(username, username)
+                    .orElseThrow(() -> new UsernameNotFoundException("User not found: " + username));
+
+            List<GrantedAuthority> authorities = new ArrayList<>();
+            adminProfileRepository.findByUserIdAndDeletedAtIsNull(user.getId())
+                    .filter(AdminProfile::getIsActive)
+                    .ifPresent(p -> authorities.add(new SimpleGrantedAuthority("ROLE_" + p.getSystemRole().name())));
+
+            user.setAuthorities(authorities);
+            return user;
+        };
     }
 
     @Bean

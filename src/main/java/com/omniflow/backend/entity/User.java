@@ -5,6 +5,7 @@ import jakarta.persistence.*;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.userdetails.UserDetails;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 
@@ -51,9 +52,12 @@ public class User implements UserDetails {
     @Column(columnDefinition = "TIMESTAMPTZ")
     private LocalDateTime deletedAt;
 
+    @Transient
+    private List<GrantedAuthority> authorities = new ArrayList<>();
+
     @Override
     public Collection<? extends GrantedAuthority> getAuthorities() {
-        return List.of();
+        return authorities;
     }
 
     @Override
@@ -81,4 +85,3 @@ public class User implements UserDetails {
         return Boolean.TRUE.equals(isActive) && deletedAt == null;
     }
 }
-

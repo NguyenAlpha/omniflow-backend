@@ -15,6 +15,8 @@ import com.omniflow.backend.repository.StoreMemberRepository;
 import com.omniflow.backend.repository.StoreRepository;
 import com.omniflow.backend.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -155,11 +157,13 @@ public class StoreService {
     }
 
     private void requireMembership(Long storeId, Long userId) {
+        if (isSystemAdmin()) return;
         storeMemberRepository.findByUserIdAndStoreIdAndDeletedAtIsNull(userId, storeId)
                 .orElseThrow(() -> new ForbiddenException(ErrorCode.FORBIDDEN, "You are not a member of this store"));
     }
 
     private void requireRole(Long storeId, Long userId, StoreRole... roles) {
+        if (isSystemAdmin()) return;
         StoreMember member = storeMemberRepository.findByUserIdAndStoreIdAndDeletedAtIsNull(userId, storeId)
                 .orElseThrow(() -> new ForbiddenException(ErrorCode.FORBIDDEN, "You are not a member of this store"));
 
@@ -167,6 +171,12 @@ public class StoreService {
             if (role == member.getRole()) return;
         }
         throw new ForbiddenException(ErrorCode.FORBIDDEN, "Insufficient role to perform this action");
+    }
+
+    private boolean isSystemAdmin() {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth == null) return false;
+        return auth.getAuthorities().stream().anyMatch(a -> "ROLE_SUPER_ADMIN".equals(a.getAuthority()));
     }
 
     private StoreResponse toStoreResponse(Store store) {
