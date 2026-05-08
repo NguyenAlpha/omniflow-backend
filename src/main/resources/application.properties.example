@@ -3,21 +3,22 @@ spring.application.name=omniflow-backend
 # Database
 spring.datasource.url=jdbc:postgresql://localhost:5432/omniflow
 spring.datasource.username=omniflow
-spring.datasource.password=omniflow123
+spring.datasource.password=CHANGE_ME
 spring.jpa.hibernate.ddl-auto=validate
 spring.jpa.show-sql=true
 
 # JWT
-jwt.secret=404E635266556A586E3272357538782F413F4428472B4B6250645367566B5970
+jwt.secret=CHANGE_ME
 jwt.expiration=86400000
 
 # System admin seed
 admin.seed.enabled=false
 admin.seed.username=admin
 admin.seed.email=admin@admin.local
-admin.seed.password=Admin@123
-admin.seed.full-name=Nhat Nguyen System Admin
+admin.seed.password=CHANGE_ME
+admin.seed.full-name=System Admin
 admin.seed.role=SUPER_ADMIN
 admin.seed.department=System
 admin.seed.phone=
 admin.seed.active=true
+
