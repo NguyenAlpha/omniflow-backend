@@ -35,5 +35,14 @@ public interface ReturnOrderRepository extends JpaRepository<ReturnOrder, Long> 
     Page<ReturnOrder> findByStoreIdAndStatus(Long storeId, String status, Pageable pageable);
 
     long countByStoreIdAndStatus(Long storeId, String status);
+
+    List<ReturnOrder> findByStoreIdOrderByCreatedAtDesc(Long storeId);
+
+    @Query("""
+        SELECT DISTINCT r FROM ReturnOrder r
+        JOIN FETCH r.returnOrderItems ri JOIN FETCH ri.product
+        WHERE r.publicId = :publicId
+    """)
+    Optional<ReturnOrder> findByPublicIdWithItems(@Param("publicId") UUID publicId);
 }
 

@@ -69,5 +69,14 @@ public interface PurchaseOrderRepository extends JpaRepository<PurchaseOrder, Lo
     );
 
     long countByStoreIdAndStatus(Long storeId, String status);
+
+    List<PurchaseOrder> findByStoreIdOrderByCreatedAtDesc(Long storeId);
+
+    @Query("""
+        SELECT DISTINCT p FROM PurchaseOrder p
+        JOIN FETCH p.purchaseOrderItems pi JOIN FETCH pi.product
+        WHERE p.publicId = :publicId
+    """)
+    Optional<PurchaseOrder> findByPublicIdWithItems(@Param("publicId") UUID publicId);
 }
 

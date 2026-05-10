@@ -69,5 +69,14 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
     );
 
     long countByStoreIdAndStatus(Long storeId, String status);
+
+    List<Order> findByStoreIdOrderByCreatedAtDesc(Long storeId);
+
+    @Query("""
+        SELECT DISTINCT o FROM Order o
+        JOIN FETCH o.orderItems oi JOIN FETCH oi.product
+        WHERE o.publicId = :publicId
+    """)
+    Optional<Order> findByPublicIdWithItems(@Param("publicId") UUID publicId);
 }
 

@@ -51,5 +51,7 @@ public interface PaymentRepository extends JpaRepository<Payment, Long> {
     );
 
     Page<Payment> findByStoreIdOrderByCreatedAtDesc(Long storeId, Pageable pageable);
+
+    List<Payment> findByStoreIdOrderByCreatedAtDesc(Long storeId);
 }
 
