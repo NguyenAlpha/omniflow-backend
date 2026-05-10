@@ -305,3 +305,29 @@ DEL store:role:{userId}:{storeId}
     - 10% DB fallback
 - Hệ thống hoạt động đúng permission
 - Có thể scale lớn mà không bottleneck DB
+
+============================================
+
+Dựa trên 10 file docs hiện có, đây là những tài liệu còn thiếu — mỗi cái trả lời đúng 1 vấn đề cụ thể:
+
+1. SETUP.md Trả lời: "Làm thế nào để chạy project lên local?" Prerequisites, cài PostgreSQL + Redis, tạo database, seed SUPER_ADMIN, env vars cần thiết, lệnh chạy.
+
+2. SYNC_PROTOCOL.md Trả lời: "Mobile client đồng bộ dữ liệu như thế nào?" publicId + syncVersion + sync_change_log hoạt động cùng nhau ra sao, client gọi endpoint nào, delta sync theo syncVersion > lastSeen như thế nào.
+
+3. ORDER_LIFECYCLE.md Trả lời: "Khi đơn hàng chuyển trạng thái thì hệ thống làm gì?" State machine PENDING → COMPLETED / CANCELLED, side effects tại mỗi transition: cập nhật debt_balance, ghi inventory_transactions, ghi sync_change_log.
+
+4. INVENTORY_LIFECYCLE.md Trả lời: "Tồn kho thay đổi khi nào và ai thay đổi?" 4 loại transaction IN/OUT/TRANSFER/ADJUSTMENT, ai trigger (Order, PurchaseOrder, manual adjustment), tại sao InventoryTransaction là immutable.
+
+5. AUDIT_LOG.md Trả lời: "AuditLog được ghi khi nào, ai ghi, ghi cái gì?" Trigger mechanism (AOP hay manual), format old_data/new_data JSONB, bảng nào được audit, cách query.
+
+6. SEARCH.md Trả lời: "Full-text search hoạt động thế nào và cách thêm search vào entity mới?" Cơ chế populate searchVector (trigger SQL hay application layer), cách ProductController gọi query, cách mở rộng cho Customer.
+
+7. SUBSCRIPTION_LIMITS.md Trả lời: "Mỗi gói FREE/BASIC/PRO giới hạn gì và giới hạn được enforce ở đâu?" Bảng giới hạn per tier (staff, product, warehouse, orders), code path kiểm tra limit, exception khi vượt.
+
+8. TESTING_GUIDE.md Trả lời: "Viết test cho project này theo pattern nào?" Cách test với UserPrincipal, cách mock StoreAccessEvaluator, cách test @PreAuthorize với @WithMockUser, tránh mock gì (theo quy tắc của project).
+
+Ưu tiên cao nhất: SETUP.md (developer mới cần trước tiên) và ORDER_LIFECYCLE.md + INVENTORY_LIFECYCLE.md (Phase 2 chuẩn bị implement).
+
+
+
+
