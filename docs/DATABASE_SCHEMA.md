@@ -26,17 +26,15 @@
 
 > Độc lập hoàn toàn — không biết gì về store hay role. Dễ mở rộng OAuth, 2FA mà không ảnh hưởng nghiệp vụ.
 
-### `admin_profiles` — Profile của admin hệ thống
+### `roles` — Định nghĩa vai trò (RBAC)
 | Tên cột | Kiểu | Ràng buộc | Ý nghĩa |
 |---|---|---|---|
 | `id` | BIGSERIAL | PK | Khóa chính |
-| `user_id` | BIGINT | FK → users, NOT NULL, UNIQUE | Tài khoản liên kết |
-| `system_role` | VARCHAR(20) | NOT NULL | Vai trò: `SUPER_ADMIN` / `SUPPORT` |
-| `department` | VARCHAR(100) | | Phòng ban (VD: Kỹ thuật, Kinh doanh) |
-| `is_active` | BOOLEAN | NOT NULL, DEFAULT true | Trạng thái |
+| `name` | VARCHAR(50) | NOT NULL, UNIQUE | Tên vai trò: `SUPER_ADMIN` / `SUPPORT` / `OWNER` / `MANAGER` / `STAFF` |
+| `description` | TEXT | | Mô tả vai trò |
 | `created_at` | TIMESTAMPTZ | NOT NULL | Thời điểm tạo |
-| `updated_at` | TIMESTAMPTZ | NOT NULL | Thời điểm cập nhật |
-| `deleted_at` | TIMESTAMPTZ | | Thời điểm xoá mềm — null = chưa xoá |
+
+> Seeded sẵn khi migration: 5 role mặc định. Không xoá được vì được FK tham chiếu từ `user_roles`.
 
 ### `stores` — Cửa hàng (tenant)
 | Tên cột | Kiểu | Ràng buộc | Ý nghĩa |
@@ -51,13 +49,12 @@
 | `updated_at` | TIMESTAMPTZ | NOT NULL | Thời điểm cập nhật |
 | `deleted_at` | TIMESTAMPTZ | | Thời điểm xoá mềm — null = chưa xoá |
 
-### `store_members` — Profile của thành viên trong cửa hàng
+### `store_members` — Thành viên của cửa hàng (metadata)
 | Tên cột | Kiểu | Ràng buộc | Ý nghĩa |
 |---|---|---|---|
 | `id` | BIGSERIAL | PK | Khóa chính |
 | `user_id` | BIGINT | FK → users, NOT NULL | Tài khoản liên kết |
 | `store_id` | BIGINT | FK → stores, NOT NULL | Cửa hàng thuộc về |
-| `role` | VARCHAR(20) | NOT NULL | Vai trò: `OWNER` / `MANAGER` / `STAFF` |
 | `position_title` | VARCHAR(100) | | Chức danh hiển thị (VD: Thu ngân, Thủ kho) |
 | `joined_date` | DATE | | Ngày gia nhập cửa hàng |
 | `is_active` | BOOLEAN | NOT NULL, DEFAULT true | Trạng thái trong cửa hàng này |
@@ -70,9 +67,37 @@
 | `updated_at` | TIMESTAMPTZ | NOT NULL | Thời điểm cập nhật |
 | `deleted_at` | TIMESTAMPTZ | | Thời điểm xoá mềm — null = chưa xoá |
 
-> **UNIQUE(user_id, store_id) WHERE deleted_at IS NULL** — 1 user chỉ có 1 role trong 1 store.
+> **UNIQUE(user_id, store_id) WHERE deleted_at IS NULL** — 1 user chỉ có 1 membership trong 1 store.
+> Vai trò (OWNER/MANAGER/STAFF) được quản lý qua `user_roles`, không lưu trong bảng này.
 >
-> **Flow đăng ký:** Tạo `user` → tạo `store` → tạo `store_members` với role `OWNER`.
+> **Flow đăng ký:** Tạo `user` → tạo `store` → tạo `store_members` → tạo `user_roles` với role `OWNER` và `store_id` tương ứng.
+
+### `user_roles` — Phân quyền RBAC
+| Tên cột | Kiểu | Ràng buộc | Ý nghĩa |
+|---|---|---|---|
+| `id` | BIGSERIAL | PK | Khóa chính |
+| `user_id` | BIGINT | FK → users, NOT NULL | Tài khoản được gán vai trò |
+| `role_id` | BIGINT | FK → roles, NOT NULL | Vai trò được gán |
+| `store_id` | BIGINT | FK → stores | Cửa hàng phạm vi — **NULL = vai trò toàn hệ thống (Global)** |
+| `granted_by` | BIGINT | FK → users | Người gán quyền |
+| `is_active` | BOOLEAN | NOT NULL, DEFAULT true | Trạng thái phân quyền |
+| `created_at` | TIMESTAMPTZ | NOT NULL | Thời điểm tạo |
+| `updated_at` | TIMESTAMPTZ | NOT NULL | Thời điểm cập nhật |
+| `deleted_at` | TIMESTAMPTZ | | Thời điểm xoá mềm — null = chưa xoá |
+
+> **`store_id IS NULL`** → vai trò áp dụng toàn hệ thống (VD: SUPER_ADMIN, SUPPORT).
+> **`store_id IS NOT NULL`** → vai trò chỉ có hiệu lực trong cửa hàng đó (VD: OWNER, MANAGER, STAFF).
+>
+> **UNIQUE(user_id, role_id, COALESCE(store_id, 0)) WHERE deleted_at IS NULL** — ngăn trùng lặp role (kể cả global role với store_id=NULL).
+>
+> **Query lấy quyền của user trong store cụ thể:**
+> ```sql
+> SELECT r.name FROM user_roles ur
+> JOIN roles r ON r.id = ur.role_id
+> WHERE ur.user_id = :userId
+>   AND (ur.store_id = :storeId OR ur.store_id IS NULL)
+>   AND ur.deleted_at IS NULL AND ur.is_active = true;
+> ```
 
 ### `subscriptions` — Gói dịch vụ của cửa hàng
 | Tên cột | Kiểu | Ràng buộc | Ý nghĩa |
@@ -628,10 +653,6 @@ ALTER TABLE purchase_orders  ADD CONSTRAINT chk_po_status
   CHECK (status IN ('PENDING', 'RECEIVED', 'CANCELLED'));
 ALTER TABLE payments         ADD CONSTRAINT chk_payments_method
   CHECK (payment_method IN ('CASH', 'BANK_TRANSFER'));
-ALTER TABLE store_members    ADD CONSTRAINT chk_store_members_role
-  CHECK (role IN ('OWNER', 'MANAGER', 'STAFF'));
-ALTER TABLE admin_profiles   ADD CONSTRAINT chk_admin_system_role
-  CHECK (system_role IN ('SUPER_ADMIN', 'SUPPORT'));
 ALTER TABLE subscriptions    ADD CONSTRAINT chk_subscriptions_plan
   CHECK (plan IN ('FREE', 'BASIC', 'PRO'));
 ALTER TABLE subscriptions    ADD CONSTRAINT chk_subscriptions_status

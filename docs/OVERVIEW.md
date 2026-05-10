@@ -2,26 +2,25 @@
 
 ## 1. Tổng quan dự án
 
-**OmniFlow** là hệ thống quản lý bán hàng và kho vận đa tenant (multi-tenant B2B SaaS), tập trung vào tính chính xác của dữ liệu tài chính, phân quyền theo vai trò, và khả năng mở rộng cho App Mobile.
+**OmniFlow** là hệ thống quản lý bán hàng và kho vận đa tenant (multi-tenant B2B SaaS), tập trung vào tính chính xác dữ liệu tài chính, phân quyền theo vai trò, và khả năng sync offline cho App Mobile.
 
 - **Tên dự án:** OmniFlow
 - **Mô hình:** Multi-tenant B2B SaaS — 1 hệ thống phục vụ nhiều chủ cửa hàng, dữ liệu tách biệt hoàn toàn theo `store_id`
-- **Trạng thái:** Phase 1 — Core API + Database Schema
+- **Trạng thái:** Phase 1 — Core API đang triển khai
 
 ---
 
 ## 2. Tech Stack
 
-| Thành phần | Công nghệ | Lý do |
-|:---|:---|:---|
-| **Backend** | Java 21 / Spring Boot 3.x | Ổn định, bảo mật, virtual threads sẵn sàng |
-| **Database** | PostgreSQL 16 | TIMESTAMPTZ, JSONB, materialized views, partial index; dùng thêm GIN/tsvector cho full-text và extension `pgcrypto` / `uuid-ossp` cho UUID nếu cần |
-| **ORM** | Spring Data JPA + Hibernate 6 | `@EntityGraph`, `JOIN FETCH`, `@JdbcTypeCode` cho JSONB |
-| **Migration** | Flyway | Schema versioning, không dùng `ddl-auto=create/update` |
-| **Auth** | Spring Security + JWT (JJWT) | Stateless, encode `storeId` + `role` vào token |
-| **Web Admin** | React.js / Tailwind CSS | Dashboard quản lý (Phase 1) |
-| **Mobile** | React Native (Phase 2) | Android/iOS, tái dụng logic từ Web |
-| **Offline / Sync** | SQLite (Mobile) / H2 (Desktop) + sync engine | Lưu tạm khi mất kết nối; server side uses `public_id` (UUID), `sync_version`, `sync_change_log` to reconcile deltas |
+| Thành phần | Công nghệ |
+|:---|:---|
+| **Backend** | Java 21 / Spring Boot 3.5 |
+| **Database** | PostgreSQL 16 |
+| **ORM** | Spring Data JPA + Hibernate 6 |
+| **Migration** | Flyway — `ddl-auto=validate`, không dùng `create/update` |
+| **Auth** | Spring Security 6 + JWT (JJWT 0.12.6) — stateless, Hybrid cache |
+| **Cache** | Redis (Spring Data Redis) — store role cache, TTL 5 phút |
+| **Mobile** | React Native (Phase 2) — offline-first với SQLite + delta sync |
 
 ---
 
@@ -33,192 +32,280 @@
 
 ```
 com.omniflow.backend
-├── controller/     — REST endpoints (@RestController)
-├── service/        — Business logic (@Service, @Transactional)
-├── repository/     — JPA repositories (extends JpaRepository)
-├── entity/         — JPA entities (@Entity)
-├── dto/            — Request/Response DTOs
-│   ├── request/
-│   └── response/
-├── config/         — Spring config (Security, Cache, JWT filter)
-├── event/          — Domain events (OrderCompletedEvent, ...)
-└── exception/      — Custom exceptions + GlobalExceptionHandler
+├── config/
+│   ├── ApplicationConfig.java       — auth beans; UserDetailsService chỉ dùng cho login (BCrypt verify)
+│   ├── SecurityConfig.java          — JWT filter chain, method security
+│   └── SystemAdminSeeder.java       — seed SUPER_ADMIN khi khởi động (nếu bật)
+├── controller/
+│   ├── AuthController.java          — POST /api/auth/register, /login
+│   ├── StoreController.java         — CRUD store + member management
+│   ├── ProductController.java       — CRUD + search products
+│   ├── CategoryController.java      — CRUD categories
+│   └── UnitController.java          — CRUD units
+├── service/
+│   ├── AuthService.java             — register, login, build auth response (nhúng global roles vào JWT)
+│   ├── StoreService.java            — store CRUD, member add/update/remove + cache invalidation
+│   ├── ProductService.java          — product CRUD + search + price history
+│   ├── CategoryService.java         — category CRUD
+│   └── UnitService.java             — unit CRUD (system + store)
+├── security/
+│   ├── JwtService.java              — generate/validate JWT, extract claims (username, userId, roles)
+│   ├── JwtAuthFilter.java           — 0 DB call: extract UserPrincipal từ JWT, set SecurityContext
+│   ├── UserPrincipal.java           — record(userId, username) — principal trong SecurityContext
+│   └── StoreAccessEvaluator.java    — @PreAuthorize helper; Redis cache → DB fallback
+├── repository/                      — JpaRepository, nhiều query @Query với JOIN FETCH
+├── entity/                          — 26 entity (xem mục 4)
+│   └── enums/RoleName.java
+├── dto/
+│   ├── request/   — auth/, store/, catalog/, order/, purchase/, partner/, inventory/, ...
+│   └── response/  — auth/, store/, catalog/, order/, purchase/, partner/, common/, sync/, ...
+└── exception/
+    ├── ForbiddenException.java
+    ├── ResourceNotFoundException.java
+    └── GlobalExceptionHandler.java
 ```
 
 ---
 
-## 4. Các Module chức năng
+## 4. Entity Model (26 entities)
 
-### 4.1 Xác thực & Phân quyền
-- Đăng ký / đăng nhập — trả về JWT encode `userId` + `storeId` + `role`
-- RBAC: `OWNER` / `MANAGER` / `STAFF` (trong store) và `SUPER_ADMIN` / `SUPPORT` (system)
-- 1 user có thể là thành viên của nhiều store với role khác nhau
-- Admin system quản lý qua `admin_profiles` — tách biệt hoàn toàn với store logic
+### Xác thực & Phân quyền
+| Entity | Mô tả |
+|:---|:---|
+| `User` | Implements `UserDetails`; có `passwordHash`, `isActive`, soft delete |
+| `Role` | Backed by enum `RoleName`; mô tả role |
+| `UserRole` | RBAC pivot: `store_id IS NULL` → global role; `store_id NOT NULL` → store-scoped |
 
-### 4.2 Quản lý Cửa hàng & Subscription
-- Tạo store → tự động tạo `store_members` với role `OWNER` + `subscriptions` gói FREE
-- Gói: `FREE` / `BASIC` / `PRO` — giới hạn số nhân viên, sản phẩm, kho, đơn hàng/tháng
-- Lịch sử thanh toán subscription lưu trong `subscription_invoices`
+**RoleName:**
+```
+SUPER_ADMIN, SUPPORT       — global (store_id IS NULL)
+OWNER, MANAGER, STAFF      — store-scoped (store_id IS NOT NULL)
+```
 
-### 4.3 Quản lý Danh mục & Đơn vị tính
-- Danh mục sản phẩm per-store (`categories`)
-- Đơn vị tính (`units`): system units (NULL store_id, SUPER_ADMIN quản lý) + custom units per-store
-- Query units: `WHERE (store_id = :storeId OR store_id IS NULL) AND deleted_at IS NULL`
+### Tenant & Membership
+| Entity | Mô tả |
+|:---|:---|
+| `Store` | Multi-tenant root — mọi dữ liệu nghiệp vụ gắn `store_id` |
+| `StoreMember` | Metadata thành viên: `positionTitle`, `joinedDate`, sync fields |
+| `Subscription` | Gói: `FREE / BASIC / PRO`; giới hạn staff/product/warehouse/orders |
+| `SubscriptionInvoice` | Lịch sử billing — immutable |
 
-### 4.4 Quản lý Sản phẩm
-- SKU unique theo store (partial UNIQUE `WHERE deleted_at IS NULL`)
-- Lịch sử thay đổi giá (`price_history`) — bắt buộc ghi khi sửa giá để tính margin đúng
-- Soft delete — không xoá vật lý
-- Thêm hỗ trợ tìm kiếm nhanh: `search_vector` (tsvector) trên `products` và `customers` với GIN index; backend tạo/maintain trigger (`tsvector_update_trigger`) hoặc cập nhật trường này khi tên/sku/description thay đổi — giúp search tốc độ cao cho POS
+### Danh mục & Kho
+| Entity | Mô tả |
+|:---|:---|
+| `Category` | Per-store; unique `(store_id, name)` |
+| `Product` | `sku` unique per store; `searchVector` TSVECTOR cho full-text search |
+| `Unit` | `store_id IS NULL` = system unit (SUPER_ADMIN quản lý); NOT NULL = store custom |
+| `PriceHistory` | Append-only khi giá thay đổi — không xoá |
+| `Warehouse` | Multi-warehouse per store |
+| `Inventory` | Tồn kho theo `(product, warehouse)` |
+| `InventoryTransaction` | Loại: `IN/OUT/TRANSFER/ADJUSTMENT` — immutable |
 
-### 4.5 Quản lý Kho
-- Multi-warehouse per store (`warehouses`)
-- Tồn kho theo cặp `(product, warehouse)` — bảng `inventory`
-- Mọi biến động tồn kho ghi vào `inventory_transactions` (immutable)
-- Loại giao dịch: `IN` / `OUT` / `TRANSFER` / `ADJUSTMENT`
-- Cảnh báo tồn kho thấp qua `min_stock_level` và materialized view `mv_inventory_summary`
+### Đối tác
+| Entity | Mô tả |
+|:---|:---|
+| `Customer` | `debtBalance` denorm; `searchVector` cho full-text |
+| `Supplier` | `debtBalance` denorm |
 
-### 4.6 Quản lý Đơn hàng bán
-- Tạo đơn → tính `subtotal`, `discount`, `discount_type`, `tax`, `total_amount`, `debt_amount`
-- `discount_type` hỗ trợ:
-  - `FIXED`: `total_amount = subtotal - discount + tax`
-  - `PERCENT`: `total_amount = subtotal - (subtotal * discount / 100) + tax`
-- Trạng thái: `PENDING` → `COMPLETED` / `CANCELLED` (không xoá)
-- Khi `COMPLETED`: cập nhật tồn kho (OUT) + `customers.debt_balance` trong cùng 1 transaction
-- `order_items` có `discount` và `discount_type` (cùng logic) để hỗ trợ giảm theo dòng
+### Đơn hàng & Mua hàng
+| Entity | Mô tả |
+|:---|:---|
+| `Order` | Bán hàng; `discountType: FIXED/PERCENT`; status: `PENDING/COMPLETED/CANCELLED` |
+| `OrderItem` | Line items với `unitPrice` snapshot + discount per item |
+| `ReturnOrder` | Liên kết `originalOrderId`; `refundMethod: CASH/BANK_TRANSFER/STORE_CREDIT` |
+| `ReturnOrderItem` | Line items của return |
+| `PurchaseOrder` | Nhập hàng từ supplier; status: `PENDING/RECEIVED/CANCELLED` |
+| `PurchaseOrderItem` | Line items của purchase |
+| `Payment` | Thu/chi; CHECK constraint: chỉ thuộc customer hoặc supplier, không cả hai |
 
-### 4.7 Hoàn trả hàng
-- Đơn hoàn trả liên kết với đơn gốc (`original_order_id`)
-- Khi `COMPLETED`: hoàn tồn kho (IN) + điều chỉnh `customers.debt_balance`
-- Hình thức hoàn: `CASH` / `BANK_TRANSFER` / `STORE_CREDIT`
+### Audit & Sync
+| Entity | Mô tả |
+|:---|:---|
+| `AuditLog` | `old_data / new_data` JSONB; immutable |
+| `SyncChangeLog` | Delta sync cho mobile: `(store_id, table, public_id, operation, sync_version)` |
 
-### 4.8 Quản lý Nhập hàng
-- Đơn nhập từ nhà cung cấp (`purchase_orders`)
-- Khi `RECEIVED`: cập nhật tồn kho (IN) + `suppliers.debt_balance`
-- Trạng thái: `PENDING` → `RECEIVED` / `CANCELLED` (không xoá)
-
-### 4.9 Quản lý Công nợ & Thanh toán
-- Bảng `payments` ghi nhận thu tiền khách hoặc trả tiền nhà cung cấp
-- `customers.debt_balance` và `suppliers.debt_balance` là denorm — bắt buộc cập nhật trong cùng transaction (xem `debt_balance` Invariant Rules trong DATABASE_SCHEMA.md)
-- Một payment chỉ thuộc về 1 trong 2: customer hoặc supplier (CHECK constraint)
-
-### 4.10 Báo cáo & Dashboard
-- Materialized views refresh định kỳ — không aggregate trực tiếp trên bảng lớn:
-  - `mv_monthly_revenue` — doanh thu theo tháng/store
-  - `mv_inventory_summary` — tồn kho + cảnh báo thấp
-- Báo cáo công nợ dùng `debt_balance` denorm + partial index — không cần JOIN
-
-### 4.11 Audit Log
-- Mọi thao tác nhạy cảm (sửa giá, huỷ đơn, thay đổi role, thay đổi subscription) ghi vào `audit_logs`
-- Lưu `old_data` / `new_data` dạng JSONB + `ip_address` — immutable
-- Ngoài ra hệ thống lưu `sync_change_log` trên server để hỗ trợ delta sync: ghi `public_id`, `operation`, `sync_version` theo `store_id` để client có thể kéo delta an toàn
+**Sync fields** (có trên mọi entity editable):
+`publicId (UUID)`, `syncVersion (BIGINT)`, `lastModifiedAt`, `lastModifiedByUser`, `lastModifiedByDevice`
 
 ---
 
-## 5. Dependencies (pom.xml)
+## 5. Xác thực & Phân quyền (Hybrid JWT + Redis)
 
-### Đã có
+### Kiến trúc Hybrid
+
+```
+Request → JwtAuthFilter (0 DB)
+             ↓ extract từ JWT
+         UserPrincipal(userId, username)
+         + authorities từ JWT roles
+             ↓
+         SecurityContext
+             ↓
+     @PreAuthorize → StoreAccessEvaluator
+                          ↓
+                     Redis cache
+                    ↓         ↓
+                  hit         miss
+                   ↓           ↓
+                return      DB query → save Redis (TTL 5 phút) → return
+```
+
+### Luồng đăng nhập
+1. Client gửi `POST /api/auth/login`
+2. `AuthService` xác thực qua `AuthenticationManager` (BCrypt + DB)
+3. `buildAuthResponse` trả về:
+   - JWT token (TTL 24h, chứa `userId` + `roles` — global roles)
+   - `UserSummaryResponse` — thông tin user
+   - `List<StoreMemberResponse>` — tất cả store user thuộc về + role tương ứng
+
+### JwtAuthFilter — 0 DB call
+`JwtAuthFilter` không gọi `UserDetailsService`. Mọi thông tin cần thiết được extract thẳng từ JWT:
+- `username` → từ `sub` claim
+- `userId` → từ `userId` claim
+- `roles` → từ `roles` claim (List<String>, chỉ global roles)
+
+Principal trong `SecurityContext` là `UserPrincipal(userId, username)` — không phải `User` entity.
+
+### JWT claims
+```json
+{
+  "sub": "username",
+  "userId": 123,
+  "roles": ["SUPER_ADMIN"],   // chỉ global roles; store-scoped roles KHÔNG nhúng vào token
+  "iat": ...,
+  "exp": ...
+}
+```
+
+### Kiểm tra quyền theo store
+`StoreAccessEvaluator` (`@Component("storeAccess")`) dùng trong `@PreAuthorize`:
+```java
+@PreAuthorize("@storeAccess.isOwnerOrManager(#storeId, authentication)")
+```
+
+Flow: SUPER_ADMIN bypass → check Redis `store:role:{userId}:{storeId}` → cache hit → return; cache miss → `findActiveStoreRole()` → save Redis (TTL 300s) → return.
+
+Cache invalidation: `StoreAccessEvaluator.evictStoreRoleCache(userId, storeId)` được gọi từ `StoreService` sau mỗi thao tác add/update/remove member.
+
+### Performance
+| Scenario | DB calls |
+|:---|:---|
+| Mọi request (auth) | **0** — extract từ JWT |
+| Store authorization — cache hit | **0** — Redis |
+| Store authorization — cache miss | **1** — DB, lưu Redis |
+| Login / Register | ~3 queries (xác thực + build response) |
+
+### Repository queries tối ưu (không N+1)
+```java
+findActiveStoreRole(userId, storeId)          // JOIN FETCH ur.role — dùng bởi StoreAccessEvaluator (cache miss)
+findActiveStoreRolesWithDetails(userId)       // JOIN FETCH ur.role + ur.store — dùng bởi buildAuthResponse
+findByUserIdAndDeletedAtIsNullWithStore(uid)  // JOIN FETCH sm.store — dùng bởi buildAuthResponse
+findByUserIdAndStoreIsNullAndDeletedAtIsNull  // global roles — nhúng vào JWT tại login
+```
+
+---
+
+## 6. API Endpoints hiện có
+
+### Auth — `/api/auth`
+| Method | Path | Access |
+|:---|:---|:---|
+| POST | `/register` | Public |
+| POST | `/login` | Public |
+
+### Store — `/api/stores`
+| Method | Path | Access |
+|:---|:---|:---|
+| POST | `/` | Authenticated |
+| GET | `/my` | Authenticated |
+| GET | `/{storeId}` | Member |
+| PUT | `/{storeId}` | Owner / Manager |
+| GET | `/{storeId}/members` | Member |
+| POST | `/{storeId}/members` | Owner |
+| PUT | `/{storeId}/members/{id}` | Owner |
+| DELETE | `/{storeId}/members/{id}` | Owner |
+
+### Product — `/api/stores/{storeId}/products`
+| Method | Path | Access |
+|:---|:---|:---|
+| GET | `/` | Member |
+| GET | `/search?q=` | Member |
+| GET | `/{publicId}` | Member |
+| POST | `/` | Owner / Manager |
+| PUT | `/{publicId}` | Owner / Manager |
+| DELETE | `/{publicId}` | Owner / Manager |
+
+### Category — `/api/stores/{storeId}/categories`
+| Method | Path | Access |
+|:---|:---|:---|
+| GET | `/` | Member |
+| POST | `/` | Owner / Manager |
+| PUT | `/{publicId}` | Owner / Manager |
+| DELETE | `/{publicId}` | Owner / Manager |
+
+### Unit — `/api/stores/{storeId}/units`
+| Method | Path | Access |
+|:---|:---|:---|
+| GET | `/` | Member |
+| POST | `/` | Owner / Manager |
+| PUT | `/{publicId}` | Owner / Manager |
+| DELETE | `/{publicId}` | Owner / Manager |
+
+---
+
+## 7. Dependencies (pom.xml)
+
 | Dependency | Dùng cho |
 |:---|:---|
-| `spring-boot-starter-data-jpa` | JPA/Hibernate |
-| `spring-boot-starter-security` | Spring Security |
+| `spring-boot-starter-data-jpa` | JPA / Hibernate 6 |
+| `spring-boot-starter-security` | Spring Security 6 |
+| `spring-boot-starter-data-redis` | Redis client (store role cache) |
 | `spring-boot-starter-validation` | Bean Validation (`@Valid`, `@NotNull`) |
 | `spring-boot-starter-web` | REST API |
 | `flyway-core` + `flyway-database-postgresql` | Schema migration |
 | `postgresql` | JDBC driver |
+| `jjwt-api/impl/jackson` 0.12.6 | JWT generate/validate |
 | `lombok` | Boilerplate reduction |
-
-### Cần thêm
-
-**JWT — bắt buộc (auth chưa hoạt động nếu thiếu):**
-```xml
-<dependency>
-    <groupId>io.jsonwebtoken</groupId>
-    <artifactId>jjwt-api</artifactId>
-    <version>0.12.6</version>
-</dependency>
-<dependency>
-    <groupId>io.jsonwebtoken</groupId>
-    <artifactId>jjwt-impl</artifactId>
-    <version>0.12.6</version>
-    <scope>runtime</scope>
-</dependency>
-<dependency>
-    <groupId>io.jsonwebtoken</groupId>
-    <artifactId>jjwt-jackson</artifactId>
-    <version>0.12.6</version>
-    <scope>runtime</scope>
-</dependency>
-```
-
-**Cache — nên thêm sớm (subscription check gọi mỗi request):**
-```xml
-<dependency>
-    <groupId>org.springframework.boot</groupId>
-    <artifactId>spring-boot-starter-cache</artifactId>
-</dependency>
-<dependency>
-    <groupId>com.github.ben-manes.caffeine</groupId>
-    <artifactId>caffeine</artifactId>
-</dependency>
-```
-
-> Caffeine là in-memory cache — không cần Redis infrastructure. Đủ cho monolith single-instance.
-> Nếu sau này scale multi-instance → đổi sang Redis (`spring-boot-starter-data-redis`).
-
-### Không cần thêm (đã được cover)
-
-| Tính năng | Lý do không cần dep riêng |
-|:---|:---|
-| JSONB mapping (`audit_logs.old_data`) | Hibernate 6 hỗ trợ native qua `@JdbcTypeCode(SqlTypes.JSON)` + Jackson có sẵn từ `spring-boot-starter-web` |
-| DTO mapping | Làm thủ công hoặc dùng `MapStruct` (optional) — không bắt buộc cho Phase 1 |
-| Materialized view refresh | Gọi native query qua `EntityManager` — không cần dep |
+| `spring-boot-starter-test` + `spring-security-test` | Unit/integration tests |
 
 ---
 
-## 6. Lộ trình phát triển (Roadmap)
+## 8. Lộ trình phát triển
 
-| Giai đoạn | Nội dung |
-|:---|:---|
-| **Phase 1** | Core API (Spring Boot) + Database Schema + JWT Auth + Web Admin |
-| **Phase 2** | Tích hợp ngoại vi (máy in hóa đơn, máy quét mã vạch) |
-| **Phase 3** | App Mobile (React Native) + Offline sync |
-| **Phase 4** | Cloud deployment (Docker + AWS/GCP) + Read replica |
+| Giai đoạn | Nội dung | Trạng thái |
+|:---|:---|:---|
+| **Phase 1** | Core API + DB Schema + Auth + Web Admin | Đang làm |
+| **Phase 2** | Order / Purchase / Return / Inventory / Payment APIs | Chưa bắt đầu |
+| **Phase 3** | App Mobile (React Native) + Offline sync | Chưa bắt đầu |
+| **Phase 4** | Docker + Cloud deployment + Read replica | Chưa bắt đầu |
+
+**Đã xong (Phase 1):** Entity model (26), Repository layer, Hybrid Auth (JWT + Redis), Auth flow, Store + Member management, Product/Category/Unit CRUD.
+
+**Chưa có service/controller:** Order, ReturnOrder, PurchaseOrder, Inventory, Payment, Warehouse, Customer, Supplier, Subscription, AuditLog, Sync.
 
 ---
 
-## 7. Ghi chú quan trọng cho lập trình viên
+## 9. Ghi chú cho lập trình viên
 
 ### Database
-- **Migration:** Chỉ dùng Flyway — đặt file tại `src/main/resources/db/migration/V{n}__{mô_tả}.sql`. Không dùng `ddl-auto=create/update`.
-- **Thêm cột sync & migration an toàn:** nhiều bảng bổ sung `public_id UUID`, `sync_version BIGINT`, `last_modified_at`, `last_modified_by_user`, `last_modified_by_device` — khi migrate trên production lớn, thêm cột nullable / with default, backfill giá trị (gen_random_uuid()) rồi tạo unique index; tránh đặt NOT NULL không DEFAULT trực tiếp trên bảng lớn.
-- **Full-text search:** tạo `search_vector` TSVECTOR và GIN index cho `products`/`customers`. Thêm trigger mẫu:
-
-```sql
--- ví dụ trigger (Postgres):
-CREATE FUNCTION products_tsvector_trigger() RETURNS trigger AS $$
-begin
-  new.search_vector := to_tsvector('simple', coalesce(new.name,'') || ' ' || coalesce(new.sku,'') || ' ' || coalesce(new.description,''));
-  return new;
-end
-$$ LANGUAGE plpgsql;
-
-CREATE TRIGGER tsvectorupdate BEFORE INSERT OR UPDATE
-  ON products FOR EACH ROW EXECUTE FUNCTION products_tsvector_trigger();
-```
-
-- **Offline / sync write contract:** Service layer phải đảm bảo: tăng `sync_version` atomically, ghi một hàng vào `sync_change_log(store_id, table_name, record_public_id, operation, sync_version)` trong cùng transaction; client chỉ pull theo `(store_id, sync_version)`.
-- **Soft delete:** Mọi query trên bảng có `deleted_at` phải thêm `AND deleted_at IS NULL` hoặc dùng `@Where` trên entity.
-- **Immutable tables:** `orders`, `purchase_orders`, `payments`, `inventory_transactions`, `price_history`, `audit_logs` — không xoá, chỉ huỷ qua `status`.
+- **Migration:** Chỉ dùng Flyway — `src/main/resources/db/migration/V{n}__{mô_tả}.sql`. Không dùng `ddl-auto=create/update`.
+- **Soft delete:** Mọi query trên bảng có `deleted_at` phải filter `AND deleted_at IS NULL`. Dùng `@Where` trên entity hoặc đảm bảo repository method có suffix `AndDeletedAtIsNull`.
+- **Immutable tables:** `orders`, `purchase_orders`, `payments`, `inventory_transactions`, `price_history`, `audit_logs`, `subscription_invoices` — không xoá, chỉ thay đổi `status`.
+- **Units query:** Phải lấy cả system và store units: `WHERE (store_id = :storeId OR store_id IS NULL) AND deleted_at IS NULL`.
+- **Sync write contract:** Mỗi mutation phải tăng `sync_version` atomically và ghi 1 dòng vào `sync_change_log` trong cùng transaction.
 
 ### `debt_balance` — invariant bắt buộc
-`customers.debt_balance` và `suppliers.debt_balance` là denorm — **phải cập nhật trong cùng `@Transactional`** với sự kiện gây ra thay đổi. Xem bảng invariant rules đầy đủ trong `docs/DATABASE_SCHEMA.md § 12`.
+`customers.debt_balance` và `suppliers.debt_balance` là denorm — **phải cập nhật trong cùng `@Transactional`** với sự kiện gây ra thay đổi (order COMPLETED, payment recorded, return COMPLETED). Xem chi tiết trong `docs/DATABASE_SCHEMA.md`.
 
 ### JPA / Performance
-- **N+1:** Các quan hệ `Order → items → product`, `PurchaseOrder → items → product`, `ReturnOrder → items → product` đều nguy cơ N+1. Dùng `JOIN FETCH` hoặc `@EntityGraph` — không để lazy load trong vòng lặp.
-- **`units` query:** Phải lấy cả system units và store units: `WHERE (store_id = :storeId OR store_id IS NULL) AND deleted_at IS NULL`.
-- **Pagination:** Dùng keyset (cursor-based) thay vì `Page<T>` OFFSET cho các bảng lớn (`orders`, `inventory_transactions`).
+- **N+1:** Quan hệ `Order → items`, `PurchaseOrder → items`, `ReturnOrder → items` đều nguy cơ N+1. Dùng `JOIN FETCH` hoặc `@EntityGraph` — không để lazy load trong vòng lặp.
+- **JPA proxy cho FK:** Services dùng `userRepository.getReferenceById(userId)` để set `lastModifiedByUser` / `createdBy` — không tốn SELECT, Hibernate chỉ cần ID cho foreign key.
+- **Pagination:** Dùng keyset (cursor-based) thay vì `Page<T>` OFFSET cho bảng lớn (`orders`, `inventory_transactions`).
 
 ### Security
-- JWT encode `userId` + `storeId` + `role` — tránh JOIN `store_members` trên mỗi request.
-- Mọi query nghiệp vụ phải filter `store_id = storeId từ JWT` — không để user truy cập data của store khác.
+- Store-scoped roles (`OWNER`, `MANAGER`, `STAFF`) **không** đưa vào JWT — chúng phụ thuộc context store, kiểm tra qua `StoreAccessEvaluator` với Redis cache.
+- `UserPrincipal` (record với `userId` + `username`) là principal trong `SecurityContext` — không phải `User` entity. Controllers nhận `@AuthenticationPrincipal UserPrincipal`.
+- Mọi query nghiệp vụ phải filter `store_id` — không để user truy cập data của store khác.
+- `SystemAdminSeeder` bật bằng `admin.seed.enabled=true` trong `application.properties` (mặc định `false`).
+- **Cache invalidation:** Mọi thao tác thay đổi role (add/update/remove member) phải gọi `StoreAccessEvaluator.evictStoreRoleCache(userId, storeId)` để xóa Redis key.
+- **Redis key format:** `store:role:{userId}:{storeId}` — TTL 300 giây (configurable qua `store.role.cache.ttl`).
