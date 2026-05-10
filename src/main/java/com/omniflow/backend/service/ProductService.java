@@ -5,14 +5,11 @@ import com.omniflow.backend.dto.response.catalog.ProductResponse;
 import com.omniflow.backend.dto.response.common.ErrorCode;
 import com.omniflow.backend.dto.response.common.PagedResult;
 import com.omniflow.backend.entity.*;
-import com.omniflow.backend.entity.enums.RoleName;
-import com.omniflow.backend.exception.ForbiddenException;
 import com.omniflow.backend.exception.ResourceNotFoundException;
 import com.omniflow.backend.repository.*;
+import com.omniflow.backend.security.UserPrincipal;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Pageable;
-import org.springframework.security.core.Authentication;
-import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -27,43 +24,37 @@ public class ProductService {
 
     private final ProductRepository productRepository;
     private final StoreRepository storeRepository;
-    private final UserRoleRepository userRoleRepository;
+    private final UserRepository userRepository;
     private final CategoryRepository categoryRepository;
     private final UnitRepository unitRepository;
     private final PriceHistoryRepository priceHistoryRepository;
 
     @Transactional(readOnly = true)
-    public List<ProductResponse> list(Long storeId, Boolean isActive, User currentUser) {
+    public List<ProductResponse> list(Long storeId, Boolean isActive, UserPrincipal currentUser) {
         findStoreOrThrow(storeId);
-        requireMembership(storeId, currentUser.getId());
-
         List<Product> products = isActive != null
                 ? productRepository.findByStoreIdAndIsActiveAndDeletedAtIsNull(storeId, isActive)
                 : productRepository.findByStoreIdAndDeletedAtIsNull(storeId);
-
         return products.stream().map(this::toResponse).toList();
     }
 
     @Transactional(readOnly = true)
-    public PagedResult<ProductResponse> search(Long storeId, String searchTerm, Pageable pageable, User currentUser) {
+    public PagedResult<ProductResponse> search(Long storeId, String searchTerm, Pageable pageable, UserPrincipal currentUser) {
         findStoreOrThrow(storeId);
-        requireMembership(storeId, currentUser.getId());
         return PagedResult.of(
                 productRepository.searchProducts(storeId, searchTerm, pageable).map(this::toResponse)
         );
     }
 
     @Transactional(readOnly = true)
-    public ProductResponse get(Long storeId, UUID publicId, User currentUser) {
+    public ProductResponse get(Long storeId, UUID publicId, UserPrincipal currentUser) {
         findStoreOrThrow(storeId);
-        requireMembership(storeId, currentUser.getId());
         return toResponse(findProductOrThrow(publicId));
     }
 
     @Transactional
-    public ProductResponse create(Long storeId, ProductUpsertRequest request, User currentUser) {
+    public ProductResponse create(Long storeId, ProductUpsertRequest request, UserPrincipal currentUser) {
         Store store = findStoreOrThrow(storeId);
-        requireRole(storeId, currentUser.getId(), RoleName.OWNER, RoleName.MANAGER);
 
         if (productRepository.findByStoreIdAndSkuAndDeletedAtIsNull(storeId, request.sku()).isPresent()) {
             throw new IllegalArgumentException("SKU already exists in this store");
@@ -71,6 +62,9 @@ public class ProductService {
 
         Category category = resolveCategory(request.categoryPublicId());
         Unit unit = resolveUnit(request.unitPublicId());
+
+        // getReferenceById: JPA proxy — không SELECT, chỉ dùng ID cho FK lastModifiedByUser
+        User userRef = userRepository.getReferenceById(currentUser.userId());
 
         Product product = Product.builder()
                 .store(store)
@@ -84,16 +78,15 @@ public class ProductService {
                 .minStockLevel(request.minStockLevel())
                 .isActive(request.isActive())
                 .publicId(UUID.randomUUID())
-                .lastModifiedByUser(currentUser)
+                .lastModifiedByUser(userRef)
                 .build();
 
         return toResponse(productRepository.save(product));
     }
 
     @Transactional
-    public ProductResponse update(Long storeId, UUID publicId, ProductUpsertRequest request, User currentUser) {
+    public ProductResponse update(Long storeId, UUID publicId, ProductUpsertRequest request, UserPrincipal currentUser) {
         findStoreOrThrow(storeId);
-        requireRole(storeId, currentUser.getId(), RoleName.OWNER, RoleName.MANAGER);
 
         Product product = findProductOrThrow(publicId);
 
@@ -101,7 +94,8 @@ public class ProductService {
                 .filter(p -> !p.getPublicId().equals(publicId))
                 .ifPresent(p -> { throw new IllegalArgumentException("SKU already exists in this store"); });
 
-        recordPriceHistoryIfChanged(product, request.costPrice(), request.sellingPrice(), currentUser);
+        User userRef = userRepository.getReferenceById(currentUser.userId());
+        recordPriceHistoryIfChanged(product, request.costPrice(), request.sellingPrice(), userRef);
 
         product.setSku(request.sku());
         product.setName(request.name());
@@ -112,7 +106,7 @@ public class ProductService {
         product.setSellingPrice(request.sellingPrice());
         product.setMinStockLevel(request.minStockLevel());
         product.setIsActive(request.isActive());
-        product.setLastModifiedByUser(currentUser);
+        product.setLastModifiedByUser(userRef);
         product.setLastModifiedAt(LocalDateTime.now());
         product.setUpdatedAt(LocalDateTime.now());
 
@@ -120,10 +114,8 @@ public class ProductService {
     }
 
     @Transactional
-    public void delete(Long storeId, UUID publicId, User currentUser) {
+    public void delete(Long storeId, UUID publicId, UserPrincipal currentUser) {
         findStoreOrThrow(storeId);
-        requireRole(storeId, currentUser.getId(), RoleName.OWNER, RoleName.MANAGER);
-
         Product product = findProductOrThrow(publicId);
         product.setDeletedAt(LocalDateTime.now());
         productRepository.save(product);
@@ -165,31 +157,6 @@ public class ProductService {
     private Product findProductOrThrow(UUID publicId) {
         return productRepository.findByPublicId(publicId)
                 .orElseThrow(() -> new ResourceNotFoundException(ErrorCode.PRODUCT_NOT_FOUND, "Product not found"));
-    }
-
-    private void requireMembership(Long storeId, Long userId) {
-        if (isSystemAdmin()) return;
-        userRoleRepository.findByUserIdAndStoreIdAndIsActiveTrueAndDeletedAtIsNull(userId, storeId)
-                .orElseThrow(() -> new ForbiddenException(ErrorCode.FORBIDDEN, "You are not a member of this store"));
-    }
-
-    private void requireRole(Long storeId, Long userId, RoleName... roles) {
-        if (isSystemAdmin()) return;
-        UserRole userRole = userRoleRepository
-                .findByUserIdAndStoreIdAndIsActiveTrueAndDeletedAtIsNull(userId, storeId)
-                .orElseThrow(() -> new ForbiddenException(ErrorCode.FORBIDDEN, "You are not a member of this store"));
-
-        RoleName actual = userRole.getRole().getName();
-        for (RoleName role : roles) {
-            if (role == actual) return;
-        }
-        throw new ForbiddenException(ErrorCode.FORBIDDEN, "Insufficient role to perform this action");
-    }
-
-    private boolean isSystemAdmin() {
-        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-        if (auth == null) return false;
-        return auth.getAuthorities().stream().anyMatch(a -> "ROLE_SUPER_ADMIN".equals(a.getAuthority()));
     }
 
     private ProductResponse toResponse(Product p) {

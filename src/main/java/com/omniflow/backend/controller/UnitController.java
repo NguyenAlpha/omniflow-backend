@@ -3,7 +3,7 @@ package com.omniflow.backend.controller;
 import com.omniflow.backend.dto.request.catalog.UnitUpsertRequest;
 import com.omniflow.backend.dto.response.catalog.UnitResponse;
 import com.omniflow.backend.dto.response.common.ApiResult;
-import com.omniflow.backend.entity.User;
+import com.omniflow.backend.security.UserPrincipal;
 import com.omniflow.backend.service.UnitService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -27,7 +27,7 @@ public class UnitController {
     @PreAuthorize("@storeAccess.isMember(#storeId, authentication)")
     public ResponseEntity<ApiResult<List<UnitResponse>>> list(
             @PathVariable Long storeId,
-            @AuthenticationPrincipal User currentUser) {
+            @AuthenticationPrincipal UserPrincipal currentUser) {
         return ResponseEntity.ok(ApiResult.ok(unitService.list(storeId, currentUser)));
     }
 
@@ -36,7 +36,7 @@ public class UnitController {
     public ResponseEntity<ApiResult<UnitResponse>> create(
             @PathVariable Long storeId,
             @Valid @RequestBody UnitUpsertRequest request,
-            @AuthenticationPrincipal User currentUser) {
+            @AuthenticationPrincipal UserPrincipal currentUser) {
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(ApiResult.ok(unitService.create(storeId, request, currentUser)));
     }
@@ -47,7 +47,7 @@ public class UnitController {
             @PathVariable Long storeId,
             @PathVariable UUID publicId,
             @Valid @RequestBody UnitUpsertRequest request,
-            @AuthenticationPrincipal User currentUser) {
+            @AuthenticationPrincipal UserPrincipal currentUser) {
         return ResponseEntity.ok(ApiResult.ok(unitService.update(storeId, publicId, request, currentUser)));
     }
 
@@ -56,7 +56,7 @@ public class UnitController {
     public ResponseEntity<ApiResult<Void>> delete(
             @PathVariable Long storeId,
             @PathVariable UUID publicId,
-            @AuthenticationPrincipal User currentUser) {
+            @AuthenticationPrincipal UserPrincipal currentUser) {
         unitService.delete(storeId, publicId, currentUser);
         return ResponseEntity.ok(ApiResult.ok());
     }

@@ -3,7 +3,7 @@ package com.omniflow.backend.controller;
 import com.omniflow.backend.dto.request.catalog.CategoryUpsertRequest;
 import com.omniflow.backend.dto.response.catalog.CategoryResponse;
 import com.omniflow.backend.dto.response.common.ApiResult;
-import com.omniflow.backend.entity.User;
+import com.omniflow.backend.security.UserPrincipal;
 import com.omniflow.backend.service.CategoryService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -27,7 +27,7 @@ public class CategoryController {
     @PreAuthorize("@storeAccess.isMember(#storeId, authentication)")
     public ResponseEntity<ApiResult<List<CategoryResponse>>> list(
             @PathVariable Long storeId,
-            @AuthenticationPrincipal User currentUser) {
+            @AuthenticationPrincipal UserPrincipal currentUser) {
         return ResponseEntity.ok(ApiResult.ok(categoryService.list(storeId, currentUser)));
     }
 
@@ -36,7 +36,7 @@ public class CategoryController {
     public ResponseEntity<ApiResult<CategoryResponse>> create(
             @PathVariable Long storeId,
             @Valid @RequestBody CategoryUpsertRequest request,
-            @AuthenticationPrincipal User currentUser) {
+            @AuthenticationPrincipal UserPrincipal currentUser) {
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(ApiResult.ok(categoryService.create(storeId, request, currentUser)));
     }
@@ -47,7 +47,7 @@ public class CategoryController {
             @PathVariable Long storeId,
             @PathVariable UUID publicId,
             @Valid @RequestBody CategoryUpsertRequest request,
-            @AuthenticationPrincipal User currentUser) {
+            @AuthenticationPrincipal UserPrincipal currentUser) {
         return ResponseEntity.ok(ApiResult.ok(categoryService.update(storeId, publicId, request, currentUser)));
     }
 
@@ -56,7 +56,7 @@ public class CategoryController {
     public ResponseEntity<ApiResult<Void>> delete(
             @PathVariable Long storeId,
             @PathVariable UUID publicId,
-            @AuthenticationPrincipal User currentUser) {
+            @AuthenticationPrincipal UserPrincipal currentUser) {
         categoryService.delete(storeId, publicId, currentUser);
         return ResponseEntity.ok(ApiResult.ok());
     }

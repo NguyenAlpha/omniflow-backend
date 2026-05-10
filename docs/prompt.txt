@@ -135,3 +135,173 @@ FORMAT OUTPUT:
 4. Migration script mẫu — với các thay đổi nguy hiểm nhất, viết Flyway-compatible SQL theo pattern an toàn
 5. Checklist trước khi migrate production — các bước nên làm với schema này cụ thể
 
+=========================================================================================
+hiện tại tôi đang dùng RBAC (Role-Based Access Control) dùng bảng roles và user_roles. nên hãy cập nhật lại logic xác thực/phân quyền để đơn giản và bớt phức tạp lại. có những cách giải quyết nào phổ biến và tốt nhất với hệ thống của tôi.
+=========================================================================================
+Thêm JavaDoc ở đầu class để mô tả:
+- File dùng để làm gì
+- Chức năng chính
+- Thành phần liên quan
+- Viết ngắn gọn, chuyên nghiệp
+- Không sửa logic code
+==========================================================================================
+
+Refactor hệ thống authentication + authorization hiện tại sang kiến trúc Hybrid (JWT + Redis cache + DB fallback)
+
+## 🎯 Mục tiêu
+
+- KHÔNG gọi DB trong JwtAuthFilter (0 DB call khi authenticate)
+- Giảm số lần query DB khi check store role
+- Giữ logic phân quyền chính xác (không sai permission)
+- Tối ưu hiệu năng và sẵn sàng scale production
+
+---
+
+## 🧠 Kiến trúc mục tiêu
+
+Flow xử lý request:
+
+Request → JWT → SecurityContext
+               ↓
+         StoreAccessEvaluator
+               ↓
+          Redis cache
+           ↓      ↓
+        hit       miss
+         ↓         ↓
+       return     DB query → save Redis → return
+
+---
+
+## ✅ Task chi tiết
+
+### 1. JWT phải chứa:
+
+- userId
+- username (subject)
+- global roles (SUPER_ADMIN, SUPPORT)
+
+KHÔNG được chứa store role (OWNER, MANAGER, STAFF)
+
+---
+
+### 2. Refactor JwtService
+
+- Thêm xử lý:
+  - lưu roles vào claims
+  - extract roles từ token
+  - extract userId (nếu chưa có)
+
+Method cần có:
+- extractRoles(String token)
+- extractUserId(String token)
+
+Roles dạng: List<String>
+
+---
+
+### 3. Refactor JwtAuthFilter
+
+Yêu cầu:
+
+❌ KHÔNG dùng UserDetailsService
+❌ KHÔNG query DB
+
+✅ Thay bằng:
+
+- extract username từ token
+- extract userId từ token
+- extract roles từ token
+
+→ convert roles thành SimpleGrantedAuthority
+
+→ tạo Authentication object:
+
+- principal: object chứa userId + username
+- authorities: từ JWT
+
+→ set vào SecurityContext
+
+---
+
+### 4. Tích hợp Redis để cache store role
+
+### Key format:
+
+store:role:{userId}:{storeId}
+
+### Value:
+
+OWNER | MANAGER | STAFF
+
+---
+
+### 5. Refactor StoreAccessEvaluator
+
+Thay đổi logic:
+
+Thay vì luôn query DB:
+
+→ flow mới:
+
+1. Tạo cache key
+2. Check Redis:
+   - ✅ Có → dùng luôn
+   - ❌ Không → query DB:
+        userRoleRepository.findActiveStoreRole(...)
+        → lưu vào Redis
+        → return
+
+---
+
+### 6. TTL (time-to-live)
+
+- Cache store role với TTL: 5 phút (configurable)
+- Sử dụng expire khi set key Redis
+
+---
+
+### 7. Cache invalidation (quan trọng)
+
+Khi có thay đổi role:
+
+- promote / demote / add / remove user khỏi store
+
+→ phải xóa cache:
+
+DEL store:role:{userId}:{storeId}
+
+---
+
+### 8. Giữ nguyên logic bypass SUPER_ADMIN
+
+- Nếu user có ROLE_SUPER_ADMIN
+→ không dùng Redis hoặc DB
+→ return true luôn
+
+---
+
+### 9. Không thay đổi database schema
+
+- Không sửa bảng user_roles
+- Không thêm cột
+
+---
+
+### 10. Ensure
+
+- @PreAuthorize vẫn hoạt động bình thường
+- SecurityContext tương thích
+- Không làm break hệ thống hiện tại
+- Code clean, dễ maintain
+
+---
+
+## 🎯 Kết quả mong muốn
+
+- Auth request: 0 DB call
+- Authorization (store):
+    - 90% Redis hit
+    - 10% DB fallback
+- Hệ thống hoạt động đúng permission
+- Có thể scale lớn mà không bottleneck DB

@@ -6,16 +6,13 @@ import com.omniflow.backend.dto.response.common.ErrorCode;
 import com.omniflow.backend.entity.Store;
 import com.omniflow.backend.entity.Unit;
 import com.omniflow.backend.entity.User;
-import com.omniflow.backend.entity.UserRole;
-import com.omniflow.backend.entity.enums.RoleName;
 import com.omniflow.backend.exception.ForbiddenException;
 import com.omniflow.backend.exception.ResourceNotFoundException;
 import com.omniflow.backend.repository.StoreRepository;
 import com.omniflow.backend.repository.UnitRepository;
-import com.omniflow.backend.repository.UserRoleRepository;
+import com.omniflow.backend.repository.UserRepository;
+import com.omniflow.backend.security.UserPrincipal;
 import lombok.RequiredArgsConstructor;
-import org.springframework.security.core.Authentication;
-import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -29,41 +26,40 @@ public class UnitService {
 
     private final UnitRepository unitRepository;
     private final StoreRepository storeRepository;
-    private final UserRoleRepository userRoleRepository;
+    private final UserRepository userRepository;
 
     @Transactional(readOnly = true)
-    public List<UnitResponse> list(Long storeId, User currentUser) {
+    public List<UnitResponse> list(Long storeId, UserPrincipal currentUser) {
         findStoreOrThrow(storeId);
-        requireMembership(storeId, currentUser.getId());
         return unitRepository.findSystemAndStoreUnits(storeId).stream()
                 .map(this::toResponse)
                 .toList();
     }
 
     @Transactional
-    public UnitResponse create(Long storeId, UnitUpsertRequest request, User currentUser) {
+    public UnitResponse create(Long storeId, UnitUpsertRequest request, UserPrincipal currentUser) {
         Store store = findStoreOrThrow(storeId);
-        requireRole(storeId, currentUser.getId(), RoleName.OWNER, RoleName.MANAGER);
 
         if (unitRepository.findByStoreIdAndNameAndDeletedAtIsNull(storeId, request.name()).isPresent()) {
             throw new IllegalArgumentException("Unit name already exists in this store");
         }
+
+        User userRef = userRepository.getReferenceById(currentUser.userId());
 
         Unit unit = Unit.builder()
                 .store(store)
                 .name(request.name())
                 .abbreviation(request.abbreviation())
                 .publicId(UUID.randomUUID())
-                .lastModifiedByUser(currentUser)
+                .lastModifiedByUser(userRef)
                 .build();
 
         return toResponse(unitRepository.save(unit));
     }
 
     @Transactional
-    public UnitResponse update(Long storeId, UUID publicId, UnitUpsertRequest request, User currentUser) {
+    public UnitResponse update(Long storeId, UUID publicId, UnitUpsertRequest request, UserPrincipal currentUser) {
         findStoreOrThrow(storeId);
-        requireRole(storeId, currentUser.getId(), RoleName.OWNER, RoleName.MANAGER);
 
         Unit unit = unitRepository.findByPublicId(publicId)
                 .orElseThrow(() -> new ResourceNotFoundException(ErrorCode.UNIT_NOT_FOUND, "Unit not found"));
@@ -76,18 +72,19 @@ public class UnitService {
                 .filter(u -> !u.getPublicId().equals(publicId))
                 .ifPresent(u -> { throw new IllegalArgumentException("Unit name already exists in this store"); });
 
+        User userRef = userRepository.getReferenceById(currentUser.userId());
+
         unit.setName(request.name());
         unit.setAbbreviation(request.abbreviation());
-        unit.setLastModifiedByUser(currentUser);
+        unit.setLastModifiedByUser(userRef);
         unit.setLastModifiedAt(LocalDateTime.now());
 
         return toResponse(unitRepository.save(unit));
     }
 
     @Transactional
-    public void delete(Long storeId, UUID publicId, User currentUser) {
+    public void delete(Long storeId, UUID publicId, UserPrincipal currentUser) {
         findStoreOrThrow(storeId);
-        requireRole(storeId, currentUser.getId(), RoleName.OWNER, RoleName.MANAGER);
 
         Unit unit = unitRepository.findByPublicId(publicId)
                 .orElseThrow(() -> new ResourceNotFoundException(ErrorCode.UNIT_NOT_FOUND, "Unit not found"));
@@ -103,31 +100,6 @@ public class UnitService {
     private Store findStoreOrThrow(Long storeId) {
         return storeRepository.findById(storeId)
                 .orElseThrow(() -> new ResourceNotFoundException(ErrorCode.STORE_NOT_FOUND, "Store not found"));
-    }
-
-    private void requireMembership(Long storeId, Long userId) {
-        if (isSystemAdmin()) return;
-        userRoleRepository.findByUserIdAndStoreIdAndIsActiveTrueAndDeletedAtIsNull(userId, storeId)
-                .orElseThrow(() -> new ForbiddenException(ErrorCode.FORBIDDEN, "You are not a member of this store"));
-    }
-
-    private void requireRole(Long storeId, Long userId, RoleName... roles) {
-        if (isSystemAdmin()) return;
-        UserRole userRole = userRoleRepository
-                .findByUserIdAndStoreIdAndIsActiveTrueAndDeletedAtIsNull(userId, storeId)
-                .orElseThrow(() -> new ForbiddenException(ErrorCode.FORBIDDEN, "You are not a member of this store"));
-
-        RoleName actual = userRole.getRole().getName();
-        for (RoleName role : roles) {
-            if (role == actual) return;
-        }
-        throw new ForbiddenException(ErrorCode.FORBIDDEN, "Insufficient role to perform this action");
-    }
-
-    private boolean isSystemAdmin() {
-        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-        if (auth == null) return false;
-        return auth.getAuthorities().stream().anyMatch(a -> "ROLE_SUPER_ADMIN".equals(a.getAuthority()));
     }
 
     private UnitResponse toResponse(Unit u) {

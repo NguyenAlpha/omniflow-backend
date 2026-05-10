@@ -6,16 +6,12 @@ import com.omniflow.backend.dto.response.common.ErrorCode;
 import com.omniflow.backend.entity.Category;
 import com.omniflow.backend.entity.Store;
 import com.omniflow.backend.entity.User;
-import com.omniflow.backend.entity.UserRole;
-import com.omniflow.backend.entity.enums.RoleName;
-import com.omniflow.backend.exception.ForbiddenException;
 import com.omniflow.backend.exception.ResourceNotFoundException;
 import com.omniflow.backend.repository.CategoryRepository;
 import com.omniflow.backend.repository.StoreRepository;
-import com.omniflow.backend.repository.UserRoleRepository;
+import com.omniflow.backend.repository.UserRepository;
+import com.omniflow.backend.security.UserPrincipal;
 import lombok.RequiredArgsConstructor;
-import org.springframework.security.core.Authentication;
-import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -29,42 +25,41 @@ public class CategoryService {
 
     private final CategoryRepository categoryRepository;
     private final StoreRepository storeRepository;
-    private final UserRoleRepository userRoleRepository;
+    private final UserRepository userRepository;
 
     @Transactional(readOnly = true)
-    public List<CategoryResponse> list(Long storeId, User currentUser) {
+    public List<CategoryResponse> list(Long storeId, UserPrincipal currentUser) {
         findStoreOrThrow(storeId);
-        requireMembership(storeId, currentUser.getId());
         return categoryRepository.findByStoreId(storeId).stream()
                 .map(this::toResponse)
                 .toList();
     }
 
     @Transactional
-    public CategoryResponse create(Long storeId, CategoryUpsertRequest request, User currentUser) {
+    public CategoryResponse create(Long storeId, CategoryUpsertRequest request, UserPrincipal currentUser) {
         Store store = findStoreOrThrow(storeId);
-        requireRole(storeId, currentUser.getId(), RoleName.OWNER, RoleName.MANAGER);
 
         if (categoryRepository.findByStoreIdAndNameAndDeletedAtIsNull(storeId, request.name()).isPresent()) {
             throw new IllegalArgumentException("Category name already exists in this store");
         }
+
+        User userRef = userRepository.getReferenceById(currentUser.userId());
 
         Category category = Category.builder()
                 .store(store)
                 .name(request.name())
                 .description(request.description())
                 .publicId(UUID.randomUUID())
-                .createdBy(currentUser)
-                .lastModifiedByUser(currentUser)
+                .createdBy(userRef)
+                .lastModifiedByUser(userRef)
                 .build();
 
         return toResponse(categoryRepository.save(category));
     }
 
     @Transactional
-    public CategoryResponse update(Long storeId, UUID publicId, CategoryUpsertRequest request, User currentUser) {
+    public CategoryResponse update(Long storeId, UUID publicId, CategoryUpsertRequest request, UserPrincipal currentUser) {
         findStoreOrThrow(storeId);
-        requireRole(storeId, currentUser.getId(), RoleName.OWNER, RoleName.MANAGER);
 
         Category category = categoryRepository.findByPublicId(publicId)
                 .orElseThrow(() -> new ResourceNotFoundException(ErrorCode.CATEGORY_NOT_FOUND, "Category not found"));
@@ -73,9 +68,11 @@ public class CategoryService {
                 .filter(c -> !c.getPublicId().equals(publicId))
                 .ifPresent(c -> { throw new IllegalArgumentException("Category name already exists in this store"); });
 
+        User userRef = userRepository.getReferenceById(currentUser.userId());
+
         category.setName(request.name());
         category.setDescription(request.description());
-        category.setLastModifiedByUser(currentUser);
+        category.setLastModifiedByUser(userRef);
         category.setLastModifiedAt(LocalDateTime.now());
         category.setUpdatedAt(LocalDateTime.now());
 
@@ -83,9 +80,8 @@ public class CategoryService {
     }
 
     @Transactional
-    public void delete(Long storeId, UUID publicId, User currentUser) {
+    public void delete(Long storeId, UUID publicId, UserPrincipal currentUser) {
         findStoreOrThrow(storeId);
-        requireRole(storeId, currentUser.getId(), RoleName.OWNER, RoleName.MANAGER);
 
         Category category = categoryRepository.findByPublicId(publicId)
                 .orElseThrow(() -> new ResourceNotFoundException(ErrorCode.CATEGORY_NOT_FOUND, "Category not found"));
@@ -97,31 +93,6 @@ public class CategoryService {
     private Store findStoreOrThrow(Long storeId) {
         return storeRepository.findById(storeId)
                 .orElseThrow(() -> new ResourceNotFoundException(ErrorCode.STORE_NOT_FOUND, "Store not found"));
-    }
-
-    private void requireMembership(Long storeId, Long userId) {
-        if (isSystemAdmin()) return;
-        userRoleRepository.findByUserIdAndStoreIdAndIsActiveTrueAndDeletedAtIsNull(userId, storeId)
-                .orElseThrow(() -> new ForbiddenException(ErrorCode.FORBIDDEN, "You are not a member of this store"));
-    }
-
-    private void requireRole(Long storeId, Long userId, RoleName... roles) {
-        if (isSystemAdmin()) return;
-        UserRole userRole = userRoleRepository
-                .findByUserIdAndStoreIdAndIsActiveTrueAndDeletedAtIsNull(userId, storeId)
-                .orElseThrow(() -> new ForbiddenException(ErrorCode.FORBIDDEN, "You are not a member of this store"));
-
-        RoleName actual = userRole.getRole().getName();
-        for (RoleName role : roles) {
-            if (role == actual) return;
-        }
-        throw new ForbiddenException(ErrorCode.FORBIDDEN, "Insufficient role to perform this action");
-    }
-
-    private boolean isSystemAdmin() {
-        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-        if (auth == null) return false;
-        return auth.getAuthorities().stream().anyMatch(a -> "ROLE_SUPER_ADMIN".equals(a.getAuthority()));
     }
 
     private CategoryResponse toResponse(Category c) {

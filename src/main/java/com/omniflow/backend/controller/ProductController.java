@@ -4,7 +4,7 @@ import com.omniflow.backend.dto.request.catalog.ProductUpsertRequest;
 import com.omniflow.backend.dto.response.catalog.ProductResponse;
 import com.omniflow.backend.dto.response.common.ApiResult;
 import com.omniflow.backend.dto.response.common.PagedResult;
-import com.omniflow.backend.entity.User;
+import com.omniflow.backend.security.UserPrincipal;
 import com.omniflow.backend.service.ProductService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -31,7 +31,7 @@ public class ProductController {
     public ResponseEntity<ApiResult<List<ProductResponse>>> list(
             @PathVariable Long storeId,
             @RequestParam(required = false) Boolean isActive,
-            @AuthenticationPrincipal User currentUser) {
+            @AuthenticationPrincipal UserPrincipal currentUser) {
         return ResponseEntity.ok(ApiResult.ok(productService.list(storeId, isActive, currentUser)));
     }
 
@@ -42,7 +42,7 @@ public class ProductController {
             @RequestParam String q,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size,
-            @AuthenticationPrincipal User currentUser) {
+            @AuthenticationPrincipal UserPrincipal currentUser) {
         var pageable = PageRequest.of(page, size, Sort.by("name").ascending());
         return ResponseEntity.ok(ApiResult.ok(productService.search(storeId, q, pageable, currentUser)));
     }
@@ -52,7 +52,7 @@ public class ProductController {
     public ResponseEntity<ApiResult<ProductResponse>> get(
             @PathVariable Long storeId,
             @PathVariable UUID publicId,
-            @AuthenticationPrincipal User currentUser) {
+            @AuthenticationPrincipal UserPrincipal currentUser) {
         return ResponseEntity.ok(ApiResult.ok(productService.get(storeId, publicId, currentUser)));
     }
 
@@ -61,7 +61,7 @@ public class ProductController {
     public ResponseEntity<ApiResult<ProductResponse>> create(
             @PathVariable Long storeId,
             @Valid @RequestBody ProductUpsertRequest request,
-            @AuthenticationPrincipal User currentUser) {
+            @AuthenticationPrincipal UserPrincipal currentUser) {
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(ApiResult.ok(productService.create(storeId, request, currentUser)));
     }
@@ -72,7 +72,7 @@ public class ProductController {
             @PathVariable Long storeId,
             @PathVariable UUID publicId,
             @Valid @RequestBody ProductUpsertRequest request,
-            @AuthenticationPrincipal User currentUser) {
+            @AuthenticationPrincipal UserPrincipal currentUser) {
         return ResponseEntity.ok(ApiResult.ok(productService.update(storeId, publicId, request, currentUser)));
     }
 
@@ -81,7 +81,7 @@ public class ProductController {
     public ResponseEntity<ApiResult<Void>> delete(
             @PathVariable Long storeId,
             @PathVariable UUID publicId,
-            @AuthenticationPrincipal User currentUser) {
+            @AuthenticationPrincipal UserPrincipal currentUser) {
         productService.delete(storeId, publicId, currentUser);
         return ResponseEntity.ok(ApiResult.ok());
     }

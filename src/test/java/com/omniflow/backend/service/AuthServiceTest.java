@@ -6,6 +6,7 @@ import com.omniflow.backend.dto.response.auth.AuthResponse;
 import com.omniflow.backend.entity.User;
 import com.omniflow.backend.repository.StoreMemberRepository;
 import com.omniflow.backend.repository.UserRepository;
+import com.omniflow.backend.repository.UserRoleRepository;
 import com.omniflow.backend.security.JwtService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -33,6 +34,7 @@ class AuthServiceTest {
 
     @Mock private UserRepository userRepository;
     @Mock private StoreMemberRepository storeMemberRepository;
+    @Mock private UserRoleRepository userRoleRepository;
     @Mock private PasswordEncoder passwordEncoder;
     @Mock private JwtService jwtService;
     @Mock private AuthenticationManager authenticationManager;
@@ -67,7 +69,9 @@ class AuthServiceTest {
         when(userRepository.findByEmail("test@example.com")).thenReturn(Optional.empty());
         when(passwordEncoder.encode("password123")).thenReturn("encoded_password");
         when(userRepository.save(any(User.class))).thenReturn(savedUser);
-        when(storeMemberRepository.findByUserIdAndDeletedAtIsNull(any())).thenReturn(List.of());
+        when(storeMemberRepository.findByUserIdAndDeletedAtIsNullWithStore(any())).thenReturn(List.of());
+        when(userRoleRepository.findActiveStoreRolesWithDetails(any())).thenReturn(List.of());
+        when(userRoleRepository.findByUserIdAndStoreIsNullAndDeletedAtIsNull(any())).thenReturn(List.of());
         when(jwtService.generateToken(any(), any(Map.class))).thenReturn("mock.jwt.token");
 
         AuthResponse response = authService.register(request);
@@ -118,7 +122,9 @@ class AuthServiceTest {
         LoginRequest request = new LoginRequest("testuser", "password123", null);
 
         when(userRepository.findByUsernameOrEmail("testuser", "testuser")).thenReturn(Optional.of(savedUser));
-        when(storeMemberRepository.findByUserIdAndDeletedAtIsNull(1L)).thenReturn(List.of());
+        when(storeMemberRepository.findByUserIdAndDeletedAtIsNullWithStore(1L)).thenReturn(List.of());
+        when(userRoleRepository.findActiveStoreRolesWithDetails(1L)).thenReturn(List.of());
+        when(userRoleRepository.findByUserIdAndStoreIsNullAndDeletedAtIsNull(1L)).thenReturn(List.of());
         when(jwtService.generateToken(any(), any(Map.class))).thenReturn("mock.jwt.token");
 
         AuthResponse response = authService.login(request);

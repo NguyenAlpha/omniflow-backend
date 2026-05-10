@@ -27,11 +27,20 @@ public interface StoreMemberRepository extends JpaRepository<StoreMember, Long> 
     Optional<StoreMember> findByPublicId(UUID publicId);
 
     @Query("""
-        SELECT sm FROM StoreMember sm 
-        WHERE sm.store.id = :storeId 
-        AND sm.user.id = :userId 
-        AND sm.deletedAt IS NULL
-    """)
+        SELECT sm FROM StoreMember sm
+        WHERE sm.store.id = :storeId
+          AND sm.user.id = :userId
+          AND sm.deletedAt IS NULL
+        """)
     Optional<StoreMember> findActiveStoreMember(@Param("storeId") Long storeId, @Param("userId") Long userId);
+
+    // Used in auth response — store eagerly fetched to avoid lazy N+1 on getStore().getId()
+    @Query("""
+        SELECT sm FROM StoreMember sm
+        JOIN FETCH sm.store
+        WHERE sm.user.id = :userId
+          AND sm.deletedAt IS NULL
+        """)
+    List<StoreMember> findByUserIdAndDeletedAtIsNullWithStore(@Param("userId") Long userId);
 }
 

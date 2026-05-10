@@ -18,9 +18,9 @@ import com.omniflow.backend.repository.StoreMemberRepository;
 import com.omniflow.backend.repository.StoreRepository;
 import com.omniflow.backend.repository.UserRepository;
 import com.omniflow.backend.repository.UserRoleRepository;
+import com.omniflow.backend.security.StoreAccessEvaluator;
+import com.omniflow.backend.security.UserPrincipal;
 import lombok.RequiredArgsConstructor;
-import org.springframework.security.core.Authentication;
-import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -39,9 +39,10 @@ public class StoreService {
     private final UserRepository userRepository;
     private final UserRoleRepository userRoleRepository;
     private final RoleRepository roleRepository;
+    private final StoreAccessEvaluator storeAccessEvaluator;
 
     @Transactional
-    public StoreResponse createStore(StoreCreateRequest request, User currentUser) {
+    public StoreResponse createStore(StoreCreateRequest request, UserPrincipal currentUser) {
         Store store = Store.builder()
                 .name(request.name())
                 .address(request.address())
@@ -50,8 +51,11 @@ public class StoreService {
                 .build();
         storeRepository.save(store);
 
+        // getReferenceById tạo JPA proxy — không cần SELECT, chỉ cần ID cho FK
+        User userRef = userRepository.getReferenceById(currentUser.userId());
+
         StoreMember member = StoreMember.builder()
-                .user(currentUser)
+                .user(userRef)
                 .store(store)
                 .isActive(true)
                 .publicId(UUID.randomUUID())
@@ -59,7 +63,7 @@ public class StoreService {
         storeMemberRepository.save(member);
 
         userRoleRepository.save(UserRole.builder()
-                .user(currentUser)
+                .user(userRef)
                 .role(findRoleOrThrow(RoleName.OWNER))
                 .store(store)
                 .isActive(true)
@@ -69,37 +73,31 @@ public class StoreService {
     }
 
     @Transactional(readOnly = true)
-    public StoreResponse getStore(Long storeId, User currentUser) {
-        Store store = findStoreOrThrow(storeId);
-        requireMembership(storeId, currentUser.getId());
-        return toStoreResponse(store);
+    public StoreResponse getStore(Long storeId, UserPrincipal currentUser) {
+        return toStoreResponse(findStoreOrThrow(storeId));
     }
 
     @Transactional(readOnly = true)
-    public List<StoreResponse> getMyStores(User currentUser) {
-        return storeMemberRepository.findByUserIdAndDeletedAtIsNull(currentUser.getId())
+    public List<StoreResponse> getMyStores(UserPrincipal currentUser) {
+        return storeMemberRepository.findByUserIdAndDeletedAtIsNull(currentUser.userId())
                 .stream()
                 .map(m -> toStoreResponse(m.getStore()))
                 .toList();
     }
 
     @Transactional
-    public StoreResponse updateStore(Long storeId, StoreCreateRequest request, User currentUser) {
+    public StoreResponse updateStore(Long storeId, StoreCreateRequest request, UserPrincipal currentUser) {
         Store store = findStoreOrThrow(storeId);
-        requireRole(storeId, currentUser.getId(), RoleName.OWNER, RoleName.MANAGER);
-
         store.setName(request.name());
         store.setAddress(request.address());
         store.setPhone(request.phone());
         store.setEmail(request.email());
-
         return toStoreResponse(storeRepository.save(store));
     }
 
     @Transactional(readOnly = true)
-    public List<StoreMemberResponse> getMembers(Long storeId, User currentUser) {
+    public List<StoreMemberResponse> getMembers(Long storeId, UserPrincipal currentUser) {
         findStoreOrThrow(storeId);
-        requireMembership(storeId, currentUser.getId());
 
         List<StoreMember> members = storeMemberRepository.findByStoreIdAndIsActiveAndDeletedAtIsNull(storeId, true);
         Map<Long, UserRole> roleByUserId = userRoleRepository
@@ -113,11 +111,10 @@ public class StoreService {
     }
 
     @Transactional
-    public StoreMemberResponse addMember(Long storeId, StoreMemberUpsertRequest request, User currentUser) {
+    public StoreMemberResponse addMember(Long storeId, StoreMemberUpsertRequest request, UserPrincipal currentUser) {
         findStoreOrThrow(storeId);
-        requireRole(storeId, currentUser.getId(), RoleName.OWNER);
 
-        if (userRoleRepository.findByUserIdAndStoreIdAndIsActiveTrueAndDeletedAtIsNull(request.userId(), storeId).isPresent()) {
+        if (userRoleRepository.findActiveStoreRole(request.userId(), storeId).isPresent()) {
             throw new IllegalArgumentException("User is already a member of this store");
         }
 
@@ -143,22 +140,24 @@ public class StoreService {
                 .build();
         userRoleRepository.save(userRole);
 
+        // Xóa cache cũ nếu user đã từng có role trong store này
+        storeAccessEvaluator.evictStoreRoleCache(request.userId(), storeId);
+
         return toMemberResponse(member, userRole);
     }
 
     @Transactional
-    public StoreMemberResponse updateMember(Long storeId, Long memberId, StoreMemberUpsertRequest request, User currentUser) {
+    public StoreMemberResponse updateMember(Long storeId, Long memberId, StoreMemberUpsertRequest request, UserPrincipal currentUser) {
         findStoreOrThrow(storeId);
-        requireRole(storeId, currentUser.getId(), RoleName.OWNER);
 
         StoreMember member = storeMemberRepository.findById(memberId)
                 .orElseThrow(() -> new ResourceNotFoundException(ErrorCode.STORE_MEMBER_NOT_FOUND, "Member not found"));
 
         UserRole userRole = userRoleRepository
-                .findByUserIdAndStoreIdAndIsActiveTrueAndDeletedAtIsNull(member.getUser().getId(), storeId)
+                .findActiveStoreRole(member.getUser().getId(), storeId)
                 .orElseThrow(() -> new ResourceNotFoundException(ErrorCode.STORE_MEMBER_NOT_FOUND, "Member role not found"));
 
-        if (RoleName.OWNER == userRole.getRole().getName() && !member.getUser().getId().equals(currentUser.getId())) {
+        if (RoleName.OWNER == userRole.getRole().getName() && !member.getUser().getId().equals(currentUser.userId())) {
             throw new ForbiddenException(ErrorCode.FORBIDDEN, "Cannot modify another OWNER");
         }
 
@@ -170,19 +169,20 @@ public class StoreService {
         member.setIsActive(request.isActive());
         storeMemberRepository.save(member);
 
+        storeAccessEvaluator.evictStoreRoleCache(member.getUser().getId(), storeId);
+
         return toMemberResponse(member, userRole);
     }
 
     @Transactional
-    public void removeMember(Long storeId, Long memberId, User currentUser) {
+    public void removeMember(Long storeId, Long memberId, UserPrincipal currentUser) {
         findStoreOrThrow(storeId);
-        requireRole(storeId, currentUser.getId(), RoleName.OWNER);
 
         StoreMember member = storeMemberRepository.findById(memberId)
                 .orElseThrow(() -> new ResourceNotFoundException(ErrorCode.STORE_MEMBER_NOT_FOUND, "Member not found"));
 
         UserRole userRole = userRoleRepository
-                .findByUserIdAndStoreIdAndIsActiveTrueAndDeletedAtIsNull(member.getUser().getId(), storeId)
+                .findActiveStoreRole(member.getUser().getId(), storeId)
                 .orElse(null);
 
         if (userRole != null && RoleName.OWNER == userRole.getRole().getName()) {
@@ -197,6 +197,8 @@ public class StoreService {
             userRole.setDeletedAt(now);
             userRoleRepository.save(userRole);
         }
+
+        storeAccessEvaluator.evictStoreRoleCache(member.getUser().getId(), storeId);
     }
 
     private Store findStoreOrThrow(Long storeId) {
@@ -207,31 +209,6 @@ public class StoreService {
     private Role findRoleOrThrow(RoleName roleName) {
         return roleRepository.findByName(roleName)
                 .orElseThrow(() -> new IllegalStateException("Role not found: " + roleName));
-    }
-
-    private void requireMembership(Long storeId, Long userId) {
-        if (isSystemAdmin()) return;
-        userRoleRepository.findByUserIdAndStoreIdAndIsActiveTrueAndDeletedAtIsNull(userId, storeId)
-                .orElseThrow(() -> new ForbiddenException(ErrorCode.FORBIDDEN, "You are not a member of this store"));
-    }
-
-    private void requireRole(Long storeId, Long userId, RoleName... roles) {
-        if (isSystemAdmin()) return;
-        UserRole userRole = userRoleRepository
-                .findByUserIdAndStoreIdAndIsActiveTrueAndDeletedAtIsNull(userId, storeId)
-                .orElseThrow(() -> new ForbiddenException(ErrorCode.FORBIDDEN, "You are not a member of this store"));
-
-        RoleName actual = userRole.getRole().getName();
-        for (RoleName role : roles) {
-            if (role == actual) return;
-        }
-        throw new ForbiddenException(ErrorCode.FORBIDDEN, "Insufficient role to perform this action");
-    }
-
-    private boolean isSystemAdmin() {
-        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-        if (auth == null) return false;
-        return auth.getAuthorities().stream().anyMatch(a -> "ROLE_SUPER_ADMIN".equals(a.getAuthority()));
     }
 
     private StoreResponse toStoreResponse(Store store) {

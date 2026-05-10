@@ -5,7 +5,7 @@ import com.omniflow.backend.dto.request.store.StoreMemberUpsertRequest;
 import com.omniflow.backend.dto.response.common.ApiResult;
 import com.omniflow.backend.dto.response.store.StoreMemberResponse;
 import com.omniflow.backend.dto.response.store.StoreResponse;
-import com.omniflow.backend.entity.User;
+import com.omniflow.backend.security.UserPrincipal;
 import com.omniflow.backend.service.StoreService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -27,14 +27,14 @@ public class StoreController {
     @PostMapping
     public ResponseEntity<ApiResult<StoreResponse>> createStore(
             @Valid @RequestBody StoreCreateRequest request,
-            @AuthenticationPrincipal User currentUser) {
+            @AuthenticationPrincipal UserPrincipal currentUser) {
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(ApiResult.ok(storeService.createStore(request, currentUser)));
     }
 
     @GetMapping("/my")
     public ResponseEntity<ApiResult<List<StoreResponse>>> getMyStores(
-            @AuthenticationPrincipal User currentUser) {
+            @AuthenticationPrincipal UserPrincipal currentUser) {
         return ResponseEntity.ok(ApiResult.ok(storeService.getMyStores(currentUser)));
     }
 
@@ -42,7 +42,7 @@ public class StoreController {
     @PreAuthorize("@storeAccess.isMember(#storeId, authentication)")
     public ResponseEntity<ApiResult<StoreResponse>> getStore(
             @PathVariable Long storeId,
-            @AuthenticationPrincipal User currentUser) {
+            @AuthenticationPrincipal UserPrincipal currentUser) {
         return ResponseEntity.ok(ApiResult.ok(storeService.getStore(storeId, currentUser)));
     }
 
@@ -51,7 +51,7 @@ public class StoreController {
     public ResponseEntity<ApiResult<StoreResponse>> updateStore(
             @PathVariable Long storeId,
             @Valid @RequestBody StoreCreateRequest request,
-            @AuthenticationPrincipal User currentUser) {
+            @AuthenticationPrincipal UserPrincipal currentUser) {
         return ResponseEntity.ok(ApiResult.ok(storeService.updateStore(storeId, request, currentUser)));
     }
 
@@ -59,7 +59,7 @@ public class StoreController {
     @PreAuthorize("@storeAccess.isMember(#storeId, authentication)")
     public ResponseEntity<ApiResult<List<StoreMemberResponse>>> getMembers(
             @PathVariable Long storeId,
-            @AuthenticationPrincipal User currentUser) {
+            @AuthenticationPrincipal UserPrincipal currentUser) {
         return ResponseEntity.ok(ApiResult.ok(storeService.getMembers(storeId, currentUser)));
     }
 
@@ -68,7 +68,7 @@ public class StoreController {
     public ResponseEntity<ApiResult<StoreMemberResponse>> addMember(
             @PathVariable Long storeId,
             @Valid @RequestBody StoreMemberUpsertRequest request,
-            @AuthenticationPrincipal User currentUser) {
+            @AuthenticationPrincipal UserPrincipal currentUser) {
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(ApiResult.ok(storeService.addMember(storeId, request, currentUser)));
     }
@@ -79,7 +79,7 @@ public class StoreController {
             @PathVariable Long storeId,
             @PathVariable Long memberId,
             @Valid @RequestBody StoreMemberUpsertRequest request,
-            @AuthenticationPrincipal User currentUser) {
+            @AuthenticationPrincipal UserPrincipal currentUser) {
         return ResponseEntity.ok(ApiResult.ok(storeService.updateMember(storeId, memberId, request, currentUser)));
     }
 
@@ -88,7 +88,7 @@ public class StoreController {
     public ResponseEntity<ApiResult<Void>> removeMember(
             @PathVariable Long storeId,
             @PathVariable Long memberId,
-            @AuthenticationPrincipal User currentUser) {
+            @AuthenticationPrincipal UserPrincipal currentUser) {
         storeService.removeMember(storeId, memberId, currentUser);
         return ResponseEntity.ok(ApiResult.ok());
     }
