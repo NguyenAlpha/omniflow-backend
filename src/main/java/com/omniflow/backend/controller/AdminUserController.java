@@ -28,7 +28,7 @@ public class AdminUserController {
         return ResponseEntity.ok(ApiResult.ok(userService.listUsers(q, page, size)));
     }
 
-    @PutMapping("/{userId}")
+    @PatchMapping("/{userId}")
     public ResponseEntity<ApiResult<UserAdminResponse>> updateUser(
             @PathVariable Long userId,
             @Valid @RequestBody UpdateProfileRequest request) {
