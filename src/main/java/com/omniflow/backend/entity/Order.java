@@ -45,21 +45,26 @@ public class Order {
     @Column(nullable = false, precision = 15, scale = 2)
     private BigDecimal subtotal;
 
+    @Builder.Default
     @Column(nullable = false, precision = 15, scale = 2)
     private BigDecimal discount = BigDecimal.ZERO;
 
+    @Builder.Default
     @Column(nullable = false, length = 10)
     private String discountType = "FIXED"; // FIXED, PERCENT
 
+    @Builder.Default
     @Column(nullable = false, precision = 15, scale = 2)
     private BigDecimal tax = BigDecimal.ZERO;
 
     @Column(nullable = false, precision = 15, scale = 2)
     private BigDecimal totalAmount;
 
+    @Builder.Default
     @Column(nullable = false, precision = 15, scale = 2)
     private BigDecimal paidAmount = BigDecimal.ZERO;
 
+    @Builder.Default
     @Column(nullable = false, precision = 15, scale = 2)
     private BigDecimal debtAmount = BigDecimal.ZERO;
 
@@ -70,9 +75,11 @@ public class Order {
     @Column(nullable = false, unique = true, columnDefinition = "UUID")
     private UUID publicId;
 
+    @Builder.Default
     @Column(nullable = false)
     private Long syncVersion = 0L;
 
+    @Builder.Default
     @Column(nullable = false, columnDefinition = "TIMESTAMPTZ")
     private LocalDateTime lastModifiedAt = LocalDateTime.now();
 
@@ -88,9 +95,11 @@ public class Order {
     private User createdBy;
 
     // === Standard audit fields ===
+    @Builder.Default
     @Column(nullable = false, columnDefinition = "TIMESTAMPTZ")
     private LocalDateTime createdAt = LocalDateTime.now();
 
+    @Builder.Default
     @Column(nullable = false, columnDefinition = "TIMESTAMPTZ")
     private LocalDateTime updatedAt = LocalDateTime.now();
 
@@ -98,4 +107,3 @@ public class Order {
     @OneToMany(mappedBy = "order", fetch = FetchType.LAZY, cascade = CascadeType.ALL, orphanRemoval = true)
     private List<OrderItem> orderItems;
 }
-

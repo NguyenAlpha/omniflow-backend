@@ -42,9 +42,11 @@ public class OrderItem {
     @Column(nullable = false, precision = 15, scale = 2)
     private BigDecimal unitPrice;
 
+    @Builder.Default
     @Column(nullable = false, precision = 15, scale = 2)
     private BigDecimal discount = BigDecimal.ZERO;
 
+    @Builder.Default
     @Column(nullable = false, length = 10)
     private String discountType = "FIXED"; // FIXED, PERCENT
 
@@ -55,9 +57,11 @@ public class OrderItem {
     @Column(nullable = false, unique = true, columnDefinition = "UUID")
     private UUID publicId;
 
+    @Builder.Default
     @Column(nullable = false)
     private Long syncVersion = 0L;
 
+    @Builder.Default
     @Column(nullable = false, columnDefinition = "TIMESTAMPTZ")
     private LocalDateTime lastModifiedAt = LocalDateTime.now();
 
@@ -71,4 +75,3 @@ public class OrderItem {
     @Column(columnDefinition = "TIMESTAMPTZ")
     private LocalDateTime deletedAt;
 }
-

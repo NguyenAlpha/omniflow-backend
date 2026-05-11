@@ -19,72 +19,77 @@ import java.util.UUID;
 @AllArgsConstructor
 @Builder
 public class Product {
-    
+
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
-    
+
     @ManyToOne(optional = false)
     @JoinColumn(name = "store_id", nullable = false)
     private Store store;
-    
+
     @Column(nullable = false, length = 50)
     private String sku;
-    
+
     @Column(nullable = false, length = 200)
     private String name;
-    
+
     @Column(columnDefinition = "TEXT")
     private String description;
-    
+
     @ManyToOne
     @JoinColumn(name = "category_id")
     private Category category;
-    
+
     @ManyToOne(optional = false)
     @JoinColumn(name = "unit_id", nullable = false)
     private Unit unit;
-    
+
     @Column(nullable = false, precision = 15, scale = 2)
     private BigDecimal costPrice;
-    
+
     @Column(nullable = false, precision = 15, scale = 2)
     private BigDecimal sellingPrice;
-    
+
+    @Builder.Default
     @Column(nullable = false)
     private Integer minStockLevel = 0;
-    
+
+    @Builder.Default
     @Column(nullable = false)
     private Boolean isActive = true;
-    
+
     @Column(columnDefinition = "TSVECTOR")
     private String searchVector; // for full-text search
-    
+
     // === Local-first sync fields ===
     @Column(nullable = false, unique = true, columnDefinition = "UUID")
     private UUID publicId;
-    
+
+    @Builder.Default
     @Column(nullable = false)
     private Long syncVersion = 0L;
-    
+
+    @Builder.Default
     @Column(nullable = false, columnDefinition = "TIMESTAMPTZ")
     private LocalDateTime lastModifiedAt = LocalDateTime.now();
-    
+
     @ManyToOne
     @JoinColumn(name = "last_modified_by_user")
     private User lastModifiedByUser;
-    
+
     @Column(columnDefinition = "UUID")
     private UUID lastModifiedByDevice;
-    
+
     // === Standard audit fields ===
+    @Builder.Default
     @Column(nullable = false, columnDefinition = "TIMESTAMPTZ")
     private LocalDateTime createdAt = LocalDateTime.now();
-    
+
+    @Builder.Default
     @Column(nullable = false, columnDefinition = "TIMESTAMPTZ")
     private LocalDateTime updatedAt = LocalDateTime.now();
-    
+
     @Column(columnDefinition = "TIMESTAMPTZ")
     private LocalDateTime deletedAt;
 }
-

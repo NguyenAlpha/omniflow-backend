@@ -36,9 +36,11 @@ public class Category {
     @Column(nullable = false, unique = true, columnDefinition = "UUID")
     private UUID publicId;
 
+    @Builder.Default
     @Column(nullable = false)
     private Long syncVersion = 0L;
 
+    @Builder.Default
     @Column(nullable = false, columnDefinition = "TIMESTAMPTZ")
     private LocalDateTime lastModifiedAt = LocalDateTime.now();
 
@@ -54,13 +56,14 @@ public class Category {
     private User createdBy;
 
     // === Standard audit fields ===
+    @Builder.Default
     @Column(nullable = false, columnDefinition = "TIMESTAMPTZ")
     private LocalDateTime createdAt = LocalDateTime.now();
 
+    @Builder.Default
     @Column(nullable = false, columnDefinition = "TIMESTAMPTZ")
     private LocalDateTime updatedAt = LocalDateTime.now();
 
     @Column(columnDefinition = "TIMESTAMPTZ")
     private LocalDateTime deletedAt;
 }
-

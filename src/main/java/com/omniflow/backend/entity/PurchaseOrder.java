@@ -45,9 +45,11 @@ public class PurchaseOrder {
     @Column(nullable = false, precision = 15, scale = 2)
     private BigDecimal totalAmount;
 
+    @Builder.Default
     @Column(nullable = false, precision = 15, scale = 2)
     private BigDecimal paidAmount = BigDecimal.ZERO;
 
+    @Builder.Default
     @Column(nullable = false, precision = 15, scale = 2)
     private BigDecimal debtAmount = BigDecimal.ZERO;
 
@@ -58,9 +60,11 @@ public class PurchaseOrder {
     @Column(nullable = false, unique = true, columnDefinition = "UUID")
     private UUID publicId;
 
+    @Builder.Default
     @Column(nullable = false)
     private Long syncVersion = 0L;
 
+    @Builder.Default
     @Column(nullable = false, columnDefinition = "TIMESTAMPTZ")
     private LocalDateTime lastModifiedAt = LocalDateTime.now();
 
@@ -76,9 +80,11 @@ public class PurchaseOrder {
     private User createdBy;
 
     // === Standard audit fields ===
+    @Builder.Default
     @Column(nullable = false, columnDefinition = "TIMESTAMPTZ")
     private LocalDateTime createdAt = LocalDateTime.now();
 
+    @Builder.Default
     @Column(nullable = false, columnDefinition = "TIMESTAMPTZ")
     private LocalDateTime updatedAt = LocalDateTime.now();
 
@@ -86,4 +92,3 @@ public class PurchaseOrder {
     @OneToMany(mappedBy = "purchaseOrder", fetch = FetchType.LAZY, cascade = CascadeType.ALL, orphanRemoval = true)
     private List<PurchaseOrderItem> purchaseOrderItems;
 }
-

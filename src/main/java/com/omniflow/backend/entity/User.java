@@ -40,18 +40,22 @@ public class User implements UserDetails {
     @Column(length = 20)
     private String phone;
 
+    @Builder.Default
     @Column(nullable = false)
     private Boolean isActive = true;
 
+    @Builder.Default
     @Column(nullable = false, columnDefinition = "TIMESTAMPTZ")
     private LocalDateTime createdAt = LocalDateTime.now();
 
+    @Builder.Default
     @Column(nullable = false, columnDefinition = "TIMESTAMPTZ")
     private LocalDateTime updatedAt = LocalDateTime.now();
 
     @Column(columnDefinition = "TIMESTAMPTZ")
     private LocalDateTime deletedAt;
 
+    @Builder.Default
     @Transient
     private List<GrantedAuthority> authorities = new ArrayList<>();
 

@@ -36,9 +36,11 @@ public class Unit {
     @Column(nullable = false, unique = true, columnDefinition = "UUID")
     private UUID publicId;
 
+    @Builder.Default
     @Column(nullable = false)
     private Long syncVersion = 0L;
 
+    @Builder.Default
     @Column(nullable = false, columnDefinition = "TIMESTAMPTZ")
     private LocalDateTime lastModifiedAt = LocalDateTime.now();
 
@@ -53,4 +55,3 @@ public class Unit {
     @Column(columnDefinition = "TIMESTAMPTZ")
     private LocalDateTime deletedAt;
 }
-
