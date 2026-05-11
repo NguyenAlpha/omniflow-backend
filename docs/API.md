@@ -14,10 +14,10 @@ Base URL: `/api`
 
 ## Auth — `/api/auth`
 
-| Method | Path | Access | Mô tả |
-|:---|:---|:---|:---|
-| POST | `/register` | Public | Tạo tài khoản mới |
-| POST | `/login` | Public | Đăng nhập, trả JWT + store memberships |
+| Method | Path        | Access | Mô tả                                  |
+|:-------|:------------|:-------|:---------------------------------------|
+| POST   | `/register` | Public | Tạo tài khoản mới                      |
+| POST   | `/login`    | Public | Đăng nhập, trả JWT + store memberships |
 
 **Request / Response:**
 
@@ -35,11 +35,11 @@ Response: AuthResponse { accessToken, tokenType, expiresIn, user, storeMembershi
 
 ## User — `/api/users`
 
-| Method | Path | Access | Mô tả |
-|:---|:---|:---|:---|
-| GET | `/me` | Authenticated | Lấy profile của bản thân |
-| PATCH | `/me` | Authenticated | Cập nhật fullName, phone |
-| PATCH | `/me/password` | Authenticated | Đổi mật khẩu |
+| Method | Path           | Access        | Mô tả                    |
+|:-------|:---------------|:--------------|:-------------------------|
+| GET    | `/me`          | Authenticated | Lấy profile của bản thân |
+| PATCH  | `/me`          | Authenticated | Cập nhật fullName, phone |
+| PATCH  | `/me/password` | Authenticated | Đổi mật khẩu             |
 
 **Request / Response:**
 
@@ -62,12 +62,12 @@ Response: null
 
 > Tất cả endpoint trong section này yêu cầu role **SUPER_ADMIN**.
 
-| Method | Path | Access | Mô tả |
-|:---|:---|:---|:---|
-| GET | `/` | SUPER_ADMIN | Danh sách user (có phân trang + tìm kiếm) |
-| PUT | `/{userId}` | SUPER_ADMIN | Cập nhật fullName, phone của user bất kỳ |
-| PATCH | `/{userId}/status` | SUPER_ADMIN | Đổi trạng thái active / inactive |
-| DELETE | `/{userId}` | SUPER_ADMIN | Soft delete user |
+| Method | Path               | Access      | Mô tả                                     |
+|:-------|:-------------------|:------------|:------------------------------------------|
+| GET    | `/`                | SUPER_ADMIN | Danh sách user (có phân trang + tìm kiếm) |
+| PATCH  | `/{userId}`        | SUPER_ADMIN | Cập nhật fullName, phone của user bất kỳ  |
+| PATCH  | `/{userId}/status` | SUPER_ADMIN | Đổi trạng thái active / inactive          |
+| DELETE | `/{userId}`        | SUPER_ADMIN | Soft delete user                          |
 
 **Request / Response:**
 
@@ -95,21 +95,21 @@ Response: null   — soft delete (set deletedAt + isActive = false); user đã x
 
 ## Store — `/api/stores`
 
-| Method | Path | Access | Mô tả |
-|:---|:---|:---|:---|
-| POST | `/` | Authenticated | Tạo store mới; người tạo tự động thành OWNER |
-| GET | `/my` | Authenticated | Lấy danh sách store của bản thân |
-| GET | `/{storeId}` | Member | Lấy thông tin store |
-| PUT | `/{storeId}` | Owner / Manager | Cập nhật thông tin store |
+| Method | Path         | Access          | Mô tả                                        |
+|:-------|:-------------|:----------------|:---------------------------------------------|
+| POST   | `/`          | Authenticated   | Tạo store mới; người tạo tự động thành OWNER |
+| GET    | `/my`        | Authenticated   | Lấy danh sách store của bản thân             |
+| GET    | `/{storeId}` | Member          | Lấy thông tin store                          |
+| PUT    | `/{storeId}` | Owner / Manager | Cập nhật thông tin store                     |
 
 ### Member Management — `/api/stores/{storeId}/members`
 
-| Method | Path | Access | Mô tả |
-|:---|:---|:---|:---|
-| GET | `/` | Member | Danh sách thành viên active |
-| POST | `/` | Owner | Thêm thành viên mới |
-| PUT | `/{memberId}` | Owner | Đổi role hoặc positionTitle |
-| DELETE | `/{memberId}` | Owner | Xóa thành viên (soft delete) |
+| Method | Path          | Access | Mô tả                        |
+|:-------|:--------------|:-------|:-----------------------------|
+| GET    | `/`           | Member | Danh sách thành viên active  |
+| POST   | `/`           | Owner  | Thêm thành viên mới          |
+| PUT    | `/{memberId}` | Owner  | Đổi role hoặc positionTitle  |
+| DELETE | `/{memberId}` | Owner  | Xóa thành viên (soft delete) |
 
 **Ràng buộc member:**
 - Không thể xóa hoặc đổi role OWNER của người khác
@@ -120,14 +120,14 @@ Response: null   — soft delete (set deletedAt + isActive = false); user đã x
 
 ## Product — `/api/stores/{storeId}/products`
 
-| Method | Path | Access | Mô tả |
-|:---|:---|:---|:---|
-| GET | `/` | Member | Danh sách sản phẩm; filter `?isActive=true/false` |
-| GET | `/search?q=` | Member | Full-text search (PostgreSQL TSVECTOR) |
-| GET | `/{publicId}` | Member | Chi tiết sản phẩm |
-| POST | `/` | Owner / Manager | Tạo sản phẩm mới |
-| PUT | `/{publicId}` | Owner / Manager | Cập nhật sản phẩm; tự động ghi PriceHistory nếu giá đổi |
-| DELETE | `/{publicId}` | Owner / Manager | Soft delete |
+| Method | Path          | Access          | Mô tả                                                   |
+|:-------|:--------------|:----------------|:--------------------------------------------------------|
+| GET    | `/`           | Member          | Danh sách sản phẩm; filter `?isActive=true/false`       |
+| GET    | `/search?q=`  | Member          | Full-text search (PostgreSQL TSVECTOR)                  |
+| GET    | `/{publicId}` | Member          | Chi tiết sản phẩm                                       |
+| POST   | `/`           | Owner / Manager | Tạo sản phẩm mới                                        |
+| PUT    | `/{publicId}` | Owner / Manager | Cập nhật sản phẩm; tự động ghi PriceHistory nếu giá đổi |
+| DELETE | `/{publicId}` | Owner / Manager | Soft delete                                             |
 
 **Ràng buộc product:**
 - `sku` unique per store
@@ -137,12 +137,12 @@ Response: null   — soft delete (set deletedAt + isActive = false); user đã x
 
 ## Category — `/api/stores/{storeId}/categories`
 
-| Method | Path | Access | Mô tả |
-|:---|:---|:---|:---|
-| GET | `/` | Member | Danh sách category của store |
-| POST | `/` | Owner / Manager | Tạo category |
-| PUT | `/{publicId}` | Owner / Manager | Đổi tên / mô tả |
-| DELETE | `/{publicId}` | Owner / Manager | Soft delete |
+| Method | Path          | Access          | Mô tả                        |
+|:-------|:--------------|:----------------|:-----------------------------|
+| GET    | `/`           | Member          | Danh sách category của store |
+| POST   | `/`           | Owner / Manager | Tạo category                 |
+| PUT    | `/{publicId}` | Owner / Manager | Đổi tên / mô tả              |
+| DELETE | `/{publicId}` | Owner / Manager | Soft delete                  |
 
 **Ràng buộc:** `name` unique per store.
 
@@ -150,12 +150,12 @@ Response: null   — soft delete (set deletedAt + isActive = false); user đã x
 
 ## Unit — `/api/stores/{storeId}/units`
 
-| Method | Path | Access | Mô tả |
-|:---|:---|:---|:---|
-| GET | `/` | Member | Danh sách unit (system + store custom) |
-| POST | `/` | Owner / Manager | Tạo unit cho store |
-| PUT | `/{publicId}` | Owner / Manager | Cập nhật unit (chỉ store unit, không sửa system unit) |
-| DELETE | `/{publicId}` | Owner / Manager | Soft delete (chỉ store unit) |
+| Method | Path          | Access          | Mô tả                                                 |
+|:-------|:--------------|:----------------|:------------------------------------------------------|
+| GET    | `/`           | Member          | Danh sách unit (system + store custom)                |
+| POST   | `/`           | Owner / Manager | Tạo unit cho store                                    |
+| PUT    | `/{publicId}` | Owner / Manager | Cập nhật unit (chỉ store unit, không sửa system unit) |
+| DELETE | `/{publicId}` | Owner / Manager | Soft delete (chỉ store unit)                          |
 
 **Ràng buộc:** System unit (`store_id IS NULL`) không thể sửa hoặc xóa.
 
@@ -163,13 +163,13 @@ Response: null   — soft delete (set deletedAt + isActive = false); user đã x
 
 ## Warehouse — `/api/stores/{storeId}/warehouses`
 
-| Method | Path | Access | Mô tả |
-|:---|:---|:---|:---|
-| GET | `/` | Member | Danh sách kho |
-| GET | `/{publicId}` | Member | Chi tiết kho |
-| POST | `/` | Owner / Manager | Tạo kho mới |
-| PUT | `/{publicId}` | Owner / Manager | Cập nhật kho |
-| DELETE | `/{publicId}` | Owner / Manager | Soft delete |
+| Method | Path          | Access          | Mô tả         |
+|:-------|:--------------|:----------------|:--------------|
+| GET    | `/`           | Member          | Danh sách kho |
+| GET    | `/{publicId}` | Member          | Chi tiết kho  |
+| POST   | `/`           | Owner / Manager | Tạo kho mới   |
+| PUT    | `/{publicId}` | Owner / Manager | Cập nhật kho  |
+| DELETE | `/{publicId}` | Owner / Manager | Soft delete   |
 
 **Ràng buộc:** `name` unique per store.
 
@@ -177,11 +177,11 @@ Response: null   — soft delete (set deletedAt + isActive = false); user đã x
 
 ## Inventory — `/api/stores/{storeId}/inventory`
 
-| Method | Path | Access | Mô tả |
-|:---|:---|:---|:---|
-| GET | `/` | Member | Tồn kho toàn store; filter `?warehousePublicId=` để lọc theo kho |
-| GET | `/transactions` | Member | Lịch sử nhập/xuất kho |
-| POST | `/adjust` | Owner / Manager | Điều chỉnh tồn kho thủ công (ADJUSTMENT transaction) |
+| Method | Path            | Access          | Mô tả                                                            |
+|:-------|:----------------|:----------------|:-----------------------------------------------------------------|
+| GET    | `/`             | Member          | Tồn kho toàn store; filter `?warehousePublicId=` để lọc theo kho |
+| GET    | `/transactions` | Member          | Lịch sử nhập/xuất kho                                            |
+| POST   | `/adjust`       | Owner / Manager | Điều chỉnh tồn kho thủ công (ADJUSTMENT transaction)             |
 
 **Lưu ý:** `quantity` trong adjust có thể âm (giảm tồn kho) hoặc dương (tăng tồn kho).
 
@@ -189,14 +189,14 @@ Response: null   — soft delete (set deletedAt + isActive = false); user đã x
 
 ## Customer — `/api/stores/{storeId}/customers`
 
-| Method | Path | Access | Mô tả |
-|:---|:---|:---|:---|
-| GET | `/` | Member | Danh sách khách hàng |
-| GET | `/search?q=` | Member | Tìm kiếm theo tên / mã / SĐT |
-| GET | `/{publicId}` | Member | Chi tiết khách hàng |
-| POST | `/` | Owner / Manager | Tạo khách hàng |
-| PUT | `/{publicId}` | Owner / Manager | Cập nhật thông tin |
-| DELETE | `/{publicId}` | Owner / Manager | Soft delete |
+| Method | Path          | Access          | Mô tả                        |
+|:-------|:--------------|:----------------|:-----------------------------|
+| GET    | `/`           | Member          | Danh sách khách hàng         |
+| GET    | `/search?q=`  | Member          | Tìm kiếm theo tên / mã / SĐT |
+| GET    | `/{publicId}` | Member          | Chi tiết khách hàng          |
+| POST   | `/`           | Owner / Manager | Tạo khách hàng               |
+| PUT    | `/{publicId}` | Owner / Manager | Cập nhật thông tin           |
+| DELETE | `/{publicId}` | Owner / Manager | Soft delete                  |
 
 **Ràng buộc:** `code` unique per store. `debtBalance` chỉ thay đổi qua Order / Payment / ReturnOrder — không cập nhật trực tiếp.
 
@@ -204,14 +204,14 @@ Response: null   — soft delete (set deletedAt + isActive = false); user đã x
 
 ## Supplier — `/api/stores/{storeId}/suppliers`
 
-| Method | Path | Access | Mô tả |
-|:---|:---|:---|:---|
-| GET | `/` | Member | Danh sách nhà cung cấp |
-| GET | `/search?q=` | Member | Tìm kiếm theo tên / mã / SĐT |
-| GET | `/{publicId}` | Member | Chi tiết nhà cung cấp |
-| POST | `/` | Owner / Manager | Tạo nhà cung cấp |
-| PUT | `/{publicId}` | Owner / Manager | Cập nhật thông tin |
-| DELETE | `/{publicId}` | Owner / Manager | Soft delete |
+| Method | Path          | Access          | Mô tả                        |
+|:-------|:--------------|:----------------|:-----------------------------|
+| GET    | `/`           | Member          | Danh sách nhà cung cấp       |
+| GET    | `/search?q=`  | Member          | Tìm kiếm theo tên / mã / SĐT |
+| GET    | `/{publicId}` | Member          | Chi tiết nhà cung cấp        |
+| POST   | `/`           | Owner / Manager | Tạo nhà cung cấp             |
+| PUT    | `/{publicId}` | Owner / Manager | Cập nhật thông tin           |
+| DELETE | `/{publicId}` | Owner / Manager | Soft delete                  |
 
 **Ràng buộc:** `code` unique per store.
 
@@ -219,13 +219,13 @@ Response: null   — soft delete (set deletedAt + isActive = false); user đã x
 
 ## Order — `/api/stores/{storeId}/orders`
 
-| Method | Path | Access | Mô tả |
-|:---|:---|:---|:---|
-| GET | `/` | Member | Danh sách đơn hàng (không có items) |
-| GET | `/{publicId}` | Member | Chi tiết đơn hàng kèm items |
-| POST | `/` | Owner / Manager | Tạo đơn hàng mới (status: PENDING) |
-| PUT | `/{publicId}/complete` | Owner / Manager | Hoàn thành đơn — cộng debt vào khách hàng |
-| PUT | `/{publicId}/cancel` | Owner / Manager | Hủy đơn — hoàn lại tồn kho |
+| Method | Path                   | Access          | Mô tả                                     |
+|:-------|:-----------------------|:----------------|:------------------------------------------|
+| GET    | `/`                    | Member          | Danh sách đơn hàng (không có items)       |
+| GET    | `/{publicId}`          | Member          | Chi tiết đơn hàng kèm items               |
+| POST   | `/`                    | Owner / Manager | Tạo đơn hàng mới (status: PENDING)        |
+| PUT    | `/{publicId}/complete` | Owner / Manager | Hoàn thành đơn — cộng debt vào khách hàng |
+| PUT    | `/{publicId}/cancel`   | Owner / Manager | Hủy đơn — hoàn lại tồn kho                |
 
 **Luồng trạng thái:** `PENDING → COMPLETED | CANCELLED`
 
@@ -239,13 +239,13 @@ Response: null   — soft delete (set deletedAt + isActive = false); user đã x
 
 ## Return Order — `/api/stores/{storeId}/returns`
 
-| Method | Path | Access | Mô tả |
-|:---|:---|:---|:---|
-| GET | `/` | Member | Danh sách đơn trả hàng |
-| GET | `/{publicId}` | Member | Chi tiết đơn trả kèm items |
-| POST | `/` | Owner / Manager | Tạo đơn trả (status: PENDING) |
-| PUT | `/{publicId}/complete` | Owner / Manager | Hoàn thành trả — hoàn kho + giảm debt |
-| PUT | `/{publicId}/cancel` | Owner / Manager | Hủy đơn trả |
+| Method | Path                   | Access          | Mô tả                                 |
+|:-------|:-----------------------|:----------------|:--------------------------------------|
+| GET    | `/`                    | Member          | Danh sách đơn trả hàng                |
+| GET    | `/{publicId}`          | Member          | Chi tiết đơn trả kèm items            |
+| POST   | `/`                    | Owner / Manager | Tạo đơn trả (status: PENDING)         |
+| PUT    | `/{publicId}/complete` | Owner / Manager | Hoàn thành trả — hoàn kho + giảm debt |
+| PUT    | `/{publicId}/cancel`   | Owner / Manager | Hủy đơn trả                           |
 
 **Ràng buộc:**
 - `returnCode` unique per store
@@ -255,13 +255,13 @@ Response: null   — soft delete (set deletedAt + isActive = false); user đã x
 
 ## Purchase Order — `/api/stores/{storeId}/purchases`
 
-| Method | Path | Access | Mô tả |
-|:---|:---|:---|:---|
-| GET | `/` | Member | Danh sách đơn nhập hàng |
-| GET | `/{publicId}` | Member | Chi tiết đơn nhập kèm items |
-| POST | `/` | Owner / Manager | Tạo đơn nhập (status: PENDING) |
-| PUT | `/{publicId}/receive` | Owner / Manager | Nhận hàng — nhập kho + cộng debt nhà cung cấp |
-| PUT | `/{publicId}/cancel` | Owner / Manager | Hủy đơn nhập |
+| Method | Path                  | Access          | Mô tả                                         |
+|:-------|:----------------------|:----------------|:----------------------------------------------|
+| GET    | `/`                   | Member          | Danh sách đơn nhập hàng                       |
+| GET    | `/{publicId}`         | Member          | Chi tiết đơn nhập kèm items                   |
+| POST   | `/`                   | Owner / Manager | Tạo đơn nhập (status: PENDING)                |
+| PUT    | `/{publicId}/receive` | Owner / Manager | Nhận hàng — nhập kho + cộng debt nhà cung cấp |
+| PUT    | `/{publicId}/cancel`  | Owner / Manager | Hủy đơn nhập                                  |
 
 **Luồng trạng thái:** `PENDING → RECEIVED | CANCELLED`
 
@@ -273,11 +273,11 @@ Response: null   — soft delete (set deletedAt + isActive = false); user đã x
 
 ## Payment — `/api/stores/{storeId}/payments`
 
-| Method | Path | Access | Mô tả |
-|:---|:---|:---|:---|
-| GET | `/` | Member | Danh sách thu/chi |
-| GET | `/{publicId}` | Member | Chi tiết payment |
-| POST | `/` | Owner / Manager | Ghi nhận thanh toán |
+| Method | Path          | Access          | Mô tả               |
+|:-------|:--------------|:----------------|:--------------------|
+| GET    | `/`           | Member          | Danh sách thu/chi   |
+| GET    | `/{publicId}` | Member          | Chi tiết payment    |
+| POST   | `/`           | Owner / Manager | Ghi nhận thanh toán |
 
 **Ràng buộc:**
 - Payment phải thuộc đúng một trong hai: `customerPublicId` hoặc `supplierPublicId` (không được cả hai, không được để trống cả hai)
