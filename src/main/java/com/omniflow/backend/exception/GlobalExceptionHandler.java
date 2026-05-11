@@ -5,6 +5,7 @@ import com.omniflow.backend.dto.response.common.ErrorCode;
 import com.omniflow.backend.dto.response.common.ErrorDetail;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.authentication.DisabledException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
@@ -57,6 +58,13 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ApiResult<?>> handleForbidden(ForbiddenException ex) {
         return ResponseEntity.status(HttpStatus.FORBIDDEN).body(
                 ApiResult.fail(ErrorDetail.of(ex.getErrorCode(), ex.getMessage()))
+        );
+    }
+
+    @ExceptionHandler(AccessDeniedException.class)
+    public ResponseEntity<ApiResult<?>> handleAccessDenied(AccessDeniedException ex) {
+        return ResponseEntity.status(HttpStatus.FORBIDDEN).body(
+                ApiResult.fail(ErrorDetail.of(ErrorCode.FORBIDDEN, "Access denied"))
         );
     }
 
