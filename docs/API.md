@@ -33,6 +33,66 @@ Response: AuthResponse { accessToken, tokenType, expiresIn, user, storeMembershi
 
 ---
 
+## User — `/api/users`
+
+| Method | Path | Access | Mô tả |
+|:---|:---|:---|:---|
+| GET | `/me` | Authenticated | Lấy profile của bản thân |
+| PATCH | `/me` | Authenticated | Cập nhật fullName, phone |
+| PATCH | `/me/password` | Authenticated | Đổi mật khẩu |
+
+**Request / Response:**
+
+```
+GET /api/users/me
+Response: UserSummaryResponse { id, username, email, fullName, phone, isActive }
+
+PATCH /api/users/me
+Body: { username, email, fullName, phone? }
+Response: UserSummaryResponse
+
+PATCH /api/users/me/password
+Body: { currentPassword, newPassword }   — newPassword tối thiểu 6 ký tự
+Response: null
+```
+
+---
+
+## Admin — User Management — `/api/admin/users`
+
+> Tất cả endpoint trong section này yêu cầu role **SUPER_ADMIN**.
+
+| Method | Path | Access | Mô tả |
+|:---|:---|:---|:---|
+| GET | `/` | SUPER_ADMIN | Danh sách user (có phân trang + tìm kiếm) |
+| PUT | `/{userId}` | SUPER_ADMIN | Cập nhật fullName, phone của user bất kỳ |
+| PATCH | `/{userId}/status` | SUPER_ADMIN | Đổi trạng thái active / inactive |
+| DELETE | `/{userId}` | SUPER_ADMIN | Soft delete user |
+
+**Request / Response:**
+
+```
+GET /api/admin/users?q=&page=0&size=20
+  q    — tìm theo username / email / fullName (optional)
+  page — số trang, bắt đầu từ 0 (default: 0)
+  size — số bản ghi mỗi trang (default: 20)
+Response: PagedResult<UserAdminResponse> { content, page, size, totalElements, totalPages }
+  UserAdminResponse { id, username, email, fullName, phone, isActive, createdAt, deletedAt }
+
+PUT /api/admin/users/{userId}
+Body: { username, email, fullName, phone? }
+Response: UserAdminResponse
+
+PUT /api/admin/users/{userId}/status
+Body: { "isActive": true | false }
+Response: UserAdminResponse
+
+DELETE /api/admin/users/{userId}
+Response: null   — soft delete (set deletedAt + isActive = false); user đã xóa không hiện trong GET
+```
+
+---
+
 ## Store — `/api/stores`
 
 | Method | Path | Access | Mô tả |
