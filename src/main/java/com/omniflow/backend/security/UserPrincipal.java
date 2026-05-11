@@ -25,5 +25,13 @@ package com.omniflow.backend.security;
  *
  * @param userId   internal ID của user trong DB (từ claim {@code userId} trong JWT)
  * @param username tên đăng nhập (từ claim {@code sub} trong JWT)
+ * @param roles    global roles của user (từ claim {@code roles} trong JWT), ví dụ ["SUPER_ADMIN"]
  */
-public record UserPrincipal(Long userId, String username) {}
+import java.util.List;
+
+public record UserPrincipal(Long userId, String username, List<String> roles) {
+
+    public boolean hasRole(String role) {
+        return roles != null && roles.contains(role);
+    }
+}

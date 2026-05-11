@@ -113,7 +113,7 @@ public class JwtAuthFilter extends OncePerRequestFilter {
                 .map(r -> new SimpleGrantedAuthority("ROLE_" + r))
                 .toList();
 
-        UserPrincipal principal = new UserPrincipal(userId, username);
+        UserPrincipal principal = new UserPrincipal(userId, username, roles);
 
         // credentials = null vì đã xác thực qua token, không cần password
         UsernamePasswordAuthenticationToken authToken =
