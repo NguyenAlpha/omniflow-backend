@@ -26,13 +26,13 @@ StoreAccessEvaluator
 
 ## 2. Phân loại Role
 
-| Role | Scope | Lưu ở đâu khi check |
-|:---|:---|:---|
-| `SUPER_ADMIN` | Global | JWT claim `roles` → SecurityContext authorities |
-| `SUPPORT` | Global | JWT claim `roles` → SecurityContext authorities |
-| `OWNER` | Store-scoped | Redis / DB — không nhúng vào JWT |
-| `MANAGER` | Store-scoped | Redis / DB — không nhúng vào JWT |
-| `STAFF` | Store-scoped | Redis / DB — không nhúng vào JWT |
+| Role          | Scope        | Lưu ở đâu khi check                             |
+|:--------------|:-------------|:------------------------------------------------|
+| `SUPER_ADMIN` | Global       | JWT claim `roles` → SecurityContext authorities |
+| `SUPPORT`     | Global       | JWT claim `roles` → SecurityContext authorities |
+| `OWNER`       | Store-scoped | Redis / DB — không nhúng vào JWT                |
+| `MANAGER`     | Store-scoped | Redis / DB — không nhúng vào JWT                |
+| `STAFF`       | Store-scoped | Redis / DB — không nhúng vào JWT                |
 
 **Tại sao store-scoped roles không vào JWT:**
 User có thể là OWNER ở store A, STAFF ở store B. Nhúng tất cả vào token sẽ làm token phình to
@@ -50,9 +50,16 @@ JWT claims
   userId  → Long
   roles   → List<String> (VD: ["SUPER_ADMIN"])
 ```
+Tạo `Authentication` dựa trên `UserNamePasswordAuthenticationToken` với:
 
-Principal trong `SecurityContext` là `UserPrincipal(userId, username)` — không phải `User` entity.
-Controllers inject bằng `@AuthenticationPrincipal UserPrincipal currentUser`.
+1) Principal trong `SecurityContext` là `UserPrincipal(userId, username, List roles)` — không phải `User` entity.
+Controllers inject bằng `@AuthenticationPrincipal UserPrincipal currentUser`. dùng để truy cập `userId` và `username` và check global role (SUPER_ADMIN, SUPPORT).
+
+2) Authorities là `List<GrantedAuthority>` được map từ claim `roles` (VD: "SUPER_ADMIN" → "ROLE_SUPER_ADMIN").
+dùng để phân quyền global (SUPER_ADMIN, SUPPORT). dùng trong `@PreAuthorize("hasRole('SUPER_ADMIN')")` hoặc check thủ công trong code.
+
+3) Request được SetDitails bằng `WebAuthenticationDetailsSource` để có access đến `remoteAddress` và `sessionId` nếu cần.
+dùng để log hoặc kiểm tra thêm nếu muốn (VD: chặn login từ IP lạ).
 
 ---
 
