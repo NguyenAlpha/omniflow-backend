@@ -12,7 +12,7 @@ Request
   ↓
 JwtAuthFilter           — extract UserPrincipal từ JWT claims (0 DB call)
   ↓
-SecurityContext         — lưu UserPrincipal + global role authorities
+SecurityContext         — lưu UserPrincipal + global role authorities + request
   ↓
 @PreAuthorize           — gọi StoreAccessEvaluator để check store-scoped role
   ↓
