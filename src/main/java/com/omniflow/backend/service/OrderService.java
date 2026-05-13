@@ -15,7 +15,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
-import java.time.LocalDateTime;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
@@ -153,8 +153,8 @@ public class OrderService {
         User userRef = userRepository.getReferenceById(currentUser.userId());
         order.setStatus("COMPLETED");
         order.setLastModifiedByUser(userRef);
-        order.setLastModifiedAt(LocalDateTime.now());
-        order.setUpdatedAt(LocalDateTime.now());
+        order.setLastModifiedAt(Instant.now());
+        order.setUpdatedAt(Instant.now());
 
         return toResponse(orderRepository.save(order), List.of());
     }
@@ -182,8 +182,8 @@ public class OrderService {
 
         order.setStatus("CANCELLED");
         order.setLastModifiedByUser(userRef);
-        order.setLastModifiedAt(LocalDateTime.now());
-        order.setUpdatedAt(LocalDateTime.now());
+        order.setLastModifiedAt(Instant.now());
+        order.setUpdatedAt(Instant.now());
 
         return toResponse(orderRepository.save(order), order.getOrderItems());
     }
@@ -199,8 +199,8 @@ public class OrderService {
         }
 
         inv.setQuantity(inv.getQuantity().subtract(quantity));
-        inv.setLastModifiedAt(LocalDateTime.now());
-        inv.setUpdatedAt(LocalDateTime.now());
+        inv.setLastModifiedAt(Instant.now());
+        inv.setUpdatedAt(Instant.now());
         inv.setLastModifiedByUser(userRef);
         inventoryRepository.save(inv);
 
@@ -220,8 +220,8 @@ public class OrderService {
                         .lastModifiedByUser(userRef).build());
 
         inv.setQuantity(inv.getQuantity().add(quantity));
-        inv.setLastModifiedAt(LocalDateTime.now());
-        inv.setUpdatedAt(LocalDateTime.now());
+        inv.setLastModifiedAt(Instant.now());
+        inv.setUpdatedAt(Instant.now());
         inv.setLastModifiedByUser(userRef);
         inventoryRepository.save(inv);
 

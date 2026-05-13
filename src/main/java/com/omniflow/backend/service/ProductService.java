@@ -14,7 +14,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
-import java.time.LocalDateTime;
+import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 
@@ -107,8 +107,8 @@ public class ProductService {
         product.setMinStockLevel(request.minStockLevel());
         product.setIsActive(request.isActive());
         product.setLastModifiedByUser(userRef);
-        product.setLastModifiedAt(LocalDateTime.now());
-        product.setUpdatedAt(LocalDateTime.now());
+        product.setLastModifiedAt(Instant.now());
+        product.setUpdatedAt(Instant.now());
 
         return toResponse(productRepository.save(product));
     }
@@ -117,7 +117,7 @@ public class ProductService {
     public void delete(Long storeId, UUID publicId, UserPrincipal currentUser) {
         findStoreOrThrow(storeId);
         Product product = findProductOrThrow(publicId);
-        product.setDeletedAt(LocalDateTime.now());
+        product.setDeletedAt(Instant.now());
         productRepository.save(product);
     }
 

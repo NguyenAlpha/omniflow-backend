@@ -14,7 +14,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
-import java.time.LocalDateTime;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
@@ -135,8 +135,8 @@ public class PurchaseOrderService {
 
         po.setStatus("RECEIVED");
         po.setLastModifiedByUser(userRef);
-        po.setLastModifiedAt(LocalDateTime.now());
-        po.setUpdatedAt(LocalDateTime.now());
+        po.setLastModifiedAt(Instant.now());
+        po.setUpdatedAt(Instant.now());
 
         return toResponse(purchaseOrderRepository.save(po), po.getPurchaseOrderItems());
     }
@@ -154,8 +154,8 @@ public class PurchaseOrderService {
         User userRef = userRepository.getReferenceById(currentUser.userId());
         po.setStatus("CANCELLED");
         po.setLastModifiedByUser(userRef);
-        po.setLastModifiedAt(LocalDateTime.now());
-        po.setUpdatedAt(LocalDateTime.now());
+        po.setLastModifiedAt(Instant.now());
+        po.setUpdatedAt(Instant.now());
 
         return toResponse(purchaseOrderRepository.save(po), List.of());
     }
@@ -169,8 +169,8 @@ public class PurchaseOrderService {
                         .lastModifiedByUser(userRef).build());
 
         inv.setQuantity(inv.getQuantity().add(quantity));
-        inv.setLastModifiedAt(LocalDateTime.now());
-        inv.setUpdatedAt(LocalDateTime.now());
+        inv.setLastModifiedAt(Instant.now());
+        inv.setUpdatedAt(Instant.now());
         inv.setLastModifiedByUser(userRef);
         inventoryRepository.save(inv);
 

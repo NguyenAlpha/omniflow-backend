@@ -15,7 +15,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.time.LocalDateTime;
+import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 
@@ -76,8 +76,8 @@ public class WarehouseService {
         warehouse.setAddress(request.address());
         if (request.isActive() != null) warehouse.setIsActive(request.isActive());
         warehouse.setLastModifiedByUser(userRef);
-        warehouse.setLastModifiedAt(LocalDateTime.now());
-        warehouse.setUpdatedAt(LocalDateTime.now());
+        warehouse.setLastModifiedAt(Instant.now());
+        warehouse.setUpdatedAt(Instant.now());
 
         return toResponse(warehouseRepository.save(warehouse));
     }
@@ -86,7 +86,7 @@ public class WarehouseService {
     public void delete(Long storeId, UUID publicId, UserPrincipal currentUser) {
         findStoreOrThrow(storeId);
         Warehouse warehouse = findWarehouseOrThrow(publicId);
-        warehouse.setDeletedAt(LocalDateTime.now());
+        warehouse.setDeletedAt(Instant.now());
         warehouseRepository.save(warehouse);
     }
 

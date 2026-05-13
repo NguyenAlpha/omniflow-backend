@@ -17,7 +17,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
-import java.time.LocalDateTime;
+import java.time.Instant;
 
 @Service
 @RequiredArgsConstructor
@@ -40,7 +40,7 @@ public class UserService {
         user.setEmail(request.email());
         user.setFullName(request.fullName());
         user.setPhone(request.phone());
-        user.setUpdatedAt(LocalDateTime.now());
+        user.setUpdatedAt(Instant.now());
         return toResponse(userRepository.save(user));
     }
 
@@ -51,7 +51,7 @@ public class UserService {
             throw new IllegalArgumentException("Current password is incorrect");
         }
         user.setPasswordHash(passwordEncoder.encode(request.newPassword()));
-        user.setUpdatedAt(LocalDateTime.now());
+        user.setUpdatedAt(Instant.now());
         userRepository.save(user);
     }
 
@@ -65,7 +65,7 @@ public class UserService {
         user.setEmail(request.email());
         user.setFullName(request.fullName());
         user.setPhone(request.phone());
-        user.setUpdatedAt(LocalDateTime.now());
+        user.setUpdatedAt(Instant.now());
         return toAdminResponse(userRepository.save(user));
     }
 
@@ -82,7 +82,7 @@ public class UserService {
     public UserAdminResponse setUserStatus(Long userId, SetUserStatusRequest request) {
         User user = findOrThrow(userId);
         user.setIsActive(request.isActive());
-        user.setUpdatedAt(LocalDateTime.now());
+        user.setUpdatedAt(Instant.now());
         return toAdminResponse(userRepository.save(user));
     }
 
@@ -92,9 +92,9 @@ public class UserService {
         if (user.getDeletedAt() != null) {
             throw new IllegalArgumentException("User already deleted");
         }
-        user.setDeletedAt(LocalDateTime.now());
+        user.setDeletedAt(Instant.now());
         user.setIsActive(false);
-        user.setUpdatedAt(LocalDateTime.now());
+        user.setUpdatedAt(Instant.now());
         userRepository.save(user);
     }
 

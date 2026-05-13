@@ -17,7 +17,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.time.LocalDateTime;
+import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 
@@ -89,8 +89,8 @@ public class SupplierService {
         supplier.setEmail(request.email());
         supplier.setAddress(request.address());
         supplier.setLastModifiedByUser(userRef);
-        supplier.setLastModifiedAt(LocalDateTime.now());
-        supplier.setUpdatedAt(LocalDateTime.now());
+        supplier.setLastModifiedAt(Instant.now());
+        supplier.setUpdatedAt(Instant.now());
 
         return toResponse(supplierRepository.save(supplier));
     }
@@ -99,7 +99,7 @@ public class SupplierService {
     public void delete(Long storeId, UUID publicId, UserPrincipal currentUser) {
         findStoreOrThrow(storeId);
         Supplier supplier = findSupplierOrThrow(publicId);
-        supplier.setDeletedAt(LocalDateTime.now());
+        supplier.setDeletedAt(Instant.now());
         supplierRepository.save(supplier);
     }
 

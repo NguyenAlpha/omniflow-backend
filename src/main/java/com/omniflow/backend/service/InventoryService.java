@@ -13,7 +13,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
-import java.time.LocalDateTime;
+import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 
@@ -75,8 +75,8 @@ public class InventoryService {
                         .build());
 
         inv.setQuantity(inv.getQuantity().add(request.quantity()));
-        inv.setLastModifiedAt(LocalDateTime.now());
-        inv.setUpdatedAt(LocalDateTime.now());
+        inv.setLastModifiedAt(Instant.now());
+        inv.setUpdatedAt(Instant.now());
         inv.setLastModifiedByUser(userRef);
         inventoryRepository.save(inv);
 

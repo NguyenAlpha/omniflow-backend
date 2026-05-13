@@ -24,7 +24,8 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.time.LocalDateTime;
+import java.time.Instant;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -189,7 +190,7 @@ public class StoreService {
             throw new ForbiddenException(ErrorCode.FORBIDDEN, "Cannot remove the OWNER from store");
         }
 
-        LocalDateTime now = LocalDateTime.now();
+        Instant now = Instant.now();
         member.setDeletedAt(now);
         storeMemberRepository.save(member);
 

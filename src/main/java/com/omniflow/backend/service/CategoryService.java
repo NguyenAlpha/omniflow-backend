@@ -15,7 +15,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.time.LocalDateTime;
+import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 
@@ -73,8 +73,8 @@ public class CategoryService {
         category.setName(request.name());
         category.setDescription(request.description());
         category.setLastModifiedByUser(userRef);
-        category.setLastModifiedAt(LocalDateTime.now());
-        category.setUpdatedAt(LocalDateTime.now());
+        category.setLastModifiedAt(Instant.now());
+        category.setUpdatedAt(Instant.now());
 
         return toResponse(categoryRepository.save(category));
     }
@@ -86,7 +86,7 @@ public class CategoryService {
         Category category = categoryRepository.findByPublicId(publicId)
                 .orElseThrow(() -> new ResourceNotFoundException(ErrorCode.CATEGORY_NOT_FOUND, "Category not found"));
 
-        category.setDeletedAt(LocalDateTime.now());
+        category.setDeletedAt(Instant.now());
         categoryRepository.save(category);
     }
 

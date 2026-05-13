@@ -14,7 +14,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
-import java.time.LocalDateTime;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
@@ -136,8 +136,8 @@ public class ReturnOrderService {
 
         returnOrder.setStatus("COMPLETED");
         returnOrder.setLastModifiedByUser(userRef);
-        returnOrder.setLastModifiedAt(LocalDateTime.now());
-        returnOrder.setUpdatedAt(LocalDateTime.now());
+        returnOrder.setLastModifiedAt(Instant.now());
+        returnOrder.setUpdatedAt(Instant.now());
 
         return toResponse(returnOrderRepository.save(returnOrder), returnOrder.getReturnOrderItems());
     }
@@ -155,8 +155,8 @@ public class ReturnOrderService {
         User userRef = userRepository.getReferenceById(currentUser.userId());
         returnOrder.setStatus("CANCELLED");
         returnOrder.setLastModifiedByUser(userRef);
-        returnOrder.setLastModifiedAt(LocalDateTime.now());
-        returnOrder.setUpdatedAt(LocalDateTime.now());
+        returnOrder.setLastModifiedAt(Instant.now());
+        returnOrder.setUpdatedAt(Instant.now());
 
         return toResponse(returnOrderRepository.save(returnOrder), List.of());
     }
@@ -170,8 +170,8 @@ public class ReturnOrderService {
                         .lastModifiedByUser(userRef).build());
 
         inv.setQuantity(inv.getQuantity().add(quantity));
-        inv.setLastModifiedAt(LocalDateTime.now());
-        inv.setUpdatedAt(LocalDateTime.now());
+        inv.setLastModifiedAt(Instant.now());
+        inv.setUpdatedAt(Instant.now());
         inv.setLastModifiedByUser(userRef);
         inventoryRepository.save(inv);
 

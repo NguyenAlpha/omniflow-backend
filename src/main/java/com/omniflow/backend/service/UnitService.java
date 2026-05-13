@@ -16,7 +16,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.time.LocalDateTime;
+import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 
@@ -77,7 +77,7 @@ public class UnitService {
         unit.setName(request.name());
         unit.setAbbreviation(request.abbreviation());
         unit.setLastModifiedByUser(userRef);
-        unit.setLastModifiedAt(LocalDateTime.now());
+        unit.setLastModifiedAt(Instant.now());
 
         return toResponse(unitRepository.save(unit));
     }
@@ -93,7 +93,7 @@ public class UnitService {
             throw new ForbiddenException(ErrorCode.FORBIDDEN, "Cannot delete system units");
         }
 
-        unit.setDeletedAt(LocalDateTime.now());
+        unit.setDeletedAt(Instant.now());
         unitRepository.save(unit);
     }
 
