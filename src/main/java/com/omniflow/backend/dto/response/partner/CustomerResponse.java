@@ -1,7 +1,7 @@
 package com.omniflow.backend.dto.response.partner;
 
 import java.math.BigDecimal;
-import java.time.LocalDateTime;
+import java.time.Instant;
 import java.util.UUID;
 
 public record CustomerResponse(
@@ -15,9 +15,9 @@ public record CustomerResponse(
     String address,
     BigDecimal debtBalance,
     Long syncVersion,
-    LocalDateTime lastModifiedAt,
-    LocalDateTime createdAt,
-    LocalDateTime updatedAt
+    Instant lastModifiedAt,
+    Instant createdAt,
+    Instant updatedAt
 ) {
 }
 

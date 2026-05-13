@@ -1,6 +1,6 @@
 package com.omniflow.backend.dto.response.warehouse;
 
-import java.time.LocalDateTime;
+import java.time.Instant;
 import java.util.UUID;
 
 public record WarehouseResponse(
@@ -11,8 +11,8 @@ public record WarehouseResponse(
     String address,
     Boolean isActive,
     Long syncVersion,
-    LocalDateTime lastModifiedAt,
-    LocalDateTime createdAt,
-    LocalDateTime updatedAt
+    Instant lastModifiedAt,
+    Instant createdAt,
+    Instant updatedAt
 ) {
 }

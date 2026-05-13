@@ -1,6 +1,6 @@
 package com.omniflow.backend.dto.response.user;
 
-import java.time.LocalDateTime;
+import java.time.Instant;
 
 public record UserAdminResponse(
     Long id,
@@ -9,7 +9,7 @@ public record UserAdminResponse(
     String fullName,
     String phone,
     Boolean isActive,
-    LocalDateTime createdAt,
-    LocalDateTime deletedAt
+    Instant createdAt,
+    Instant deletedAt
 ) {
 }

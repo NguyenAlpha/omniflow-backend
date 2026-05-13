@@ -2,7 +2,7 @@ package com.omniflow.backend.dto.response.store;
 
 import com.omniflow.backend.entity.enums.RoleName;
 import java.time.LocalDate;
-import java.time.LocalDateTime;
+import java.time.Instant;
 import java.util.UUID;
 
 public record StoreMemberResponse(
@@ -16,6 +16,6 @@ public record StoreMemberResponse(
     LocalDate joinedDate,
     Boolean isActive,
     Long syncVersion,
-    LocalDateTime lastModifiedAt
+    Instant lastModifiedAt
 ) {
 }

@@ -1,6 +1,6 @@
 package com.omniflow.backend.dto.response.store;
 
-import java.time.LocalDateTime;
+import java.time.Instant;
 
 public record SubscriptionResponse(
     Long id,
@@ -12,9 +12,9 @@ public record SubscriptionResponse(
     Integer maxProducts,
     Integer maxWarehouses,
     Integer maxOrdersPerMonth,
-    LocalDateTime startedAt,
-    LocalDateTime expiresAt,
-    LocalDateTime createdAt,
-    LocalDateTime updatedAt
+    Instant startedAt,
+    Instant expiresAt,
+    Instant createdAt,
+    Instant updatedAt
 ) {
 }

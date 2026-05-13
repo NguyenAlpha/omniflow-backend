@@ -1,7 +1,7 @@
 package com.omniflow.backend.dto.response.catalog;
 
 import java.math.BigDecimal;
-import java.time.LocalDateTime;
+import java.time.Instant;
 import java.util.UUID;
 
 public record PriceHistoryResponse(
@@ -14,6 +14,6 @@ public record PriceHistoryResponse(
     BigDecimal oldSellingPrice,
     BigDecimal newSellingPrice,
     String changedByUsername,
-    LocalDateTime changedAt
+    Instant changedAt
 ) {
 }

@@ -1,7 +1,7 @@
 package com.omniflow.backend.dto.response.inventory;
 
 import java.math.BigDecimal;
-import java.time.LocalDateTime;
+import java.time.Instant;
 import java.util.UUID;
 
 public record InventoryTransactionResponse(
@@ -17,6 +17,6 @@ public record InventoryTransactionResponse(
     UUID purchaseOrderPublicId,
     String note,
     String createdByUsername,
-    LocalDateTime createdAt
+    Instant createdAt
 ) {
 }

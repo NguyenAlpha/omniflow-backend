@@ -1,6 +1,6 @@
 package com.omniflow.backend.dto.response.sync;
 
-import java.time.LocalDateTime;
+import java.time.Instant;
 import java.util.UUID;
 
 public record SyncChangeResponse(
@@ -8,7 +8,7 @@ public record SyncChangeResponse(
     UUID recordPublicId,
     String operation,
     Long syncVersion,
-    LocalDateTime changedAt,
+    Instant changedAt,
     UUID changedByDevice
 ) {
 }

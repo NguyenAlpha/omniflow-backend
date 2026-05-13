@@ -1,7 +1,7 @@
 package com.omniflow.backend.dto.response.order;
 
 import java.math.BigDecimal;
-import java.time.LocalDateTime;
+import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 
@@ -22,9 +22,9 @@ public record OrderResponse(
     BigDecimal debtAmount,
     String note,
     Long syncVersion,
-    LocalDateTime lastModifiedAt,
-    LocalDateTime createdAt,
-    LocalDateTime updatedAt,
+    Instant lastModifiedAt,
+    Instant createdAt,
+    Instant updatedAt,
     List<OrderItemResponse> items
 ) {
 }

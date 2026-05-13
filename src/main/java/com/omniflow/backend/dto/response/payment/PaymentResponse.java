@@ -1,7 +1,7 @@
 package com.omniflow.backend.dto.response.payment;
 
 import java.math.BigDecimal;
-import java.time.LocalDateTime;
+import java.time.Instant;
 import java.util.UUID;
 
 public record PaymentResponse(
@@ -14,8 +14,8 @@ public record PaymentResponse(
     String paymentMethod,
     String note,
     Long syncVersion,
-    LocalDateTime lastModifiedAt,
-    LocalDateTime createdAt
+    Instant lastModifiedAt,
+    Instant createdAt
 ) {
 }
 

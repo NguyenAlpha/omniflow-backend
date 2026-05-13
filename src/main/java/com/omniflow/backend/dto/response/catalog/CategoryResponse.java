@@ -1,6 +1,6 @@
 package com.omniflow.backend.dto.response.catalog;
 
-import java.time.LocalDateTime;
+import java.time.Instant;
 import java.util.UUID;
 
 public record CategoryResponse(
@@ -10,9 +10,9 @@ public record CategoryResponse(
     String name,
     String description,
     Long syncVersion,
-    LocalDateTime lastModifiedAt,
-    LocalDateTime createdAt,
-    LocalDateTime updatedAt
+    Instant lastModifiedAt,
+    Instant createdAt,
+    Instant updatedAt
 ) {
 }
 

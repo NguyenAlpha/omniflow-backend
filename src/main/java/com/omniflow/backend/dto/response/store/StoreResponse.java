@@ -1,6 +1,6 @@
 package com.omniflow.backend.dto.response.store;
 
-import java.time.LocalDateTime;
+import java.time.Instant;
 
 public record StoreResponse(
     Long id,
@@ -9,8 +9,8 @@ public record StoreResponse(
     String phone,
     String email,
     Boolean isActive,
-    LocalDateTime createdAt,
-    LocalDateTime updatedAt
+    Instant createdAt,
+    Instant updatedAt
 ) {
 }
 

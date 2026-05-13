@@ -1,7 +1,7 @@
 package com.omniflow.backend.dto.response.inventory;
 
 import java.math.BigDecimal;
-import java.time.LocalDateTime;
+import java.time.Instant;
 import java.util.UUID;
 
 public record InventoryResponse(
@@ -14,7 +14,7 @@ public record InventoryResponse(
     String warehouseName,
     BigDecimal quantity,
     Long syncVersion,
-    LocalDateTime lastModifiedAt,
-    LocalDateTime updatedAt
+    Instant lastModifiedAt,
+    Instant updatedAt
 ) {
 }
