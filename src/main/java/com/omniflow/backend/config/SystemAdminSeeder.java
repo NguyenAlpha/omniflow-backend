@@ -15,7 +15,7 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.time.LocalDateTime;
+import java.time.Instant;
 
 @Component
 @RequiredArgsConstructor
@@ -74,8 +74,8 @@ public class SystemAdminSeeder implements ApplicationRunner {
                         .fullName(fullName)
                         .phone(isBlank(phone) ? null : phone)
                         .isActive(active)
-                        .createdAt(LocalDateTime.now())
-                        .updatedAt(LocalDateTime.now())
+                        .createdAt(Instant.now())
+                        .updatedAt(Instant.now())
                         .build()));
 
         if (userRoleRepository.existsByUserIdAndStoreIsNullAndDeletedAtIsNull(user.getId())) {
@@ -90,8 +90,8 @@ public class SystemAdminSeeder implements ApplicationRunner {
                 .role(roleEntity)
                 .store(null)
                 .isActive(active)
-                .createdAt(LocalDateTime.now())
-                .updatedAt(LocalDateTime.now())
+                .createdAt(Instant.now())
+                .updatedAt(Instant.now())
                 .build());
     }
 
