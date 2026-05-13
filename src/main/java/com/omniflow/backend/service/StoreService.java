@@ -1,7 +1,8 @@
 package com.omniflow.backend.service;
 
+import com.omniflow.backend.dto.request.store.AddMemberRequest;
 import com.omniflow.backend.dto.request.store.StoreCreateRequest;
-import com.omniflow.backend.dto.request.store.StoreMemberUpsertRequest;
+import com.omniflow.backend.dto.request.store.UpdateMemberRequest;
 import com.omniflow.backend.dto.response.store.StoreMemberResponse;
 import com.omniflow.backend.dto.response.store.StoreResponse;
 import com.omniflow.backend.entity.Role;
@@ -65,7 +66,7 @@ public class StoreService {
 
         userRoleRepository.save(UserRole.builder()
                 .user(userRef)
-                .role(findRoleOrThrow(RoleName.OWNER))
+                .role(findRoleOrThrow(RoleName.ROLE_OWNER))
                 .store(store)
                 .isActive(true)
                 .build());
@@ -74,12 +75,19 @@ public class StoreService {
     }
 
     @Transactional(readOnly = true)
-    public StoreResponse getStore(Long storeId, UserPrincipal currentUser) {
+    public StoreResponse getStore(Long storeId) {
         return toStoreResponse(findStoreOrThrow(storeId));
     }
 
     @Transactional(readOnly = true)
-    public List<StoreResponse> getMyStores(UserPrincipal currentUser) {
+    public List<StoreResponse> getStores(UserPrincipal currentUser) {
+        boolean isAdmin = currentUser.hasRole(RoleName.ROLE_SUPER_ADMIN.name())
+                || currentUser.hasRole(RoleName.ROLE_SUPPORT.name());
+        if (isAdmin) {
+            return storeRepository.findAll().stream()
+                    .map(this::toStoreResponse)
+                    .toList();
+        }
         return storeMemberRepository.findByUserIdAndDeletedAtIsNull(currentUser.userId())
                 .stream()
                 .map(m -> toStoreResponse(m.getStore()))
@@ -87,7 +95,14 @@ public class StoreService {
     }
 
     @Transactional
-    public StoreResponse updateStore(Long storeId, StoreCreateRequest request, UserPrincipal currentUser) {
+    public StoreResponse setStoreStatus(Long storeId, boolean isActive) {
+        Store store = findStoreOrThrow(storeId);
+        store.setIsActive(isActive);
+        return toStoreResponse(storeRepository.save(store));
+    }
+
+    @Transactional
+    public StoreResponse updateStore(Long storeId, StoreCreateRequest request) {
         Store store = findStoreOrThrow(storeId);
         store.setName(request.name());
         store.setAddress(request.address());
@@ -97,7 +112,7 @@ public class StoreService {
     }
 
     @Transactional(readOnly = true)
-    public List<StoreMemberResponse> getMembers(Long storeId, UserPrincipal currentUser) {
+    public List<StoreMemberResponse> getMembers(Long storeId) {
         findStoreOrThrow(storeId);
 
         List<StoreMember> members = storeMemberRepository.findByStoreIdAndIsActiveAndDeletedAtIsNull(storeId, true);
@@ -112,7 +127,7 @@ public class StoreService {
     }
 
     @Transactional
-    public StoreMemberResponse addMember(Long storeId, StoreMemberUpsertRequest request, UserPrincipal currentUser) {
+    public StoreMemberResponse addMember(Long storeId, AddMemberRequest request) {
         findStoreOrThrow(storeId);
 
         if (userRoleRepository.findActiveStoreRole(request.userId(), storeId).isPresent()) {
@@ -128,6 +143,7 @@ public class StoreService {
                 .user(targetUser)
                 .store(store)
                 .positionTitle(request.positionTitle())
+                .joinedDate(LocalDate.now())
                 .isActive(request.isActive())
                 .publicId(UUID.randomUUID())
                 .build();
@@ -148,7 +164,7 @@ public class StoreService {
     }
 
     @Transactional
-    public StoreMemberResponse updateMember(Long storeId, Long memberId, StoreMemberUpsertRequest request, UserPrincipal currentUser) {
+    public StoreMemberResponse updateMember(Long storeId, Long memberId, UpdateMemberRequest request, UserPrincipal currentUser) {
         findStoreOrThrow(storeId);
 
         StoreMember member = storeMemberRepository.findById(memberId)
@@ -158,7 +174,7 @@ public class StoreService {
                 .findActiveStoreRole(member.getUser().getId(), storeId)
                 .orElseThrow(() -> new ResourceNotFoundException(ErrorCode.STORE_MEMBER_NOT_FOUND, "Member role not found"));
 
-        if (RoleName.OWNER == userRole.getRole().getName() && !member.getUser().getId().equals(currentUser.userId())) {
+        if (RoleName.ROLE_OWNER == userRole.getRole().getName() && !member.getUser().getId().equals(currentUser.userId())) {
             throw new ForbiddenException(ErrorCode.FORBIDDEN, "Cannot modify another OWNER");
         }
 
@@ -175,8 +191,8 @@ public class StoreService {
         return toMemberResponse(member, userRole);
     }
 
-    @Transactional
-    public void removeMember(Long storeId, Long memberId, UserPrincipal currentUser) {
+@Transactional
+    public void removeMember(Long storeId, Long memberId) {
         findStoreOrThrow(storeId);
 
         StoreMember member = storeMemberRepository.findById(memberId)
@@ -186,7 +202,7 @@ public class StoreService {
                 .findActiveStoreRole(member.getUser().getId(), storeId)
                 .orElse(null);
 
-        if (userRole != null && RoleName.OWNER == userRole.getRole().getName()) {
+        if (userRole != null && RoleName.ROLE_OWNER == userRole.getRole().getName()) {
             throw new ForbiddenException(ErrorCode.FORBIDDEN, "Cannot remove the OWNER from store");
         }
 
