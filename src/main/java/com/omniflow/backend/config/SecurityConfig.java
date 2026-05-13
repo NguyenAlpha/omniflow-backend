@@ -71,7 +71,7 @@ public class SecurityConfig {
                                 response.sendError(HttpServletResponse.SC_UNAUTHORIZED, "Unauthorized"))
                 )
 
-                // Dùng DaoAuthenticationProvider (username + BCrypt) từ ApplicationConfig
+                // Dùng DaoAuthenticationProvider (username + Bcrypt) từ ApplicationConfig
                 .authenticationProvider(authenticationProvider)
 
                 // JwtAuthFilter chạy trước UsernamePasswordAuthenticationFilter —
