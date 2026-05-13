@@ -2,7 +2,7 @@ package com.omniflow.backend.entity;
 
 import lombok.*;
 import jakarta.persistence.*;
-import java.time.LocalDateTime;
+import java.time.Instant;
 import java.util.UUID;
 
 @Entity
@@ -38,7 +38,7 @@ public class SyncChangeLog {
     private Long syncVersion;
 
     @Column(nullable = false, columnDefinition = "TIMESTAMPTZ")
-    private LocalDateTime changedAt = LocalDateTime.now();
+    private Instant changedAt = Instant.now();
 
     @Column(columnDefinition = "UUID")
     private UUID changedByDevice;

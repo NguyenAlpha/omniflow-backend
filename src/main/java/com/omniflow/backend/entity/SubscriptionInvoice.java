@@ -3,7 +3,7 @@ package com.omniflow.backend.entity;
 import lombok.*;
 import jakarta.persistence.*;
 import java.math.BigDecimal;
-import java.time.LocalDateTime;
+import java.time.Instant;
 
 @Entity
 @Table(name = "subscription_invoices", indexes = {
@@ -41,18 +41,18 @@ public class SubscriptionInvoice {
     private String paymentMethod; // BANK_TRANSFER, CARD, MOMO, ...
 
     @Column(nullable = false, columnDefinition = "TIMESTAMPTZ")
-    private LocalDateTime periodStart;
+    private Instant periodStart;
 
     @Column(nullable = false, columnDefinition = "TIMESTAMPTZ")
-    private LocalDateTime periodEnd;
+    private Instant periodEnd;
 
     @Column(columnDefinition = "TIMESTAMPTZ")
-    private LocalDateTime paidAt;
+    private Instant paidAt;
 
     @Column(nullable = false, columnDefinition = "TIMESTAMPTZ")
-    private LocalDateTime createdAt = LocalDateTime.now();
+    private Instant createdAt = Instant.now();
 
     @Column(nullable = false, columnDefinition = "TIMESTAMPTZ")
-    private LocalDateTime updatedAt = LocalDateTime.now();
+    private Instant updatedAt = Instant.now();
 }
 

@@ -3,7 +3,7 @@ package com.omniflow.backend.entity;
 import lombok.*;
 import jakarta.persistence.*;
 import java.math.BigDecimal;
-import java.time.LocalDateTime;
+import java.time.Instant;
 
 @Entity
 @Table(name = "price_history", indexes = {
@@ -46,6 +46,6 @@ public class PriceHistory {
     private User changedBy;
 
     @Column(nullable = false, columnDefinition = "TIMESTAMPTZ")
-    private LocalDateTime changedAt = LocalDateTime.now();
+    private Instant changedAt = Instant.now();
 }
 

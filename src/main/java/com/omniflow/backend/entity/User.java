@@ -4,7 +4,7 @@ import lombok.*;
 import jakarta.persistence.*;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.userdetails.UserDetails;
-import java.time.LocalDateTime;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
@@ -46,14 +46,14 @@ public class User implements UserDetails {
 
     @Builder.Default
     @Column(nullable = false, columnDefinition = "TIMESTAMPTZ")
-    private LocalDateTime createdAt = LocalDateTime.now();
+    private Instant createdAt = Instant.now();
 
     @Builder.Default
     @Column(nullable = false, columnDefinition = "TIMESTAMPTZ")
-    private LocalDateTime updatedAt = LocalDateTime.now();
+    private Instant updatedAt = Instant.now();
 
     @Column(columnDefinition = "TIMESTAMPTZ")
-    private LocalDateTime deletedAt;
+    private Instant deletedAt;
 
     @Builder.Default
     @Transient

@@ -3,7 +3,7 @@ package com.omniflow.backend.entity;
 import lombok.*;
 import jakarta.persistence.*;
 import org.hibernate.annotations.Where;
-import java.time.LocalDateTime;
+import java.time.Instant;
 import java.util.UUID;
 
 @Entity
@@ -46,7 +46,7 @@ public class Warehouse {
 
     @Builder.Default
     @Column(nullable = false, columnDefinition = "TIMESTAMPTZ")
-    private LocalDateTime lastModifiedAt = LocalDateTime.now();
+    private Instant lastModifiedAt = Instant.now();
 
     @ManyToOne
     @JoinColumn(name = "last_modified_by_user")
@@ -58,12 +58,12 @@ public class Warehouse {
     // === Standard audit fields ===
     @Builder.Default
     @Column(nullable = false, columnDefinition = "TIMESTAMPTZ")
-    private LocalDateTime createdAt = LocalDateTime.now();
+    private Instant createdAt = Instant.now();
 
     @Builder.Default
     @Column(nullable = false, columnDefinition = "TIMESTAMPTZ")
-    private LocalDateTime updatedAt = LocalDateTime.now();
+    private Instant updatedAt = Instant.now();
 
     @Column(columnDefinition = "TIMESTAMPTZ")
-    private LocalDateTime deletedAt;
+    private Instant deletedAt;
 }

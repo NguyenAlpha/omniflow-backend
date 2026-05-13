@@ -3,7 +3,7 @@ package com.omniflow.backend.entity;
 import com.omniflow.backend.entity.enums.RoleName;
 import lombok.*;
 import jakarta.persistence.*;
-import java.time.LocalDateTime;
+import java.time.Instant;
 
 @Entity
 @Table(name = "roles")
@@ -26,5 +26,5 @@ public class Role {
     private String description;
 
     @Column(nullable = false, columnDefinition = "TIMESTAMPTZ")
-    private LocalDateTime createdAt = LocalDateTime.now();
+    private Instant createdAt = Instant.now();
 }

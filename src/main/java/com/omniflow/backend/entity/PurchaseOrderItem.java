@@ -4,7 +4,7 @@ import lombok.*;
 import jakarta.persistence.*;
 import org.hibernate.annotations.Where;
 import java.math.BigDecimal;
-import java.time.LocalDateTime;
+import java.time.Instant;
 
 @Entity
 @Table(name = "purchase_order_items", indexes = {
@@ -45,6 +45,6 @@ public class PurchaseOrderItem {
     private BigDecimal totalPrice;
 
     @Column(columnDefinition = "TIMESTAMPTZ")
-    private LocalDateTime deletedAt;
+    private Instant deletedAt;
 }
 

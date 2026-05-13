@@ -2,7 +2,7 @@ package com.omniflow.backend.entity;
 
 import lombok.*;
 import jakarta.persistence.*;
-import java.time.LocalDateTime;
+import java.time.Instant;
 
 @Entity
 @Table(name = "subscriptions", indexes = {
@@ -45,15 +45,15 @@ public class Subscription {
     private Integer maxOrdersPerMonth;
 
     @Column(nullable = false, columnDefinition = "TIMESTAMPTZ")
-    private LocalDateTime startedAt;
+    private Instant startedAt;
 
     @Column(columnDefinition = "TIMESTAMPTZ")
-    private LocalDateTime expiresAt;
+    private Instant expiresAt;
 
     @Column(nullable = false, columnDefinition = "TIMESTAMPTZ")
-    private LocalDateTime createdAt = LocalDateTime.now();
+    private Instant createdAt = Instant.now();
 
     @Column(nullable = false, columnDefinition = "TIMESTAMPTZ")
-    private LocalDateTime updatedAt = LocalDateTime.now();
+    private Instant updatedAt = Instant.now();
 }
 
