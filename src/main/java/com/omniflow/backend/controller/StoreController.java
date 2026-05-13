@@ -27,39 +27,30 @@ public class StoreController {
     private final StoreService storeService;
 
     @PostMapping
-    public ResponseEntity<ApiResult<StoreResponse>> createStore(
-            @Valid @RequestBody StoreCreateRequest request,
-            @AuthenticationPrincipal UserPrincipal currentUser) {
-        return ResponseEntity.status(HttpStatus.CREATED)
-                .body(ApiResult.ok(storeService.createStore(request, currentUser)));
+    public ResponseEntity<ApiResult<StoreResponse>> createStore(@Valid @RequestBody StoreCreateRequest request, @AuthenticationPrincipal UserPrincipal currentUser) {
+        return ResponseEntity.status(HttpStatus.CREATED).body(ApiResult.ok(storeService.createStore(request, currentUser)));
     }
 
     @GetMapping
-    public ResponseEntity<ApiResult<List<StoreResponse>>> getStores(
-            @AuthenticationPrincipal UserPrincipal currentUser) {
+    public ResponseEntity<ApiResult<List<StoreResponse>>> getStores(@AuthenticationPrincipal UserPrincipal currentUser) {
         return ResponseEntity.ok(ApiResult.ok(storeService.getStores(currentUser)));
     }
 
     @GetMapping("/{storeId}")
     @PreAuthorize("@storeAccess.isMember(#storeId, authentication)")
-    public ResponseEntity<ApiResult<StoreResponse>> getStore(
-            @PathVariable Long storeId) {
+    public ResponseEntity<ApiResult<StoreResponse>> getStore(@PathVariable Long storeId) {
         return ResponseEntity.ok(ApiResult.ok(storeService.getStore(storeId)));
     }
 
     @PatchMapping("/{storeId}")
     @PreAuthorize("@storeAccess.isOwnerOrManager(#storeId, authentication)")
-    public ResponseEntity<ApiResult<StoreResponse>> updateStore(
-            @PathVariable Long storeId,
-            @Valid @RequestBody StoreCreateRequest request) {
+    public ResponseEntity<ApiResult<StoreResponse>> updateStore(@PathVariable Long storeId, @Valid @RequestBody StoreCreateRequest request) {
         return ResponseEntity.ok(ApiResult.ok(storeService.updateStore(storeId, request)));
     }
 
     @PatchMapping("/{storeId}/status")
     @PreAuthorize("@storeAccess.isOwner(#storeId, authentication)")
-    public ResponseEntity<ApiResult<StoreResponse>> setStoreStatus(
-            @PathVariable Long storeId,
-            @Valid @RequestBody SetStatusRequest request) {
+    public ResponseEntity<ApiResult<StoreResponse>> setStoreStatus(@PathVariable Long storeId, @Valid @RequestBody SetStatusRequest request) {
         return ResponseEntity.ok(ApiResult.ok(storeService.setStoreStatus(storeId, request.isActive())));
     }
 
@@ -75,7 +66,7 @@ public class StoreController {
         return ResponseEntity.status(HttpStatus.CREATED).body(ApiResult.ok(storeService.addMember(storeId, request)));
     }
 
-@PatchMapping("/{storeId}/members/{memberId}")
+    @PatchMapping("/{storeId}/members/{memberId}")
     @PreAuthorize("@storeAccess.isOwner(#storeId, authentication)")
     public ResponseEntity<ApiResult<StoreMemberResponse>> updateMember(@PathVariable Long storeId, @PathVariable Long memberId, @Valid @RequestBody UpdateMemberRequest request, @AuthenticationPrincipal UserPrincipal currentUser) {
         return ResponseEntity.ok(ApiResult.ok(storeService.updateMember(storeId, memberId, request, currentUser)));
