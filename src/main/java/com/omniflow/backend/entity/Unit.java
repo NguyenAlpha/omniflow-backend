@@ -2,15 +2,15 @@ package com.omniflow.backend.entity;
 
 import lombok.*;
 import jakarta.persistence.*;
-import org.hibernate.annotations.Where;
+import org.hibernate.annotations.SQLRestriction;
 import java.time.Instant;
 import java.util.UUID;
 
 @Entity
 @Table(name = "units", indexes = {
-    @Index(name = "idx_units_store_id", columnList = "store_id")
+        @Index(name = "idx_units_store_id", columnList = "store_id")
 })
-@Where(clause = "deleted_at IS NULL")
+@SQLRestriction("deleted_at IS NULL")
 @Getter
 @Setter
 @NoArgsConstructor

@@ -41,7 +41,7 @@ public class UnitController {
                 .body(ApiResult.ok(unitService.create(storeId, request, currentUser)));
     }
 
-    @PutMapping("/{publicId}")
+    @PatchMapping("/{publicId}")
     @PreAuthorize("@storeAccess.isOwnerOrManager(#storeId, authentication)")
     public ResponseEntity<ApiResult<UnitResponse>> update(
             @PathVariable Long storeId,
