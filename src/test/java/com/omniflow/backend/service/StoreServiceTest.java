@@ -1,18 +1,25 @@
 package com.omniflow.backend.service;
 
 import com.omniflow.backend.dto.request.store.StoreCreateRequest;
-import com.omniflow.backend.dto.request.store.StoreMemberUpsertRequest;
+import com.omniflow.backend.dto.request.store.AddMemberRequest;
+import com.omniflow.backend.dto.request.store.UpdateMemberRequest;
 import com.omniflow.backend.dto.response.store.StoreMemberResponse;
 import com.omniflow.backend.dto.response.store.StoreResponse;
+import com.omniflow.backend.entity.Role;
 import com.omniflow.backend.entity.Store;
 import com.omniflow.backend.entity.StoreMember;
 import com.omniflow.backend.entity.User;
-import com.omniflow.backend.entity.enums.StoreRole;
+import com.omniflow.backend.entity.UserRole;
+import com.omniflow.backend.entity.enums.RoleName;
 import com.omniflow.backend.exception.ForbiddenException;
 import com.omniflow.backend.exception.ResourceNotFoundException;
+import com.omniflow.backend.repository.RoleRepository;
 import com.omniflow.backend.repository.StoreMemberRepository;
 import com.omniflow.backend.repository.StoreRepository;
 import com.omniflow.backend.repository.UserRepository;
+import com.omniflow.backend.repository.UserRoleRepository;
+import com.omniflow.backend.security.StoreAccessEvaluator;
+import com.omniflow.backend.security.UserPrincipal;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -35,202 +42,220 @@ class StoreServiceTest {
     @Mock private StoreRepository storeRepository;
     @Mock private StoreMemberRepository storeMemberRepository;
     @Mock private UserRepository userRepository;
+    @Mock private UserRoleRepository userRoleRepository;
+    @Mock private RoleRepository roleRepository;
+    @Mock private StoreAccessEvaluator storeAccessEvaluator;
 
     @InjectMocks private StoreService storeService;
 
-    private User owner;
-    private User manager;
-    private User staff;
+    private User ownerUser;
+    private User managerUser;
     private Store store;
+    private Role ownerRole;
+    private Role managerRole;
     private StoreMember ownerMember;
     private StoreMember managerMember;
+    private UserRole ownerUserRole;
+    private UserRole managerUserRole;
+    private UserPrincipal ownerPrincipal;
+    private UserPrincipal adminPrincipal;
 
     @BeforeEach
     void setUp() {
-        owner = User.builder().id(1L).username("owner").email("owner@test.com").build();
-        manager = User.builder().id(2L).username("manager").email("manager@test.com").build();
-        staff = User.builder().id(3L).username("staff").email("staff@test.com").build();
+        ownerUser = User.builder().id(1L).username("owner").email("owner@test.com").build();
+        managerUser = User.builder().id(2L).username("manager").email("manager@test.com").build();
 
         store = Store.builder().id(10L).name("Test Store").isActive(true).build();
 
+        ownerRole = Role.builder().id(1L).name(RoleName.ROLE_OWNER).build();
+        managerRole = Role.builder().id(2L).name(RoleName.ROLE_MANAGER).build();
+
         ownerMember = StoreMember.builder()
-                .id(1L).user(owner).store(store).role(StoreRole.OWNER)
+                .id(1L).user(ownerUser).store(store)
                 .publicId(UUID.randomUUID()).isActive(true).build();
 
         managerMember = StoreMember.builder()
-                .id(2L).user(manager).store(store).role(StoreRole.MANAGER)
+                .id(2L).user(managerUser).store(store)
                 .publicId(UUID.randomUUID()).isActive(true).build();
+
+        ownerUserRole = UserRole.builder().user(ownerUser).role(ownerRole).store(store).isActive(true).build();
+        managerUserRole = UserRole.builder().user(managerUser).role(managerRole).store(store).isActive(true).build();
+
+        ownerPrincipal = new UserPrincipal(1L, "owner", List.of(RoleName.ROLE_OWNER.name()));
+        adminPrincipal = new UserPrincipal(99L, "admin", List.of(RoleName.ROLE_SUPER_ADMIN.name()));
     }
 
-    // ── createStore ───────────────────────────────────────────────────────────
+    // ── getStores ─────────────────────────────────────────────────────────────
 
     @Test
-    void createStore_success() {
-        StoreCreateRequest request = new StoreCreateRequest("My Store", "123 Street", "0901234567", "store@test.com");
-        when(storeRepository.save(any())).thenReturn(store);
-        when(storeMemberRepository.save(any())).thenReturn(ownerMember);
+    void getStores_returnsAllStores_whenAdmin() {
+        when(storeRepository.findAll()).thenReturn(List.of(store));
 
-        StoreResponse response = storeService.createStore(request, owner);
+        List<StoreResponse> result = storeService.getStores(adminPrincipal);
 
-        assertThat(response.name()).isEqualTo("My Store");
-        verify(storeRepository).save(any(Store.class));
-        verify(storeMemberRepository).save(any(StoreMember.class));
+        assertThat(result).hasSize(1);
+        assertThat(result.get(0).id()).isEqualTo(10L);
+        verify(storeMemberRepository, never()).findByUserIdAndDeletedAtIsNull(any());
+    }
+
+    @Test
+    void getStores_returnsOnlyMemberStores_whenRegularUser() {
+        when(storeMemberRepository.findByUserIdAndDeletedAtIsNull(1L))
+                .thenReturn(List.of(ownerMember));
+
+        List<StoreResponse> result = storeService.getStores(ownerPrincipal);
+
+        assertThat(result).hasSize(1);
+        verify(storeRepository, never()).findAll();
     }
 
     // ── getStore ──────────────────────────────────────────────────────────────
 
     @Test
-    void getStore_success_whenMember() {
+    void getStore_returnsStore_whenFound() {
         when(storeRepository.findById(10L)).thenReturn(Optional.of(store));
-        when(storeMemberRepository.findByUserIdAndStoreIdAndDeletedAtIsNull(1L, 10L))
-                .thenReturn(Optional.of(ownerMember));
 
-        StoreResponse response = storeService.getStore(10L, owner);
+        StoreResponse result = storeService.getStore(10L);
 
-        assertThat(response.id()).isEqualTo(10L);
+        assertThat(result.id()).isEqualTo(10L);
+        assertThat(result.name()).isEqualTo("Test Store");
     }
 
     @Test
     void getStore_throwsNotFound_whenStoreNotExist() {
         when(storeRepository.findById(99L)).thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> storeService.getStore(99L, owner))
-                .isInstanceOf(ResourceNotFoundException.class)
-                .hasMessage("Store not found");
+        assertThatThrownBy(() -> storeService.getStore(99L))
+                .isInstanceOf(ResourceNotFoundException.class);
     }
 
+    // ── setStoreStatus ────────────────────────────────────────────────────────
+
     @Test
-    void getStore_throwsForbidden_whenNotMember() {
+    void setStoreStatus_updatesIsActive() {
         when(storeRepository.findById(10L)).thenReturn(Optional.of(store));
-        when(storeMemberRepository.findByUserIdAndStoreIdAndDeletedAtIsNull(3L, 10L))
-                .thenReturn(Optional.empty());
+        when(storeRepository.save(store)).thenReturn(store);
 
-        assertThatThrownBy(() -> storeService.getStore(10L, staff))
-                .isInstanceOf(ForbiddenException.class);
-    }
+        StoreResponse result = storeService.setStoreStatus(10L, false);
 
-    // ── getMyStores ───────────────────────────────────────────────────────────
-
-    @Test
-    void getMyStores_returnsAllStoresForUser() {
-        when(storeMemberRepository.findByUserIdAndDeletedAtIsNull(1L))
-                .thenReturn(List.of(ownerMember));
-
-        List<StoreResponse> result = storeService.getMyStores(owner);
-
-        assertThat(result).hasSize(1);
-        assertThat(result.get(0).id()).isEqualTo(10L);
+        assertThat(store.getIsActive()).isFalse();
+        verify(storeRepository).save(store);
     }
 
     // ── updateStore ───────────────────────────────────────────────────────────
 
     @Test
-    void updateStore_success_whenOwner() {
-        StoreCreateRequest request = new StoreCreateRequest("Updated Store", null, null, null);
+    void updateStore_updatesFields() {
+        StoreCreateRequest request = new StoreCreateRequest("New Name", "New Address", null, null);
         when(storeRepository.findById(10L)).thenReturn(Optional.of(store));
-        when(storeMemberRepository.findByUserIdAndStoreIdAndDeletedAtIsNull(1L, 10L))
-                .thenReturn(Optional.of(ownerMember));
-        when(storeRepository.save(any())).thenReturn(store);
+        when(storeRepository.save(store)).thenReturn(store);
 
-        StoreResponse response = storeService.updateStore(10L, request, owner);
+        StoreResponse result = storeService.updateStore(10L, request);
 
+        assertThat(store.getName()).isEqualTo("New Name");
+        assertThat(store.getAddress()).isEqualTo("New Address");
         verify(storeRepository).save(store);
     }
 
-    @Test
-    void updateStore_success_whenManager() {
-        StoreCreateRequest request = new StoreCreateRequest("Updated Store", null, null, null);
-        when(storeRepository.findById(10L)).thenReturn(Optional.of(store));
-        when(storeMemberRepository.findByUserIdAndStoreIdAndDeletedAtIsNull(2L, 10L))
-                .thenReturn(Optional.of(managerMember));
-        when(storeRepository.save(any())).thenReturn(store);
-
-        storeService.updateStore(10L, request, manager);
-
-        verify(storeRepository).save(store);
-    }
+    // ── getMembers ────────────────────────────────────────────────────────────
 
     @Test
-    void updateStore_throwsForbidden_whenStaff() {
-        StoreMember staffMember = StoreMember.builder()
-                .id(3L).user(staff).store(store).role(StoreRole.STAFF)
-                .publicId(UUID.randomUUID()).isActive(true).build();
-
+    void getMembers_returnsMembersWithRoles() {
         when(storeRepository.findById(10L)).thenReturn(Optional.of(store));
-        when(storeMemberRepository.findByUserIdAndStoreIdAndDeletedAtIsNull(3L, 10L))
-                .thenReturn(Optional.of(staffMember));
+        when(storeMemberRepository.findByStoreIdAndIsActiveAndDeletedAtIsNull(10L, true))
+                .thenReturn(List.of(ownerMember, managerMember));
+        when(userRoleRepository.findByStoreIdAndIsActiveTrueAndDeletedAtIsNull(10L))
+                .thenReturn(List.of(ownerUserRole, managerUserRole));
 
-        assertThatThrownBy(() -> storeService.updateStore(10L, new StoreCreateRequest("X", null, null, null), staff))
-                .isInstanceOf(ForbiddenException.class);
+        List<StoreMemberResponse> result = storeService.getMembers(10L);
+
+        assertThat(result).hasSize(2);
+        assertThat(result.get(0).role()).isEqualTo(RoleName.ROLE_OWNER);
+        assertThat(result.get(1).role()).isEqualTo(RoleName.ROLE_MANAGER);
     }
 
     // ── addMember ─────────────────────────────────────────────────────────────
 
     @Test
-    void addMember_success_whenOwner() {
-        StoreMemberUpsertRequest request = new StoreMemberUpsertRequest(2L, StoreRole.MANAGER, "Sales", true);
+    void addMember_success() {
+        AddMemberRequest request = new AddMemberRequest(2L, RoleName.ROLE_MANAGER, "Sales", true);
         when(storeRepository.findById(10L)).thenReturn(Optional.of(store));
-        when(storeMemberRepository.findByUserIdAndStoreIdAndDeletedAtIsNull(1L, 10L))
-                .thenReturn(Optional.of(ownerMember));
-        when(storeMemberRepository.findByUserIdAndStoreIdAndDeletedAtIsNull(2L, 10L))
-                .thenReturn(Optional.empty());
-        when(userRepository.findById(2L)).thenReturn(Optional.of(manager));
+        when(userRoleRepository.findActiveStoreRole(2L, 10L)).thenReturn(Optional.empty());
+        when(userRepository.findById(2L)).thenReturn(Optional.of(managerUser));
+        when(roleRepository.findByName(RoleName.ROLE_MANAGER)).thenReturn(Optional.of(managerRole));
         when(storeMemberRepository.save(any())).thenReturn(managerMember);
+        when(userRoleRepository.save(any())).thenReturn(managerUserRole);
 
-        StoreMemberResponse response = storeService.addMember(10L, request, owner);
+        StoreMemberResponse result = storeService.addMember(10L, request);
 
-        assertThat(response.role()).isEqualTo(StoreRole.MANAGER);
-        verify(storeMemberRepository).save(any(StoreMember.class));
+        assertThat(result.userId()).isEqualTo(2L);
+        verify(storeAccessEvaluator).evictStoreRoleCache(2L, 10L);
     }
 
     @Test
     void addMember_throwsWhenAlreadyMember() {
-        StoreMemberUpsertRequest request = new StoreMemberUpsertRequest(2L, StoreRole.MANAGER, null, true);
+        AddMemberRequest request = new AddMemberRequest(2L, RoleName.ROLE_MANAGER, null, true);
         when(storeRepository.findById(10L)).thenReturn(Optional.of(store));
-        when(storeMemberRepository.findByUserIdAndStoreIdAndDeletedAtIsNull(1L, 10L))
-                .thenReturn(Optional.of(ownerMember));
-        when(storeMemberRepository.findByUserIdAndStoreIdAndDeletedAtIsNull(2L, 10L))
-                .thenReturn(Optional.of(managerMember));
+        when(userRoleRepository.findActiveStoreRole(2L, 10L)).thenReturn(Optional.of(managerUserRole));
 
-        assertThatThrownBy(() -> storeService.addMember(10L, request, owner))
+        assertThatThrownBy(() -> storeService.addMember(10L, request))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessage("User is already a member of this store");
     }
 
-    @Test
-    void addMember_throwsForbidden_whenNotOwner() {
-        StoreMemberUpsertRequest request = new StoreMemberUpsertRequest(3L, StoreRole.STAFF, null, true);
-        when(storeRepository.findById(10L)).thenReturn(Optional.of(store));
-        when(storeMemberRepository.findByUserIdAndStoreIdAndDeletedAtIsNull(2L, 10L))
-                .thenReturn(Optional.of(managerMember));
+    // ── updateMember ──────────────────────────────────────────────────────────
 
-        assertThatThrownBy(() -> storeService.addMember(10L, request, manager))
+    @Test
+    void updateMember_success() {
+        UpdateMemberRequest request = new UpdateMemberRequest(RoleName.ROLE_STAFF, "Cashier", true);
+        when(storeRepository.findById(10L)).thenReturn(Optional.of(store));
+        when(storeMemberRepository.findById(2L)).thenReturn(Optional.of(managerMember));
+        when(userRoleRepository.findActiveStoreRole(2L, 10L)).thenReturn(Optional.of(managerUserRole));
+        when(roleRepository.findByName(RoleName.ROLE_STAFF))
+                .thenReturn(Optional.of(Role.builder().name(RoleName.ROLE_STAFF).build()));
+        when(userRoleRepository.save(any())).thenReturn(managerUserRole);
+        when(storeMemberRepository.save(any())).thenReturn(managerMember);
+
+        storeService.updateMember(10L, 2L, request, ownerPrincipal);
+
+        verify(userRoleRepository).save(managerUserRole);
+        verify(storeAccessEvaluator).evictStoreRoleCache(2L, 10L);
+    }
+
+    @Test
+    void updateMember_throwsForbidden_whenModifyingAnotherOwner() {
+        UserPrincipal anotherUser = new UserPrincipal(2L, "another", List.of(RoleName.ROLE_OWNER.name()));
+        UpdateMemberRequest request = new UpdateMemberRequest(RoleName.ROLE_MANAGER, null, true);
+        when(storeRepository.findById(10L)).thenReturn(Optional.of(store));
+        when(storeMemberRepository.findById(1L)).thenReturn(Optional.of(ownerMember));
+        when(userRoleRepository.findActiveStoreRole(1L, 10L)).thenReturn(Optional.of(ownerUserRole));
+
+        assertThatThrownBy(() -> storeService.updateMember(10L, 1L, request, anotherUser))
                 .isInstanceOf(ForbiddenException.class);
     }
 
     // ── removeMember ──────────────────────────────────────────────────────────
 
     @Test
-    void removeMember_success_whenRemovingNonOwner() {
+    void removeMember_success_whenNonOwner() {
         when(storeRepository.findById(10L)).thenReturn(Optional.of(store));
-        when(storeMemberRepository.findByUserIdAndStoreIdAndDeletedAtIsNull(1L, 10L))
-                .thenReturn(Optional.of(ownerMember));
         when(storeMemberRepository.findById(2L)).thenReturn(Optional.of(managerMember));
+        when(userRoleRepository.findActiveStoreRole(2L, 10L)).thenReturn(Optional.of(managerUserRole));
 
-        storeService.removeMember(10L, 2L, owner);
+        storeService.removeMember(10L, 2L);
 
-        verify(storeMemberRepository).save(managerMember);
         assertThat(managerMember.getDeletedAt()).isNotNull();
+        assertThat(managerUserRole.getDeletedAt()).isNotNull();
+        verify(storeAccessEvaluator).evictStoreRoleCache(2L, 10L);
     }
 
     @Test
     void removeMember_throwsForbidden_whenRemovingOwner() {
         when(storeRepository.findById(10L)).thenReturn(Optional.of(store));
-        when(storeMemberRepository.findByUserIdAndStoreIdAndDeletedAtIsNull(1L, 10L))
-                .thenReturn(Optional.of(ownerMember));
         when(storeMemberRepository.findById(1L)).thenReturn(Optional.of(ownerMember));
+        when(userRoleRepository.findActiveStoreRole(1L, 10L)).thenReturn(Optional.of(ownerUserRole));
 
-        assertThatThrownBy(() -> storeService.removeMember(10L, 1L, owner))
+        assertThatThrownBy(() -> storeService.removeMember(10L, 1L))
                 .isInstanceOf(ForbiddenException.class)
                 .hasMessage("Cannot remove the OWNER from store");
     }
