@@ -108,9 +108,8 @@ public class JwtAuthFilter extends OncePerRequestFilter {
             return;
         }
 
-        // Prefix "ROLE_" là quy ước của Spring Security cho hasRole() / @PreAuthorize("hasRole(...)")
         List<SimpleGrantedAuthority> authorities = roles.stream()
-                .map(r -> new SimpleGrantedAuthority("ROLE_" + r))
+                .map(SimpleGrantedAuthority::new)
                 .toList();
 
         UserPrincipal principal = new UserPrincipal(userId, username, roles);

@@ -81,7 +81,7 @@ public class StoreAccessEvaluator {
      * @return {@code true} nếu user có ít nhất một role active trong store
      */
     public boolean isMember(Long storeId, Authentication authentication) {
-        return hasStoreRole(storeId, authentication, RoleName.OWNER, RoleName.MANAGER, RoleName.STAFF);
+        return hasStoreRole(storeId, authentication, RoleName.ROLE_OWNER, RoleName.ROLE_MANAGER, RoleName.ROLE_STAFF);
     }
 
     /**
@@ -92,7 +92,7 @@ public class StoreAccessEvaluator {
      * @return {@code true} nếu user có role OWNER hoặc MANAGER
      */
     public boolean isOwnerOrManager(Long storeId, Authentication authentication) {
-        return hasStoreRole(storeId, authentication, RoleName.OWNER, RoleName.MANAGER);
+        return hasStoreRole(storeId, authentication, RoleName.ROLE_OWNER, RoleName.ROLE_MANAGER);
     }
 
     /**
@@ -103,7 +103,7 @@ public class StoreAccessEvaluator {
      * @return {@code true} nếu user có role OWNER
      */
     public boolean isOwner(Long storeId, Authentication authentication) {
-        return hasStoreRole(storeId, authentication, RoleName.OWNER);
+        return hasStoreRole(storeId, authentication, RoleName.ROLE_OWNER);
     }
 
     /**
@@ -196,7 +196,7 @@ public class StoreAccessEvaluator {
      */
     private static boolean isSuperAdmin(Authentication authentication) {
         return authentication.getAuthorities().stream()
-                .anyMatch(a -> "ROLE_SUPER_ADMIN".equals(a.getAuthority()));
+                .anyMatch(a -> RoleName.ROLE_SUPER_ADMIN.name().equals(a.getAuthority()));
     }
 
     /**

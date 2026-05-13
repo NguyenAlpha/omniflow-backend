@@ -27,11 +27,11 @@ CREATE TABLE roles (
 );
 
 INSERT INTO roles (name, description) VALUES
-    ('SUPER_ADMIN', 'Quản trị viên hệ thống — toàn quyền'),
-    ('SUPPORT',     'Nhân viên hỗ trợ hệ thống'),
-    ('OWNER',       'Chủ cửa hàng — toàn quyền trong cửa hàng'),
-    ('MANAGER',     'Quản lý cửa hàng'),
-    ('STAFF',       'Nhân viên cửa hàng');
+    ('ROLE_SUPER_ADMIN', 'Quản trị viên hệ thống — toàn quyền'),
+    ('ROLE_SUPPORT',     'Nhân viên hỗ trợ hệ thống'),
+    ('ROLE_OWNER',       'Chủ cửa hàng — toàn quyền trong cửa hàng'),
+    ('ROLE_MANAGER',     'Quản lý cửa hàng'),
+    ('ROLE_STAFF',       'Nhân viên cửa hàng');
 
 CREATE TABLE stores (
     id BIGSERIAL PRIMARY KEY,
