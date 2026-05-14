@@ -95,12 +95,13 @@ Response: null   — soft delete (set deletedAt + isActive = false); user đã x
 
 ## Store — `/api/stores`
 
-| Method | Path         | Access          | Mô tả                                        |
-|:-------|:-------------|:----------------|:---------------------------------------------|
-| POST   | `/`          | Authenticated   | Tạo store mới; người tạo tự động thành OWNER |
-| GET    | `/my`        | Authenticated   | Lấy danh sách store của bản thân             |
-| GET    | `/{storeId}` | Member          | Lấy thông tin store                          |
-| PUT    | `/{storeId}` | Owner / Manager | Cập nhật thông tin store                     |
+| Method | Path                | Access          | Mô tả                                                  |
+|:-------|:--------------------|:----------------|:-------------------------------------------------------|
+| POST   | `/`                 | Authenticated   | Tạo store mới; người tạo tự động thành OWNER           |
+| GET    | `/`                 | Authenticated   | Lấy danh sách store của bản thân, (admin = lấy tất cả) |
+| GET    | `/{storeId}`        | Member          | Lấy thông tin store                                    |
+| PATCH  | `/{storeId}`        | Owner / Manager | Cập nhật thông tin store                               |
+| PATCH  | `/{storeId}/status` | Owner           | Đổi trạng thái                                         |
 
 ### Member Management — `/api/stores/{storeId}/members`
 
@@ -154,7 +155,7 @@ Response: null   — soft delete (set deletedAt + isActive = false); user đã x
 |:-------|:--------------|:----------------|:------------------------------------------------------|
 | GET    | `/`           | Member          | Danh sách unit (system + store custom)                |
 | POST   | `/`           | Owner / Manager | Tạo unit cho store                                    |
-| PUT    | `/{publicId}` | Owner / Manager | Cập nhật unit (chỉ store unit, không sửa system unit) |
+| PATCH  | `/{publicId}` | Owner / Manager | Cập nhật unit (chỉ store unit, không sửa system unit) |
 | DELETE | `/{publicId}` | Owner / Manager | Soft delete (chỉ store unit)                          |
 
 **Ràng buộc:** System unit (`store_id IS NULL`) không thể sửa hoặc xóa.
