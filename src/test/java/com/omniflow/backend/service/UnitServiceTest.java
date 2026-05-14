@@ -6,12 +6,12 @@ import com.omniflow.backend.entity.Store;
 import com.omniflow.backend.entity.StoreMember;
 import com.omniflow.backend.entity.Unit;
 import com.omniflow.backend.entity.User;
-import com.omniflow.backend.entity.enums.StoreRole;
 import com.omniflow.backend.exception.ForbiddenException;
 import com.omniflow.backend.exception.ResourceNotFoundException;
 import com.omniflow.backend.repository.StoreMemberRepository;
 import com.omniflow.backend.repository.StoreRepository;
 import com.omniflow.backend.repository.UnitRepository;
+import com.omniflow.backend.security.UserPrincipal;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -48,24 +48,32 @@ class UnitServiceTest {
     private Unit systemUnit;
     private Unit storeUnit;
 
+    private UserPrincipal ownerPrincipal;
+    private UserPrincipal managerPrincipal;
+    private UserPrincipal staffPrincipal;
+
     @BeforeEach
     void setUp() {
         owner = User.builder().id(1L).username("owner").email("owner@test.com").build();
         manager = User.builder().id(2L).username("manager").email("manager@test.com").build();
         staff = User.builder().id(3L).username("staff").email("staff@test.com").build();
 
+        ownerPrincipal = new UserPrincipal(1L, "owner", List.of());
+        managerPrincipal = new UserPrincipal(2L, "manager", List.of());
+        staffPrincipal = new UserPrincipal(3L, "staff", List.of());
+
         store = Store.builder().id(10L).name("Main Store").build();
 
         ownerMember = StoreMember.builder()
-                .id(1L).user(owner).store(store).role(StoreRole.OWNER)
+                .id(1L).user(owner).store(store)
                 .publicId(UUID.randomUUID()).isActive(true).build();
 
         managerMember = StoreMember.builder()
-                .id(2L).user(manager).store(store).role(StoreRole.MANAGER)
+                .id(2L).user(manager).store(store)
                 .publicId(UUID.randomUUID()).isActive(true).build();
 
         staffMember = StoreMember.builder()
-                .id(3L).user(staff).store(store).role(StoreRole.STAFF)
+                .id(3L).user(staff).store(store)
                 .publicId(UUID.randomUUID()).isActive(true).build();
 
         systemUnit = Unit.builder()
@@ -84,7 +92,7 @@ class UnitServiceTest {
                 .thenReturn(Optional.of(ownerMember));
         when(unitRepository.findSystemAndStoreUnits(10L)).thenReturn(List.of(systemUnit, storeUnit));
 
-        List<UnitResponse> result = unitService.list(10L, owner);
+        List<UnitResponse> result = unitService.list(10L, ownerPrincipal);
 
         assertThat(result).hasSize(2);
         assertThat(result).extracting(UnitResponse::name)
@@ -97,7 +105,7 @@ class UnitServiceTest {
         when(storeMemberRepository.findByUserIdAndStoreIdAndDeletedAtIsNull(3L, 10L))
                 .thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> unitService.list(10L, staff))
+        assertThatThrownBy(() -> unitService.list(10L, staffPrincipal))
                 .isInstanceOf(ForbiddenException.class);
     }
 
@@ -105,7 +113,7 @@ class UnitServiceTest {
     void list_throwsNotFound_whenStoreMissing() {
         when(storeRepository.findById(99L)).thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> unitService.list(99L, owner))
+        assertThatThrownBy(() -> unitService.list(99L, ownerPrincipal))
                 .isInstanceOf(ResourceNotFoundException.class)
                 .hasMessage("Store not found");
     }
@@ -124,7 +132,7 @@ class UnitServiceTest {
                 .thenReturn(Optional.empty());
         when(unitRepository.save(any(Unit.class))).thenReturn(created);
 
-        UnitResponse response = unitService.create(10L, request, owner);
+        UnitResponse response = unitService.create(10L, request, ownerPrincipal);
 
         assertThat(response.name()).isEqualTo("Carton");
         assertThat(response.storeId()).isEqualTo(10L);
@@ -140,7 +148,7 @@ class UnitServiceTest {
         when(unitRepository.findByStoreIdAndNameAndDeletedAtIsNull(10L, "Box"))
                 .thenReturn(Optional.of(storeUnit));
 
-        assertThatThrownBy(() -> unitService.create(10L, request, owner))
+        assertThatThrownBy(() -> unitService.create(10L, request, ownerPrincipal))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessage("Unit name already exists in this store");
     }
@@ -153,7 +161,7 @@ class UnitServiceTest {
         when(storeMemberRepository.findByUserIdAndStoreIdAndDeletedAtIsNull(3L, 10L))
                 .thenReturn(Optional.of(staffMember));
 
-        assertThatThrownBy(() -> unitService.create(10L, request, staff))
+        assertThatThrownBy(() -> unitService.create(10L, request, staffPrincipal))
                 .isInstanceOf(ForbiddenException.class);
     }
 
@@ -170,10 +178,9 @@ class UnitServiceTest {
                 .thenReturn(Optional.empty());
         when(unitRepository.save(any(Unit.class))).thenReturn(storeUnit);
 
-        UnitResponse response = unitService.update(10L, storeUnit.getPublicId(), request, manager);
+        UnitResponse response = unitService.update(10L, storeUnit.getPublicId(), request, managerPrincipal);
 
         assertThat(response.name()).isEqualTo("New Box");
-        assertThat(storeUnit.getLastModifiedByUser()).isEqualTo(manager);
         assertThat(storeUnit.getLastModifiedAt()).isNotNull();
     }
 
@@ -187,7 +194,7 @@ class UnitServiceTest {
         when(unitRepository.findByPublicId(systemUnit.getPublicId()))
                 .thenReturn(Optional.of(systemUnit));
 
-        assertThatThrownBy(() -> unitService.update(10L, systemUnit.getPublicId(), request, owner))
+        assertThatThrownBy(() -> unitService.update(10L, systemUnit.getPublicId(), request, ownerPrincipal))
                 .isInstanceOf(ForbiddenException.class)
                 .hasMessage("Cannot modify system units");
     }
@@ -207,7 +214,7 @@ class UnitServiceTest {
         when(unitRepository.findByStoreIdAndNameAndDeletedAtIsNull(10L, "Box"))
                 .thenReturn(Optional.of(otherUnit));
 
-        assertThatThrownBy(() -> unitService.update(10L, storeUnit.getPublicId(), request, owner))
+        assertThatThrownBy(() -> unitService.update(10L, storeUnit.getPublicId(), request, ownerPrincipal))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessage("Unit name already exists in this store");
     }
@@ -222,7 +229,7 @@ class UnitServiceTest {
         when(unitRepository.findByPublicId(storeUnit.getPublicId()))
                 .thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> unitService.update(10L, storeUnit.getPublicId(), request, owner))
+        assertThatThrownBy(() -> unitService.update(10L, storeUnit.getPublicId(), request, ownerPrincipal))
                 .isInstanceOf(ResourceNotFoundException.class)
                 .hasMessage("Unit not found");
     }
@@ -235,7 +242,7 @@ class UnitServiceTest {
         when(unitRepository.findByPublicId(storeUnit.getPublicId()))
                 .thenReturn(Optional.of(storeUnit));
 
-        unitService.delete(10L, storeUnit.getPublicId(), owner);
+        unitService.delete(10L, storeUnit.getPublicId(), ownerPrincipal);
 
         verify(unitRepository).save(storeUnit);
         assertThat(storeUnit.getDeletedAt()).isNotNull();
@@ -249,7 +256,7 @@ class UnitServiceTest {
         when(unitRepository.findByPublicId(systemUnit.getPublicId()))
                 .thenReturn(Optional.of(systemUnit));
 
-        assertThatThrownBy(() -> unitService.delete(10L, systemUnit.getPublicId(), owner))
+        assertThatThrownBy(() -> unitService.delete(10L, systemUnit.getPublicId(), ownerPrincipal))
                 .isInstanceOf(ForbiddenException.class)
                 .hasMessage("Cannot delete system units");
     }
@@ -260,7 +267,7 @@ class UnitServiceTest {
         when(storeMemberRepository.findByUserIdAndStoreIdAndDeletedAtIsNull(3L, 10L))
                 .thenReturn(Optional.of(staffMember));
 
-        assertThatThrownBy(() -> unitService.delete(10L, storeUnit.getPublicId(), staff))
+        assertThatThrownBy(() -> unitService.delete(10L, storeUnit.getPublicId(), staffPrincipal))
                 .isInstanceOf(ForbiddenException.class);
     }
 
@@ -272,9 +279,8 @@ class UnitServiceTest {
         when(unitRepository.findByPublicId(storeUnit.getPublicId()))
                 .thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> unitService.delete(10L, storeUnit.getPublicId(), owner))
+        assertThatThrownBy(() -> unitService.delete(10L, storeUnit.getPublicId(), ownerPrincipal))
                 .isInstanceOf(ResourceNotFoundException.class)
                 .hasMessage("Unit not found");
     }
 }
-

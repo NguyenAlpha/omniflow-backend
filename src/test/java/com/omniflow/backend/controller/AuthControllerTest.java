@@ -112,7 +112,7 @@ class AuthControllerTest {
     void login_success() throws Exception {
         when(authService.login(any())).thenReturn(mockAuthResponse);
 
-        LoginRequest request = new LoginRequest("testuser", "password123", 1L);
+        LoginRequest request = new LoginRequest("testuser", "password123");
 
         mockMvc.perform(post("/api/auth/login")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -127,7 +127,7 @@ class AuthControllerTest {
     void login_returnsUnauthorized_whenBadCredentials() throws Exception {
         when(authService.login(any())).thenThrow(new BadCredentialsException("Bad credentials"));
 
-        LoginRequest request = new LoginRequest("testuser", "wrongpassword", 1L);
+        LoginRequest request = new LoginRequest("testuser", "wrongpassword");
 
         mockMvc.perform(post("/api/auth/login")
                         .contentType(MediaType.APPLICATION_JSON)

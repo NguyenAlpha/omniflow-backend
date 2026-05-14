@@ -1,38 +1,49 @@
 package com.omniflow.backend.security;
 
+import com.nimbusds.jose.JWSAlgorithm;
+import com.nimbusds.jose.jwk.JWKSet;
+import com.nimbusds.jose.jwk.OctetSequenceKey;
+import com.nimbusds.jose.jwk.source.ImmutableJWKSet;
 import com.omniflow.backend.entity.User;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.security.oauth2.jose.jws.MacAlgorithm;
+import org.springframework.security.oauth2.jwt.JwtDecoder;
+import org.springframework.security.oauth2.jwt.NimbusJwtDecoder;
+import org.springframework.security.oauth2.jwt.NimbusJwtEncoder;
 import org.springframework.test.util.ReflectionTestUtils;
 
+import javax.crypto.spec.SecretKeySpec;
+import java.util.Base64;
+import java.util.List;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class JwtServiceTest {
 
     private JwtService jwtService;
+    private JwtDecoder jwtDecoder;
     private User user;
 
-    // 64 hex chars = 32 bytes = valid HS256 key
-    private static final String SECRET = "404E635266556A586E3272357538782F413F4428472B4B6250645367566B5970";
+    private static final String SECRET_B64 = "dGVzdFNlY3JldEtleUZvckp3dFRlc3RpbmdPbmx5MTI=";
     private static final long EXPIRATION = 86400000L;
 
     @BeforeEach
     void setUp() {
-        jwtService = new JwtService();
-        ReflectionTestUtils.setField(jwtService, "secret", SECRET);
+        byte[] keyBytes = Base64.getDecoder().decode(SECRET_B64);
+        SecretKeySpec key = new SecretKeySpec(keyBytes, "HmacSHA256");
+
+        OctetSequenceKey jwk = new OctetSequenceKey.Builder(keyBytes).algorithm(JWSAlgorithm.HS256).build();
+        NimbusJwtEncoder encoder = new NimbusJwtEncoder(new ImmutableJWKSet<>(new JWKSet(jwk)));
+        jwtDecoder = NimbusJwtDecoder.withSecretKey(key).macAlgorithm(MacAlgorithm.HS256).build();
+
+        jwtService = new JwtService(encoder);
         ReflectionTestUtils.setField(jwtService, "expiration", EXPIRATION);
 
         user = User.builder()
-                .id(1L)
-                .username("testuser")
-                .email("test@example.com")
-                .passwordHash("hashed")
-                .fullName("Test User")
-                .isActive(true)
-                .build();
+                .id(1L).username("testuser").email("test@example.com")
+                .passwordHash("hashed").fullName("Test User").isActive(true).build();
     }
 
     @Test
@@ -42,43 +53,23 @@ class JwtServiceTest {
     }
 
     @Test
-    void extractUsername_returnsCorrectUsername() {
+    void generateToken_subjectIsUsername() {
         String token = jwtService.generateToken(user, Map.of());
-        assertThat(jwtService.extractUsername(token)).isEqualTo("testuser");
-    }
-
-    @Test
-    void isTokenValid_returnsTrueForValidToken() {
-        String token = jwtService.generateToken(user, Map.of());
-        assertThat(jwtService.isTokenValid(token, user)).isTrue();
-    }
-
-    @Test
-    void isTokenValid_returnsFalseForDifferentUser() {
-        String token = jwtService.generateToken(user, Map.of());
-
-        User otherUser = User.builder()
-                .username("otheruser")
-                .email("other@example.com")
-                .passwordHash("hashed")
-                .fullName("Other User")
-                .isActive(true)
-                .build();
-
-        assertThat(jwtService.isTokenValid(token, otherUser)).isFalse();
-    }
-
-    @Test
-    void isTokenValid_returnsFalseForExpiredToken() {
-        ReflectionTestUtils.setField(jwtService, "expiration", -1000L);
-        String token = jwtService.generateToken(user, Map.of());
-        assertThat(jwtService.isTokenValid(token, user)).isFalse();
+        assertThat(jwtDecoder.decode(token).getSubject()).isEqualTo("testuser");
     }
 
     @Test
     void generateToken_includesExtraClaims() {
-        String token = jwtService.generateToken(user, Map.of("userId", 1L));
-        Long userId = jwtService.extractClaim(token, claims -> claims.get("userId", Long.class));
-        assertThat(userId).isEqualTo(1L);
+        String token = jwtService.generateToken(user, Map.of("userId", 1L, "roles", List.of("ROLE_SUPER_ADMIN")));
+        var jwt = jwtDecoder.decode(token);
+        assertThat(jwt.<Number>getClaim("userId").longValue()).isEqualTo(1L);
+        assertThat(jwt.<List<String>>getClaim("roles")).containsExactly("ROLE_SUPER_ADMIN");
+    }
+
+    @Test
+    void generateToken_hasExpirationSet() {
+        String token = jwtService.generateToken(user, Map.of());
+        var jwt = jwtDecoder.decode(token);
+        assertThat(jwt.getExpiresAt()).isNotNull();
     }
 }

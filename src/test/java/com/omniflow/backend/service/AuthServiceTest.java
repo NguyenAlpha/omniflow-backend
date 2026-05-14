@@ -119,7 +119,7 @@ class AuthServiceTest {
 
     @Test
     void login_success() {
-        LoginRequest request = new LoginRequest("testuser", "password123", null);
+        LoginRequest request = new LoginRequest("testuser", "password123");
 
         when(userRepository.findByUsernameOrEmail("testuser", "testuser")).thenReturn(Optional.of(savedUser));
         when(storeMemberRepository.findByUserIdAndDeletedAtIsNullWithStore(1L)).thenReturn(List.of());
@@ -136,7 +136,7 @@ class AuthServiceTest {
 
     @Test
     void login_throwsWhenBadCredentials() {
-        LoginRequest request = new LoginRequest("testuser", "wrongpassword", null);
+        LoginRequest request = new LoginRequest("testuser", "wrongpassword");
 
         doThrow(new BadCredentialsException("Bad credentials"))
                 .when(authenticationManager).authenticate(any());
