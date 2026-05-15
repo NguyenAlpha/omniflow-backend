@@ -10,11 +10,11 @@ Xem thêm luồng chi tiết tại [LIFECYCLE.md](LIFECYCLE.md) và [TOKEN_LIFEC
 ```
 Request
   ↓
-JwtAuthFilter           — extract UserPrincipal từ JWT claims (0 DB call)
+BearerTokenAuthenticationFilter  — extract Bearer token, NimbusJwtDecoder validate chữ ký
   ↓
-SecurityContext         — lưu UserPrincipal + global role authorities + request
+UserPrincipalConverter            — convert JWT claims → UserPrincipal vào SecurityContext
   ↓
-@PreAuthorize           — gọi StoreAccessEvaluator để check store-scoped role
+@PreAuthorize                     — gọi StoreAccessEvaluator để check store-scoped role
   ↓
 StoreAccessEvaluator
   ├── SUPER_ADMIN?      → bypass (quyết định từ JWT authorities, 0 DB/Redis)
@@ -40,9 +40,9 @@ và không revoke được khi role thay đổi. Giải pháp: check Redis/DB th
 
 ---
 
-## 3. JwtAuthFilter — 0 DB call
+## 3. BearerTokenAuthenticationFilter + UserPrincipalConverter — 0 DB call
 
-`JwtAuthFilter` không dùng `UserDetailsService`. Mọi thông tin được extract từ JWT:
+`BearerTokenAuthenticationFilter` không dùng `UserDetailsService`. Mọi thông tin được extract từ JWT:
 
 ```
 JWT claims
@@ -50,16 +50,18 @@ JWT claims
   userId  → Long
   roles   → List<String> (VD: ["SUPER_ADMIN"])
 ```
-Tạo `Authentication` dựa trên `UserNamePasswordAuthenticationToken` với:
 
-1) Principal trong `SecurityContext` là `UserPrincipal(userId, username, List roles)` — không phải `User` entity.
-Controllers inject bằng `@AuthenticationPrincipal UserPrincipal currentUser`. dùng để truy cập `userId` và `username` và check global role (SUPER_ADMIN, SUPPORT).
+Luồng xử lý mỗi request:
 
-2) Authorities là `List<GrantedAuthority>` được map từ claim `roles` (VD: "SUPER_ADMIN" → "ROLE_SUPER_ADMIN").
-dùng để phân quyền global (SUPER_ADMIN, SUPPORT). dùng trong `@PreAuthorize("hasRole('SUPER_ADMIN')")` hoặc check thủ công trong code.
-
-3) Request được SetDitails bằng `WebAuthenticationDetailsSource` để có access đến `remoteAddress` và `sessionId` nếu cần.
-dùng để log hoặc kiểm tra thêm nếu muốn (VD: chặn login từ IP lạ).
+1. Filter đọc header `Authorization: Bearer <token>`, trích xuất token string.
+2. `NimbusJwtDecoder.decode(token)` — verify chữ ký HMAC-SHA256 và kiểm tra `exp`. Ném `JwtException` (→ 401) nếu sai hoặc hết hạn.
+3. `UserPrincipalConverter.convert(jwt)` build `Authentication` với:
+   - **Principal**: `UserPrincipal(userId, username, roles)` — không phải `User` entity.
+     Controllers inject bằng `@AuthenticationPrincipal UserPrincipal currentUser`, dùng để truy cập `userId`, `username`, check global role.
+   - **Authorities**: `List<SimpleGrantedAuthority>` map từ claim `roles` (VD: `"SUPER_ADMIN"` → `SimpleGrantedAuthority("SUPER_ADMIN")`).
+     Dùng trong `@PreAuthorize("hasRole('SUPER_ADMIN')")` hoặc check thủ công trong code.
+   - **Credentials**: đối tượng `Jwt` gốc — có thể lấy thêm claim nếu cần.
+4. `SecurityContextHolder.set(authentication)` — các filter/handler phía sau đọc principal từ đây.
 
 ---
 

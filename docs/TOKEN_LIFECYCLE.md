@@ -20,7 +20,8 @@ Login / Register
       ▼
   Token active ──────────────────────────────────────────────────┐
       │                                                           │
-      │  JwtAuthFilter validate mỗi request (0 DB call)          │
+      │  BearerTokenAuthenticationFilter validate mỗi request    │
+      │  (NimbusJwtDecoder — 0 DB call)                          │
       │                                                           │
       ▼                                                           │
   Token expired (sau 24h)                                        │
@@ -45,7 +46,7 @@ Login / Register
 
 | Claim | Kiểu | Mô tả |
 |:---|:---|:---|
-| `sub` | String | Username — dùng để identify user (đọc bởi `JwtService.extractUsername`) |
+| `sub` | String | Username — đọc bởi `UserPrincipalConverter` qua `jwt.getSubject()` |
 | `userId` | Long | Internal DB ID — dùng để build `UserPrincipal` và query DB khi cần |
 | `roles` | List\<String\> | Global roles của user — chỉ `SUPER_ADMIN` hoặc `SUPPORT`; rỗng với user thường |
 | `iat` | Unix epoch | Thời điểm token được cấp |
@@ -67,14 +68,17 @@ AuthService.buildAuthResponse(user)
     │
     └── jwtService.generateToken(user, { userId, roles })
         │
-        ├── Jwts.builder()
-        │   ├── .claims({ userId, roles })   ← custom claims
+        ├── JwtClaimsSet.builder()
+        │   ├── .claim("userId", userId)
+        │   ├── .claim("roles", roles)
         │   ├── .subject(username)           ← claim "sub"
         │   ├── .issuedAt(now)
-        │   ├── .expiration(now + 86400000ms)
-        │   └── .signWith(HMAC-SHA256 key)
+        │   └── .expiresAt(now + expiration)
         │
-        └── trả về "eyJhbGci....eyJ1c2VyS..."
+        ├── JwtEncoderParameters.from(HS256_HEADER, claimsSet)
+        │   └── HS256_HEADER bắt buộc — mặc định NimbusJwtEncoder dùng RS256
+        │
+        └── NimbusJwtEncoder.encode(...) → trả về "eyJhbGci....eyJ1c2VyS..."
 ```
 
 ---
@@ -82,21 +86,20 @@ AuthService.buildAuthResponse(user)
 ## 4. Luồng validate token (mỗi request)
 
 ```
-JwtAuthFilter nhận "Authorization: Bearer <token>"
+BearerTokenAuthenticationFilter nhận "Authorization: Bearer <token>"
     │
-    ├── jwtService.isTokenValid(token)
-    │   ├── Jwts.parser().verifyWith(signingKey).build().parseSignedClaims(token)
-    │   │   ├── Verify chữ ký HMAC → SignatureException nếu bị giả mạo
-    │   │   └── Parse payload → ExpiredJwtException nếu exp < now
-    │   └── return !isTokenExpired
+    ├── NimbusJwtDecoder.decode(token)
+    │   ├── Verify chữ ký HMAC-SHA256 → JwtException nếu bị giả mạo
+    │   └── Kiểm tra exp < now        → JwtException nếu hết hạn
     │
     ├── Token valid:
-    │   ├── extractUsername(token) → "nguyen.van.a"
-    │   ├── extractUserId(token)   → 42
-    │   ├── extractRoles(token)    → ["SUPER_ADMIN"]  hoặc []
-    │   └── set SecurityContext với UserPrincipal(42, "nguyen.van.a") + authorities
+    │   └── UserPrincipalConverter.convert(jwt)
+    │       ├── username ← jwt.getSubject()
+    │       ├── userId   ← jwt.getClaim("userId")  (normalize Integer/Long → Long)
+    │       ├── roles    ← jwt.getClaim("roles")   → ["SUPER_ADMIN"] hoặc []
+    │       └── set SecurityContext với UserPrincipal(userId, username, roles) + authorities
     │
-    └── Token invalid → không set SecurityContext → request tiếp tục nhưng sẽ bị 401
+    └── Token invalid → JwtException bị bắt → 401 Unauthorized
 ```
 
 ---
@@ -121,12 +124,12 @@ Các trường hợp cụ thể:
 
 | Sự kiện | Hành vi hiện tại |
 |:---|:---|
-| User bị deactivate (`isActive = false`) | Token vẫn pass JwtAuthFilter (không check DB). Chỉ bị chặn ở DaoAuthProvider nếu login lại |
+| User bị deactivate (`isActive = false`) | Token vẫn pass `BearerTokenAuthenticationFilter` (không check DB). Chỉ bị chặn ở `DaoAuthProvider` nếu login lại |
 | User bị soft-delete | Tương tự — token cũ vẫn hoạt động trong 24h |
 | Global role bị thu hồi | Role cũ vẫn còn trong token — có hiệu lực đến khi hết hạn |
 
 > Đây là **trade-off chấp nhận được** với scope Phase 1. Giải pháp nếu cần revoke:
-> dùng Redis blacklist lưu `jti` (JWT ID) của token bị thu hồi, check trong JwtAuthFilter.
+> dùng Redis blacklist lưu `jti` (JWT ID) của token bị thu hồi, check trong `BearerTokenAuthenticationFilter`.
 
 ### 5c. Global role thay đổi không phản ánh ngay
 
@@ -141,11 +144,9 @@ Nếu user được cấp hoặc thu hồi `SUPER_ADMIN`:
 ```
 Client gửi request với token đã hết hạn
     │
-    ├── JwtAuthFilter: jwtService.isTokenValid(token)
-    │   └── Jwts.parser().parseSignedClaims(token) → ném ExpiredJwtException
-    │   └── isTokenValid() catch → return false
-    │
-    ├── JwtAuthFilter bỏ qua (không set SecurityContext)
+    ├── BearerTokenAuthenticationFilter
+    │   └── NimbusJwtDecoder.decode(token) → ném JwtException (token expired)
+    │   └── Filter bắt exception → không set SecurityContext
     │
     ├── AuthorizationFilter: endpoint cần auth, SecurityContext trống → từ chối
     │
