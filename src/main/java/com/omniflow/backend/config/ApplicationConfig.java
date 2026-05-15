@@ -1,9 +1,17 @@
 package com.omniflow.backend.config;
 
+import com.nimbusds.jose.JWSAlgorithm;
+import com.nimbusds.jose.jwk.JWKSet;
+import com.nimbusds.jose.jwk.OctetSequenceKey;
+import com.nimbusds.jose.jwk.source.ImmutableJWKSet;
 import com.omniflow.backend.repository.UserRepository;
+import com.omniflow.backend.security.UserPrincipalConverter;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.core.convert.converter.Converter;
+import org.springframework.security.authentication.AbstractAuthenticationToken;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.AuthenticationProvider;
 import org.springframework.security.authentication.dao.DaoAuthenticationProvider;
@@ -12,6 +20,15 @@ import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.security.oauth2.jose.jws.MacAlgorithm;
+import org.springframework.security.oauth2.jwt.Jwt;
+import org.springframework.security.oauth2.jwt.JwtDecoder;
+import org.springframework.security.oauth2.jwt.JwtEncoder;
+import org.springframework.security.oauth2.jwt.NimbusJwtDecoder;
+import org.springframework.security.oauth2.jwt.NimbusJwtEncoder;
+
+import javax.crypto.spec.SecretKeySpec;
+import java.util.Base64;
 
 /**
  * Cấu hình các bean Spring Security dùng chung cho toàn bộ ứng dụng.
@@ -20,21 +37,28 @@ import org.springframework.security.crypto.password.PasswordEncoder;
  * <ul>
  *   <li>{@link #userDetailsService()} — load {@code User} từ DB; chỉ dùng trong quá trình
  *       <b>đăng nhập</b> (để {@link DaoAuthenticationProvider} xác minh password BCrypt).
- *       {@link com.omniflow.backend.security.JwtAuthFilter} <b>không</b> dùng bean này —
- *       thông tin user được lấy thẳng từ JWT claims, không có DB call.</li>
+ *       {@link org.springframework.security.oauth2.server.resource.web.BearerTokenAuthenticationFilter}
+ *       <b>không</b> dùng bean này — thông tin user được lấy thẳng từ JWT claims, không có DB call.</li>
  *   <li>{@link #authenticationProvider()} — kết nối {@code UserDetailsService} với
  *       {@code BCryptPasswordEncoder} để tạo thành một provider hoàn chỉnh.</li>
  *   <li>{@link #authenticationManager(AuthenticationConfiguration)} — expose
  *       {@code AuthenticationManager} để {@link com.omniflow.backend.service.AuthService}
  *       có thể inject và gọi {@code authenticate()} khi đăng nhập.</li>
  *   <li>{@link #passwordEncoder()} — BCrypt dùng cho cả encode (đăng ký) và verify (đăng nhập).</li>
+ *   <li>{@link #jwtDecoder(String)} — NimbusJwtDecoder dùng HMAC-SHA256; được
+ *       {@code BearerTokenAuthenticationFilter} dùng để validate token mỗi request.</li>
+ *   <li>{@link #jwtEncoder(String)} — NimbusJwtEncoder dùng để ký token trong
+ *       {@link com.omniflow.backend.security.JwtService} sau khi đăng nhập thành công.</li>
+ *   <li>{@link #jwtAuthConverter()} — convert {@code Jwt} đã validate thành
+ *       {@code UsernamePasswordAuthenticationToken} với {@code UserPrincipal}, lưu vào SecurityContext.</li>
  * </ul>
  *
  * <h3>Thành phần liên quan</h3>
  * <ul>
  *   <li>{@link com.omniflow.backend.service.AuthService} — inject {@code AuthenticationManager}
  *       để xác thực username/password khi đăng nhập</li>
- *   <li>{@link SecurityConfig} — inject {@code AuthenticationProvider} vào filter chain</li>
+ *   <li>{@link SecurityConfig} — inject {@code AuthenticationProvider} và {@code jwtAuthConverter}
+ *       vào filter chain</li>
  * </ul>
  */
 @Configuration
@@ -111,5 +135,47 @@ public class ApplicationConfig {
     @Bean
     public PasswordEncoder passwordEncoder() {
         return new BCryptPasswordEncoder();
+    }
+
+    /**
+     * NimbusJwtDecoder dùng HMAC-SHA256 để validate chữ ký của Bearer token.
+     *
+     * <p>Bean này được {@code BearerTokenAuthenticationFilter} tự động dùng mỗi request —
+     * không cần gọi thủ công. Nếu token hết hạn hoặc chữ ký sai, filter trả về 401.
+     *
+     * <p>{@code jwt.secret} phải là chuỗi Base64 của key HMAC-SHA256 (ít nhất 32 bytes sau decode).
+     */
+    @Bean
+    public JwtDecoder jwtDecoder(@Value("${jwt.secret}") String secret) {
+        byte[] keyBytes = Base64.getDecoder().decode(secret);
+        SecretKeySpec key = new SecretKeySpec(keyBytes, "HmacSHA256");
+        return NimbusJwtDecoder.withSecretKey(key).macAlgorithm(MacAlgorithm.HS256).build();
+    }
+
+    /**
+     * NimbusJwtEncoder dùng HMAC-SHA256 để ký token khi đăng nhập / đăng ký thành công.
+     *
+     * <p>Dùng {@link OctetSequenceKey} với {@code .algorithm(JWSAlgorithm.HS256)} bắt buộc —
+     * nếu thiếu, Nimbus không chọn được key khi ký và ném {@code JOSEException}.
+     * Key được wrap trong {@link ImmutableJWKSet} để tương thích với Nimbus JWK API.
+     */
+    @Bean
+    public JwtEncoder jwtEncoder(@Value("${jwt.secret}") String secret) {
+        byte[] keyBytes = Base64.getDecoder().decode(secret);
+        OctetSequenceKey jwk = new OctetSequenceKey.Builder(keyBytes).algorithm(JWSAlgorithm.HS256).build();
+        return new NimbusJwtEncoder(new ImmutableJWKSet<>(new JWKSet(jwk)));
+    }
+
+    /**
+     * Converter chuyển đổi {@link Jwt} đã được validate thành {@code Authentication}.
+     *
+     * <p>Sau khi {@code BearerTokenAuthenticationFilter} xác minh chữ ký JWT, Spring Security
+     * gọi converter này để tạo {@link com.omniflow.backend.security.UserPrincipal} từ claims
+     * và lưu vào {@code SecurityContext}. Nhờ đó {@code @AuthenticationPrincipal UserPrincipal}
+     * và {@code @PreAuthorize("@storeAccess....")} hoạt động đúng trong toàn bộ ứng dụng.
+     */
+    @Bean
+    public Converter<Jwt, AbstractAuthenticationToken> jwtAuthConverter() {
+        return new UserPrincipalConverter();
     }
 }

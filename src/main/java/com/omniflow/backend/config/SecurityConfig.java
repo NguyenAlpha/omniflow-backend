@@ -1,17 +1,18 @@
 package com.omniflow.backend.config;
 
-import com.omniflow.backend.security.JwtAuthFilter;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.core.convert.converter.Converter;
+import org.springframework.security.authentication.AbstractAuthenticationToken;
 import org.springframework.security.authentication.AuthenticationProvider;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
 import org.springframework.security.config.http.SessionCreationPolicy;
+import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.security.web.SecurityFilterChain;
-import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 
 import jakarta.servlet.http.HttpServletResponse;
 
@@ -22,14 +23,17 @@ import jakarta.servlet.http.HttpServletResponse;
  * <ul>
  *   <li>Xác định endpoint nào public, endpoint nào yêu cầu xác thực</li>
  *   <li>Cấu hình stateless session (JWT — không dùng HttpSession)</li>
- *   <li>Đăng ký {@link JwtAuthFilter} vào filter chain</li>
+ *   <li>Kích hoạt OAuth2 Resource Server — Spring Security tự xử lý Bearer token qua
+ *       {@link org.springframework.security.oauth2.server.resource.web.BearerTokenAuthenticationFilter}</li>
  *   <li>Bật method-level security cho {@code @PreAuthorize}</li>
  * </ul>
  *
  * <p><b>Thành phần liên quan:</b>
  * <ul>
- *   <li>{@link JwtAuthFilter} — filter xác thực JWT, chạy trước mỗi request</li>
- *   <li>{@link ApplicationConfig} — cung cấp {@code AuthenticationProvider} và các bean auth khác</li>
+ *   <li>{@link ApplicationConfig} — cung cấp {@code AuthenticationProvider}, {@code JwtDecoder},
+ *       và {@code jwtAuthConverter}</li>
+ *   <li>{@link com.omniflow.backend.security.UserPrincipalConverter} — convert JWT thành
+ *       {@code UserPrincipal} lưu vào SecurityContext, thay thế cho JwtAuthFilter cũ</li>
  *   <li>{@link com.omniflow.backend.security.StoreAccessEvaluator} — được kích hoạt bởi
  *       {@code @EnableMethodSecurity} thông qua {@code @PreAuthorize("@storeAccess....")}</li>
  * </ul>
@@ -41,8 +45,8 @@ import jakarta.servlet.http.HttpServletResponse;
 @RequiredArgsConstructor
 public class SecurityConfig {
 
-    private final JwtAuthFilter jwtAuthFilter;
     private final AuthenticationProvider authenticationProvider;
+    private final Converter<Jwt, AbstractAuthenticationToken> jwtAuthConverter;
 
     /**
      * Định nghĩa filter chain chính xử lý mọi HTTP request.
@@ -63,7 +67,8 @@ public class SecurityConfig {
                 )
 
                 // Không tạo hay lưu HttpSession — mỗi request tự xác thực qua JWT
-                .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+                .sessionManagement(session -> session
+                        .sessionCreationPolicy(SessionCreationPolicy.STATELESS))
 
                 // Trả về 401 JSON-friendly thay vì redirect đến trang login mặc định của Spring
                 .exceptionHandling(ex -> ex
@@ -74,9 +79,11 @@ public class SecurityConfig {
                 // Dùng DaoAuthenticationProvider (username + Bcrypt) từ ApplicationConfig
                 .authenticationProvider(authenticationProvider)
 
-                // JwtAuthFilter chạy trước UsernamePasswordAuthenticationFilter —
-                // nếu token hợp lệ thì SecurityContext đã có auth, filter sau bỏ qua
-                .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class)
+                // Kích hoạt BearerTokenAuthenticationFilter — tự động validate JWT và đưa
+                // UserPrincipal vào SecurityContext qua jwtAuthConverter
+                .oauth2ResourceServer(oauth2 -> oauth2
+                        .jwt(jwt -> jwt.jwtAuthenticationConverter(jwtAuthConverter))
+                )
 
                 .build();
     }

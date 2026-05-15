@@ -32,24 +32,26 @@ public class ProductService {
     @Transactional(readOnly = true)
     public List<ProductResponse> list(Long storeId, Boolean isActive, UserPrincipal currentUser) {
         findStoreOrThrow(storeId);
-        List<Product> products = isActive != null
-                ? productRepository.findByStoreIdAndIsActiveAndDeletedAtIsNull(storeId, isActive)
-                : productRepository.findByStoreIdAndDeletedAtIsNull(storeId);
-        return products.stream().map(this::toResponse).toList();
+        List<Object[]> rows = isActive != null
+                ? productRepository.findByStoreIdAndIsActiveWithStock(storeId, isActive)
+                : productRepository.findByStoreIdWithStock(storeId);
+        return rows.stream().map(this::toResponse).toList();
     }
 
     @Transactional(readOnly = true)
     public PagedResult<ProductResponse> search(Long storeId, String searchTerm, Pageable pageable, UserPrincipal currentUser) {
         findStoreOrThrow(storeId);
         return PagedResult.of(
-                productRepository.searchProducts(storeId, searchTerm, pageable).map(this::toResponse)
+                productRepository.searchProductsWithStock(storeId, searchTerm, pageable).map(this::toResponse)
         );
     }
 
     @Transactional(readOnly = true)
     public ProductResponse get(Long storeId, UUID publicId, UserPrincipal currentUser) {
         findStoreOrThrow(storeId);
-        return toResponse(findProductOrThrow(publicId));
+        Object[] row = productRepository.findByPublicIdWithStock(publicId)
+                .orElseThrow(() -> new ResourceNotFoundException(ErrorCode.PRODUCT_NOT_FOUND, "Product not found"));
+        return toResponse(row);
     }
 
     @Transactional
@@ -81,7 +83,7 @@ public class ProductService {
                 .lastModifiedByUser(userRef)
                 .build();
 
-        return toResponse(productRepository.save(product));
+        return toResponse(productRepository.save(product), BigDecimal.ZERO);
     }
 
     @Transactional
@@ -110,7 +112,9 @@ public class ProductService {
         product.setLastModifiedAt(Instant.now());
         product.setUpdatedAt(Instant.now());
 
-        return toResponse(productRepository.save(product));
+        Product saved = productRepository.save(product);
+        BigDecimal stock = productRepository.sumStockByProductId(saved.getId());
+        return toResponse(saved, stock);
     }
 
     @Transactional
@@ -159,16 +163,21 @@ public class ProductService {
                 .orElseThrow(() -> new ResourceNotFoundException(ErrorCode.PRODUCT_NOT_FOUND, "Product not found"));
     }
 
-    private ProductResponse toResponse(Product p) {
+    private ProductResponse toResponse(Product p, BigDecimal totalStock) {
         return new ProductResponse(
                 p.getId(), p.getPublicId(), p.getStore().getId(),
                 p.getSku(), p.getName(), p.getDescription(),
                 p.getCategory() != null ? p.getCategory().getId() : null,
                 p.getUnit().getId(),
                 p.getCostPrice(), p.getSellingPrice(),
+                totalStock != null ? totalStock : BigDecimal.ZERO,
                 p.getMinStockLevel(), p.getIsActive(),
                 p.getSyncVersion(), p.getLastModifiedAt(),
                 p.getCreatedAt(), p.getUpdatedAt()
         );
+    }
+
+    private ProductResponse toResponse(Object[] row) {
+        return toResponse((Product) row[0], (BigDecimal) row[1]);
     }
 }

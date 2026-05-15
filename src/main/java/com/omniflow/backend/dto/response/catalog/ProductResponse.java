@@ -15,6 +15,7 @@ public record ProductResponse(
     Long unitId,
     BigDecimal costPrice,
     BigDecimal sellingPrice,
+    BigDecimal totalStock,
     Integer minStockLevel,
     Boolean isActive,
     Long syncVersion,
@@ -23,4 +24,3 @@ public record ProductResponse(
     Instant updatedAt
 ) {
 }
-
