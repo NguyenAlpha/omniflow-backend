@@ -34,3 +34,4 @@ build/
 
 ### App config ###
 src/main/resources/application.properties
+/desktop.ini

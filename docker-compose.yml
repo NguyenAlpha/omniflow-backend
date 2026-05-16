@@ -1,15 +1,15 @@
 services:
   postgres:
     image: postgres:16-alpine
-    container_name: omniflow-db
+    container_name: quik-tech-db
     environment:
-      POSTGRES_DB: omniflow
-      POSTGRES_USER: omniflow
-      POSTGRES_PASSWORD: omniflow123
+      POSTGRES_DB: quik-tech
+      POSTGRES_USER: quik-tech
+      POSTGRES_PASSWORD: quik-tech123
     ports:
       - "5432:5432"
     volumes:
-      - omniflow_data:/var/lib/postgresql/data
+      - quik-tech_data:/var/lib/postgresql/data
 
 volumes:
-  omniflow_data:
+  quik-tech_data:

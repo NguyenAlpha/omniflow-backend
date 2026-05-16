@@ -1,0 +1,185 @@
+package com.quiktech.backend.service;
+
+import com.quiktech.backend.dto.request.catalog.ProductUpsertRequest;
+import com.quiktech.backend.dto.response.catalog.ProductResponse;
+import com.quiktech.backend.dto.response.common.ErrorCode;
+import com.quiktech.backend.dto.response.common.PagedResult;
+import com.quiktech.backend.entity.*;
+import com.quiktech.backend.entity.*;
+import com.quiktech.backend.exception.ResourceNotFoundException;
+import com.quiktech.backend.repository.*;
+import com.quiktech.backend.repository.*;
+import com.quiktech.backend.security.UserPrincipal;
+import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Pageable;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.math.BigDecimal;
+import java.time.Instant;
+import java.util.List;
+import java.util.UUID;
+
+@Service
+@RequiredArgsConstructor
+public class ProductService {
+
+    private final ProductRepository productRepository;
+    private final StoreRepository storeRepository;
+    private final UserRepository userRepository;
+    private final CategoryRepository categoryRepository;
+    private final UnitRepository unitRepository;
+    private final PriceHistoryRepository priceHistoryRepository;
+
+    @Transactional(readOnly = true)
+    public List<ProductResponse> list(Long storeId, Boolean isActive, UserPrincipal currentUser) {
+        findStoreOrThrow(storeId);
+        List<Object[]> rows = isActive != null
+                ? productRepository.findByStoreIdAndIsActiveWithStock(storeId, isActive)
+                : productRepository.findByStoreIdWithStock(storeId);
+        return rows.stream().map(this::toResponse).toList();
+    }
+
+    @Transactional(readOnly = true)
+    public PagedResult<ProductResponse> search(Long storeId, String searchTerm, Pageable pageable, UserPrincipal currentUser) {
+        findStoreOrThrow(storeId);
+        return PagedResult.of(
+                productRepository.searchProductsWithStock(storeId, searchTerm, pageable).map(this::toResponse)
+        );
+    }
+
+    @Transactional(readOnly = true)
+    public ProductResponse get(Long storeId, UUID publicId, UserPrincipal currentUser) {
+        findStoreOrThrow(storeId);
+        Object[] row = productRepository.findByPublicIdWithStock(publicId)
+                .orElseThrow(() -> new ResourceNotFoundException(ErrorCode.PRODUCT_NOT_FOUND, "Product not found"));
+        return toResponse(row);
+    }
+
+    @Transactional
+    public ProductResponse create(Long storeId, ProductUpsertRequest request, UserPrincipal currentUser) {
+        Store store = findStoreOrThrow(storeId);
+
+        if (productRepository.findByStoreIdAndSkuAndDeletedAtIsNull(storeId, request.sku()).isPresent()) {
+            throw new IllegalArgumentException("SKU already exists in this store");
+        }
+
+        Category category = resolveCategory(request.categoryPublicId());
+        Unit unit = resolveUnit(request.unitPublicId());
+
+        // getReferenceById: JPA proxy — không SELECT, chỉ dùng ID cho FK lastModifiedByUser
+        User userRef = userRepository.getReferenceById(currentUser.userId());
+
+        Product product = Product.builder()
+                .store(store)
+                .sku(request.sku())
+                .name(request.name())
+                .description(request.description())
+                .category(category)
+                .unit(unit)
+                .costPrice(request.costPrice())
+                .sellingPrice(request.sellingPrice())
+                .minStockLevel(request.minStockLevel())
+                .isActive(request.isActive())
+                .publicId(UUID.randomUUID())
+                .lastModifiedByUser(userRef)
+                .build();
+
+        return toResponse(productRepository.save(product), BigDecimal.ZERO);
+    }
+
+    @Transactional
+    public ProductResponse update(Long storeId, UUID publicId, ProductUpsertRequest request, UserPrincipal currentUser) {
+        findStoreOrThrow(storeId);
+
+        Product product = findProductOrThrow(publicId);
+
+        productRepository.findByStoreIdAndSkuAndDeletedAtIsNull(storeId, request.sku())
+                .filter(p -> !p.getPublicId().equals(publicId))
+                .ifPresent(p -> { throw new IllegalArgumentException("SKU already exists in this store"); });
+
+        User userRef = userRepository.getReferenceById(currentUser.userId());
+        recordPriceHistoryIfChanged(product, request.costPrice(), request.sellingPrice(), userRef);
+
+        product.setSku(request.sku());
+        product.setName(request.name());
+        product.setDescription(request.description());
+        product.setCategory(resolveCategory(request.categoryPublicId()));
+        product.setUnit(resolveUnit(request.unitPublicId()));
+        product.setCostPrice(request.costPrice());
+        product.setSellingPrice(request.sellingPrice());
+        product.setMinStockLevel(request.minStockLevel());
+        product.setIsActive(request.isActive());
+        product.setLastModifiedByUser(userRef);
+        product.setLastModifiedAt(Instant.now());
+        product.setUpdatedAt(Instant.now());
+
+        Product saved = productRepository.save(product);
+        BigDecimal stock = productRepository.sumStockByProductId(saved.getId());
+        return toResponse(saved, stock);
+    }
+
+    @Transactional
+    public void delete(Long storeId, UUID publicId, UserPrincipal currentUser) {
+        findStoreOrThrow(storeId);
+        Product product = findProductOrThrow(publicId);
+        product.setDeletedAt(Instant.now());
+        productRepository.save(product);
+    }
+
+    private void recordPriceHistoryIfChanged(Product product, BigDecimal newCostPrice, BigDecimal newSellingPrice, User changedBy) {
+        boolean costChanged = product.getCostPrice().compareTo(newCostPrice) != 0;
+        boolean sellingChanged = product.getSellingPrice().compareTo(newSellingPrice) != 0;
+        if (!costChanged && !sellingChanged) return;
+
+        PriceHistory history = PriceHistory.builder()
+                .store(product.getStore())
+                .product(product)
+                .oldCostPrice(product.getCostPrice())
+                .newCostPrice(newCostPrice)
+                .oldSellingPrice(product.getSellingPrice())
+                .newSellingPrice(newSellingPrice)
+                .changedBy(changedBy)
+                .build();
+        priceHistoryRepository.save(history);
+    }
+
+    private Category resolveCategory(UUID publicId) {
+        if (publicId == null) return null;
+        return categoryRepository.findByPublicId(publicId)
+                .orElseThrow(() -> new ResourceNotFoundException(ErrorCode.CATEGORY_NOT_FOUND, "Category not found"));
+    }
+
+    private Unit resolveUnit(UUID publicId) {
+        return unitRepository.findByPublicId(publicId)
+                .orElseThrow(() -> new ResourceNotFoundException(ErrorCode.UNIT_NOT_FOUND, "Unit not found"));
+    }
+
+    private Store findStoreOrThrow(Long storeId) {
+        return storeRepository.findById(storeId)
+                .orElseThrow(() -> new ResourceNotFoundException(ErrorCode.STORE_NOT_FOUND, "Store not found"));
+    }
+
+    private Product findProductOrThrow(UUID publicId) {
+        return productRepository.findByPublicId(publicId)
+                .orElseThrow(() -> new ResourceNotFoundException(ErrorCode.PRODUCT_NOT_FOUND, "Product not found"));
+    }
+
+    private ProductResponse toResponse(Product p, BigDecimal totalStock) {
+        return new ProductResponse(
+                p.getId(), p.getPublicId(), p.getStore().getId(),
+                p.getSku(), p.getName(), p.getDescription(),
+                p.getCategory() != null ? p.getCategory().getId() : null,
+                p.getUnit().getId(),
+                p.getCostPrice(), p.getSellingPrice(),
+                totalStock != null ? totalStock : BigDecimal.ZERO,
+                p.getMinStockLevel(), p.getIsActive(),
+                p.getSyncVersion(), p.getLastModifiedAt(),
+                p.getCreatedAt(), p.getUpdatedAt()
+        );
+    }
+
+    private ProductResponse toResponse(Object[] row) {
+        return toResponse((Product) row[0], (BigDecimal) row[1]);
+    }
+}
