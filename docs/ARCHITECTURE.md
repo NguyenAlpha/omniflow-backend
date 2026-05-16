@@ -62,20 +62,12 @@ com.quiktech.backend
 │   ├── request/
 │   │   ├── auth/
 │   │   ├── store/
-│   │   ├── catalog/
-│   │   ├── order/
-│   │   ├── purchase/
-│   │   ├── partner/
-│   │   └── inventory/
+│   │   └── ...
 │   └── response/
+│       ├── common/     — ApiResult, ErrorDetail, ErrorCode, PagedResult
 │       ├── auth/
 │       ├── store/
-│       ├── catalog/
-│       ├── order/
-│       ├── purchase/
-│       ├── partner/
-│       ├── common/        — ApiResult, ErrorDetail, ErrorCode, PagedResult
-│       └── sync/
+│       └── ...
 │
 └── exception/
     ├── ForbiddenException.java
@@ -121,16 +113,16 @@ HTTP Request
 
 ## 3. Dependencies
 
-| Dependency | Version | Dùng cho |
-|:---|:---|:---|
-| `spring-boot-starter-web` | 3.5.x | REST API, Jackson JSON |
-| `spring-boot-starter-security` | 3.5.x | Spring Security 6, filter chain |
-| `spring-boot-starter-oauth2-resource-server` | 3.5.x | JWT validation (Nimbus), BearerTokenAuthenticationFilter |
-| `spring-boot-starter-data-jpa` | 3.5.x | JPA / Hibernate 6 |
-| `spring-boot-starter-data-redis` | 3.5.x | Redis client (store role cache) |
-| `spring-boot-starter-validation` | 3.5.x | Bean Validation (`@Valid`, `@NotBlank`) |
-| `flyway-core` + `flyway-database-postgresql` | — | Schema migration |
-| `postgresql` | — | JDBC driver (runtime) |
-| `lombok` | — | Boilerplate reduction (`@Getter`, `@Builder`...) |
-| `spring-boot-starter-test` | 3.5.x | JUnit 5, Mockito |
-| `spring-security-test` | 3.5.x | Security test utilities |
+| Dependency                                   | Version | Dùng cho                                                 |
+|:---------------------------------------------|:--------|:---------------------------------------------------------|
+| `spring-boot-starter-web`                    | 3.5.x   | REST API, Jackson JSON                                   |
+| `spring-boot-starter-security`               | 3.5.x   | Spring Security 6, filter chain                          |
+| `spring-boot-starter-oauth2-resource-server` | 3.5.x   | JWT validation (Nimbus), BearerTokenAuthenticationFilter |
+| `spring-boot-starter-data-jpa`               | 3.5.x   | JPA / Hibernate 6                                        |
+| `spring-boot-starter-data-redis`             | 3.5.x   | Redis client (store role cache)                          |
+| `spring-boot-starter-validation`             | 3.5.x   | Bean Validation (`@Valid`, `@NotBlank`)                  |
+| `flyway-core` + `flyway-database-postgresql` | —       | Schema migration                                         |
+| `postgresql`                                 | —       | JDBC driver (runtime)                                    |
+| `lombok`                                     | —       | Boilerplate reduction (`@Getter`, `@Builder`...)         |
+| `spring-boot-starter-test`                   | 3.5.x   | JUnit 5, Mockito                                         |
+| `spring-security-test`                       | 3.5.x   | Security test utilities                                  |

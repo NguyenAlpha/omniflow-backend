@@ -1,13 +1,13 @@
-# Project OmniFlow — POS & Inventory System
+# Project QuikTech — POS & Inventory System
 
 ## 1. Tổng quan dự án
 
-**OmniFlow** là hệ thống quản lý bán hàng và kho vận đa tenant (multi-tenant B2B SaaS),
+**QuikTech** là hệ thống quản lý bán hàng, kho vận, thống kê đa tenant (multi-tenant B2B SaaS),
 tập trung vào tính chính xác dữ liệu tài chính, phân quyền theo vai trò,
-và khả năng sync offline cho App Mobile.
+và khả năng sync offline (sync chưa triển khai ngay).
 
 - **Mô hình:** Multi-tenant B2B SaaS — 1 hệ thống phục vụ nhiều chủ cửa hàng, dữ liệu tách biệt theo `store_id`
-- **Trạng thái:** Phase 1 — Core API đang triển khai
+- **Trạng thái:** Phase 1-2 — Core API đang triển khai
 
 ---
 
@@ -21,25 +21,18 @@ và khả năng sync offline cho App Mobile.
 | **Migration** | Flyway — `ddl-auto=validate`                                                  |
 | **Auth**      | Spring Security 6 + OAuth2 Resource Server (Nimbus) — stateless, Hybrid cache |
 | **Cache**     | Redis (Spring Data Redis) — store role cache, TTL 5 phút                      |
-| **Frontend**  | Next.js                                                                       |
-| **Mobile**    | React Native (Phase 2) — offline-first với SQLite + delta sync                |
 
 ---
 
 ## 3. Lộ trình phát triển
 
-| Giai đoạn   | Nội dung                                             | Trạng thái   |
-|:------------|:-----------------------------------------------------|:-------------|
-| **Phase 1** | Core API + DB Schema + Auth + Web Admin              | Đang làm     |
-| **Phase 2** | Order / Purchase / Return / Inventory / Payment APIs | Chưa bắt đầu |
-| **Phase 3** | App Mobile (React Native) + Offline sync             | Chưa bắt đầu |
-| **Phase 4** | Docker + Cloud deployment + Read replica             | Chưa bắt đầu |
-
-**Đã xong (Phase 1):** Entity model (26), Repository layer, Hybrid Auth (JWT + Redis),
-Auth flow, Store + Member management, Product / Category / Unit CRUD.
-
-**Chưa có service/controller:** Order, ReturnOrder, PurchaseOrder, Inventory, Payment,
-Warehouse, Customer, Supplier, Subscription, AuditLog, Sync.
+| Giai đoạn   | Nội dung                                 | Trạng thái   |
+|:------------|:-----------------------------------------|:-------------|
+| **Phase 1** | DB Schema                                | Hoàn thành   |
+| **Phase 2** | Core API + Auth                          | Đang làm     |
+| **Phase 3** | Docker + Cloud deployment + Read replica | Chưa bắt đầu |
+| **Phase 4** | Offline sync (phát triển sau)            | Chưa bắt đầu |
+| **Phase 5** | Feature Flag / Feature Toggle            | Chưa bắt đầu |
 
 ---
 

@@ -5,7 +5,10 @@
 >
 > **Soft delete:** các bảng có `deleted_at` — khi xoá chỉ set timestamp, không xoá vật lý. Mọi query cần thêm `WHERE deleted_at IS NULL`.
 > **Không cho xoá:** bảng tài chính (`orders`, `purchase_orders`, `payments`, `inventory_transactions`) — chỉ được huỷ qua `status`.
-
+>
+> Các vấn đề đã giải tuyết: RBAC (Role-Based Access Control), multi-tenant
+> 
+> Tương lai nâng cấp: Feature Flag / Feature Toggle
 ---
 
 ## 1. Người dùng & Phân quyền & Cửa hàng
