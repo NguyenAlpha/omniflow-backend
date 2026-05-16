@@ -1,11 +1,13 @@
 package com.quiktech.backend.security;
 
+import java.util.List;
+
 /**
  * Đối tượng principal được lưu trong {@code SecurityContext} sau khi xác thực JWT thành công.
  *
  * <p>Thay thế {@code User} entity làm principal — tránh việc load toàn bộ entity từ DB
  * chỉ để đặt vào SecurityContext. Mọi thông tin cần thiết ({@code userId}, {@code username})
- * được extract thẳng từ JWT claims bởi {@link JwtAuthFilter}, không tốn DB call.
+ * được extract thẳng từ JWT claims bởi {@link UserPrincipalConverter}, không tốn DB call.
  *
  * <h3>Cách lấy principal trong controller / service</h3>
  * <pre>{@code
@@ -27,8 +29,6 @@ package com.quiktech.backend.security;
  * @param username tên đăng nhập (từ claim {@code sub} trong JWT)
  * @param roles    global roles của user (từ claim {@code roles} trong JWT), ví dụ ["SUPER_ADMIN"]
  */
-import java.util.List;
-
 public record UserPrincipal(Long userId, String username, List<String> roles) {
 
     public boolean hasRole(String role) {

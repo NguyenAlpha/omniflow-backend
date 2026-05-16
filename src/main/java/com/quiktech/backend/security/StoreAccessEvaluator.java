@@ -194,7 +194,7 @@ public class StoreAccessEvaluator {
 
     /**
      * Kiểm tra trong authorities của {@code SecurityContext} có {@code ROLE_SUPER_ADMIN} không.
-     * Authorities này được extract từ JWT claims bởi {@link JwtAuthFilter} — không cần DB.
+     * Authorities này được extract từ JWT claims bởi {@link UserPrincipalConverter} — không cần DB.
      */
     private static boolean isSuperAdmin(Authentication authentication) {
         return authentication.getAuthorities().stream()

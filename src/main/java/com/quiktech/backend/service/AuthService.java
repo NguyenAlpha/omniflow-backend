@@ -66,7 +66,7 @@ public class AuthService {
 
     /**
      * Tạo AuthResponse đầy đủ: JWT (chứa userId + global roles) + user summary + store memberships.
-     * JWT nhúng global roles để JwtAuthFilter không cần gọi DB khi xác thực.
+     * JWT nhúng global roles để UserPrincipalConverter extract trực tiếp, không cần DB call.
      */
     private AuthResponse buildAuthResponse(User user) {
         // StoreMember kèm Store — tránh lazy load
@@ -97,7 +97,7 @@ public class AuthService {
                 })
                 .toList();
 
-        // Global roles nhúng vào JWT — JwtAuthFilter sẽ extract, không cần DB
+        // Global roles nhúng vào JWT — UserPrincipalConverter sẽ extract, không cần DB
         List<String> globalRoles = userRoleRepository
                 .findByUserIdAndStoreIsNullAndDeletedAtIsNull(user.getId())
                 .stream()

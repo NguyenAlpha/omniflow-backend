@@ -105,8 +105,8 @@ public class ApplicationConfig {
      *   <li>Trả về {@code UsernamePasswordAuthenticationToken} nếu thành công</li>
      * </ol>
      *
-     * <p>{@code UserDetailsService} được truyền qua constructor thay vì setter
-     * để tránh dùng API deprecated từ Spring Security 6.4+.
+     * <p>{@code UserDetailsService} được inject qua constructor, {@code PasswordEncoder} qua setter —
+     * cách khuyến nghị từ Spring Security 6.4+ để tránh deprecated API.
      */
     @Bean
     public AuthenticationProvider authenticationProvider() {
