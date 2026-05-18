@@ -36,14 +36,14 @@ public class GlobalExceptionHandler {
     }
 
     @ExceptionHandler(BadCredentialsException.class)
-    public ResponseEntity<ApiResult<?>> handleBadCredentials(BadCredentialsException ex) {
+    public ResponseEntity<ApiResult<?>> handleBadCredentials(BadCredentialsException ignored) {
         return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(
                 ApiResult.fail(ErrorDetail.of(ErrorCode.INVALID_CREDENTIALS, "Invalid username or password"))
         );
     }
 
     @ExceptionHandler(DisabledException.class)
-    public ResponseEntity<ApiResult<?>> handleDisabled(DisabledException ex) {
+    public ResponseEntity<ApiResult<?>> handleDisabled(DisabledException ignored) {
         return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(
                 ApiResult.fail(ErrorDetail.of(ErrorCode.INVALID_CREDENTIALS, "Account is disabled"))
         );
@@ -64,7 +64,7 @@ public class GlobalExceptionHandler {
     }
 
     @ExceptionHandler(AccessDeniedException.class)
-    public ResponseEntity<ApiResult<?>> handleAccessDenied(AccessDeniedException ex) {
+    public ResponseEntity<ApiResult<?>> handleAccessDenied(AccessDeniedException ignored) {
         return ResponseEntity.status(HttpStatus.FORBIDDEN).body(
                 ApiResult.fail(ErrorDetail.of(ErrorCode.FORBIDDEN, "Access denied"))
         );
