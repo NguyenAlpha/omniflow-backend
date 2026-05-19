@@ -151,6 +151,7 @@ CREATE TABLE products (
     cost_price NUMERIC(15,2) NOT NULL,
     selling_price NUMERIC(15,2) NOT NULL,
     min_stock_level INTEGER NOT NULL DEFAULT 0,
+    total_stock NUMERIC(15,2) NOT NULL DEFAULT 0,
     is_active BOOLEAN NOT NULL DEFAULT true,
     search_vector TSVECTOR,
     public_id UUID NOT NULL UNIQUE,
@@ -660,7 +661,7 @@ SELECT p.store_id,
        p.name AS product_name,
        p.sku,
        p.min_stock_level,
-       SUM(i.quantity) AS total_quantity,
+       SUM(i.quantity) AS total_stock,
        CASE WHEN SUM(i.quantity) < p.min_stock_level THEN true ELSE false END AS is_low_stock
 FROM products p
 JOIN inventory i ON i.product_id = p.id
@@ -702,6 +703,29 @@ $$ LANGUAGE plpgsql;
 
 CREATE TRIGGER tsvector_update_customers BEFORE INSERT OR UPDATE ON customers
 FOR EACH ROW EXECUTE FUNCTION customers_tsvector_trigger();
+
+-- ============================================================================
+-- Section 15: Triggers for products.total_stock sync
+-- ============================================================================
+
+CREATE FUNCTION inventory_sync_product_total_stock() RETURNS trigger AS $$
+DECLARE
+    target_product_id BIGINT;
+BEGIN
+    target_product_id := COALESCE(NEW.product_id, OLD.product_id);
+    UPDATE products
+    SET total_stock = COALESCE((
+        SELECT SUM(quantity) FROM inventory
+        WHERE product_id = target_product_id AND deleted_at IS NULL
+    ), 0)
+    WHERE id = target_product_id;
+    RETURN NULL;
+END
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trg_inventory_sync_product_total_stock
+AFTER INSERT OR UPDATE OR DELETE ON inventory
+FOR EACH ROW EXECUTE FUNCTION inventory_sync_product_total_stock();
 
 -- ============================================================================
 -- End of V1__initial_schema.sql
