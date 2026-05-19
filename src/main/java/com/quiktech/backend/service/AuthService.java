@@ -12,6 +12,9 @@ import com.quiktech.backend.repository.UserRepository;
 import com.quiktech.backend.repository.UserRoleRepository;
 import com.quiktech.backend.security.JwtService;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -22,6 +25,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class AuthService {
@@ -33,15 +37,11 @@ public class AuthService {
     private final JwtService jwtService;
     private final AuthenticationManager authenticationManager;
 
+    @Value("${jwt.expiration}")
+    private long jwtExpiration;
+
     @Transactional
     public AuthResponse register(RegisterRequest request) {
-        if (userRepository.findByUsername(request.username()).isPresent()) {
-            throw new IllegalArgumentException("Username already taken");
-        }
-        if (userRepository.findByEmail(request.email()).isPresent()) {
-            throw new IllegalArgumentException("Email already registered");
-        }
-
         User user = User.builder()
                 .username(request.username())
                 .email(request.email())
@@ -50,7 +50,15 @@ public class AuthService {
                 .phone(request.phone())
                 .build();
 
-        return buildAuthResponse(userRepository.save(user));
+        AuthResponse response;
+        try {
+            response = buildAuthResponse(userRepository.save(user));
+        } catch (DataIntegrityViolationException e) {
+            log.warn("Register failed: duplicate username or email: {}", request.username());
+            throw new IllegalArgumentException("Username or email already taken");
+        }
+        log.info("User registered: username={}, email={}", user.getUsername(), user.getEmail());
+        return response;
     }
 
     public AuthResponse login(LoginRequest request) {
@@ -61,6 +69,7 @@ public class AuthService {
         User user = userRepository.findByUsernameOrEmail(request.usernameOrEmail(), request.usernameOrEmail())
                 .orElseThrow();
 
+        log.info("User logged in: username={}", user.getUsername());
         return buildAuthResponse(user);
     }
 
@@ -105,6 +114,8 @@ public class AuthService {
                 .map(ur -> ur.getRole().getName().name())
                 .toList();
 
+        log.info("Building token for userId={}: globalRoles={}, storeCount={}", user.getId(), globalRoles, memberships.size());
+
         String token = jwtService.generateToken(user, Map.of(
                 "userId", user.getId(),
                 "roles", globalRoles
@@ -120,6 +131,6 @@ public class AuthService {
                 user.getIsActive()
         );
 
-        return new AuthResponse(token, "Bearer", 86400000L, userSummary, memberships);
+        return new AuthResponse(token, "Bearer", jwtExpiration, userSummary, memberships);
     }
 }
