@@ -35,6 +35,7 @@ When editing existing code:
 - Don't refactor things that aren't broken.
 - Match existing style, even if you'd do it differently.
 - If you notice unrelated dead code, mention it - don't delete it.
+- Never delete existing comments. Update them if they become inaccurate, but never silently remove them. Exception: Javadoc/comments that belong to a method or block being intentionally removed may be removed along with that code.
 
 When your changes create orphans:
 - Remove imports/variables/functions that YOUR changes made unused.
