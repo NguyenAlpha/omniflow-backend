@@ -7,7 +7,6 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.convert.converter.Converter;
 import org.springframework.security.authentication.AbstractAuthenticationToken;
-import org.springframework.security.authentication.AuthenticationProvider;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
@@ -32,8 +31,7 @@ import jakarta.servlet.http.HttpServletResponse;
  *
  * <p><b>Thành phần liên quan:</b>
  * <ul>
- *   <li>{@link ApplicationConfig} — cung cấp {@code AuthenticationProvider}, {@code JwtDecoder},
- *       và {@code jwtAuthConverter}</li>
+ *   <li>{@link ApplicationConfig} — cung cấp {@code JwtDecoder} và {@code jwtAuthConverter}</li>
  *   <li>{@link UserPrincipalConverter} — convert JWT thành
  *       {@code UserPrincipal} lưu vào SecurityContext, thay thế cho JwtAuthFilter cũ</li>
  *   <li>{@link StoreAccessEvaluator} — được kích hoạt bởi
@@ -47,7 +45,6 @@ import jakarta.servlet.http.HttpServletResponse;
 @RequiredArgsConstructor
 public class SecurityConfig {
 
-    private final AuthenticationProvider authenticationProvider;
     private final Converter<Jwt, AbstractAuthenticationToken> jwtAuthConverter;
 
     /**
@@ -57,6 +54,8 @@ public class SecurityConfig {
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         return http
+                // CORS bật để cho phép frontend (ví dụ: localhost:3000) gọi API
+                .cors(cors -> {})
                 // CSRF không cần thiết với stateless JWT — không có cookie session để exploit
                 .csrf(AbstractHttpConfigurer::disable)
 
@@ -77,9 +76,6 @@ public class SecurityConfig {
                         .authenticationEntryPoint((request, response, e) ->
                                 response.sendError(HttpServletResponse.SC_UNAUTHORIZED, "Unauthorized"))
                 )
-
-                // Dùng DaoAuthenticationProvider (username + Bcrypt) từ ApplicationConfig
-                .authenticationProvider(authenticationProvider)
 
                 // Kích hoạt BearerTokenAuthenticationFilter — tự động validate JWT và đưa
                 // UserPrincipal vào SecurityContext qua jwtAuthConverter
