@@ -1,6 +1,6 @@
 <configuration>
 
-    <conversionRule conversionWord="clr" converterClass="org.springframework.boot.logging.logback.ColorConverter" />
+    <conversionRule conversionWord="clr" class="org.springframework.boot.logging.logback.ColorConverter" />
 
     <!-- Terminal: tất cả levels, có màu -->
     <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
