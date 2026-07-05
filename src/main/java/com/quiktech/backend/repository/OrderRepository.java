@@ -8,6 +8,8 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 import java.math.BigDecimal;
+import java.time.Instant;
+import java.time.Instant;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
@@ -72,11 +74,84 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
 
     List<Order> findByStoreIdOrderByCreatedAtDesc(Long storeId);
 
+    @Query(value = """
+        SELECT o FROM Order o
+        LEFT JOIN o.customer c
+        WHERE o.store.id = :storeId
+        AND (:status IS NULL OR o.status = :status)
+        AND (:orderCode IS NULL OR LOWER(o.orderCode) LIKE :orderCode)
+        AND (:customerPublicId IS NULL OR c.publicId = :customerPublicId)
+        AND o.createdAt >= :fromDate
+        AND o.createdAt <= :toDate
+        ORDER BY o.createdAt DESC
+        """,
+        countQuery = """
+        SELECT COUNT(o) FROM Order o
+        LEFT JOIN o.customer c
+        WHERE o.store.id = :storeId
+        AND (:status IS NULL OR o.status = :status)
+        AND (:orderCode IS NULL OR LOWER(o.orderCode) LIKE :orderCode)
+        AND (:customerPublicId IS NULL OR c.publicId = :customerPublicId)
+        AND o.createdAt >= :fromDate
+        AND o.createdAt <= :toDate
+        """)
+    Page<Order> search(
+        @Param("storeId") Long storeId,
+        @Param("status") String status,
+        @Param("orderCode") String orderCode,
+        @Param("customerPublicId") UUID customerPublicId,
+        @Param("fromDate") Instant fromDate,
+        @Param("toDate") Instant toDate,
+        Pageable pageable
+    );
+
     @Query("""
         SELECT DISTINCT o FROM Order o
         JOIN FETCH o.orderItems oi JOIN FETCH oi.product
         WHERE o.publicId = :publicId
     """)
     Optional<Order> findByPublicIdWithItems(@Param("publicId") UUID publicId);
+
+    @Query("SELECT o FROM Order o LEFT JOIN FETCH o.customer WHERE o.publicId = :publicId")
+    Optional<Order> findByPublicIdWithCustomer(@Param("publicId") UUID publicId);
+
+    @Query("""
+        SELECT o FROM Order o
+        WHERE o.customer.id = :customerId
+        AND o.debtAmount > 0
+        AND o.status = 'COMPLETED'
+        ORDER BY o.createdAt ASC
+    """)
+    List<Order> findCompletedOrdersByCustomerWithDebt(@Param("customerId") Long customerId);
+
+    // Đếm đơn hàng không bị huỷ trong business trong khoảng thời gian — dùng để check limit theo tháng
+    @Query(value = """
+        SELECT COUNT(o.id)
+        FROM orders o
+        JOIN stores s ON s.id = o.store_id
+        WHERE s.business_id = :businessId
+        AND o.status != 'CANCELLED'
+        AND o.created_at >= :from
+        AND o.created_at < :to
+    """, nativeQuery = true)
+    long countActiveByBusinessIdAndPeriod(
+            @Param("businessId") Long businessId,
+            @Param("from") Instant from,
+            @Param("to") Instant to);
+
+    @Query("SELECT o FROM Order o LEFT JOIN FETCH o.customer WHERE o.store.id = :storeId ORDER BY o.createdAt DESC")
+    List<Order> findRecentByStoreId(@Param("storeId") Long storeId, Pageable pageable);
+
+    @Query("""
+        SELECT o FROM Order o
+        LEFT JOIN FETCH o.customer
+        WHERE o.store.id = :storeId
+        AND o.createdAt >= :from
+        AND o.createdAt <= :to
+        ORDER BY o.createdAt DESC
+    """)
+    List<Order> findForExport(@Param("storeId") Long storeId,
+                              @Param("from") Instant from,
+                              @Param("to") Instant to);
 }
 

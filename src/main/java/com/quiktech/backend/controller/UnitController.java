@@ -17,47 +17,47 @@ import java.util.List;
 import java.util.UUID;
 
 @RestController
-@RequestMapping("/api/stores/{storeId}/units")
+@RequestMapping("/api/businesses/{businessId}/units")
 @RequiredArgsConstructor
 public class UnitController {
 
     private final UnitService unitService;
 
     @GetMapping
-    @PreAuthorize("@storeAccess.isMember(#storeId, authentication)")
+    @PreAuthorize("@businessAccess.isMember(#businessId, authentication)")
     public ResponseEntity<ApiResult<List<UnitResponse>>> list(
-            @PathVariable Long storeId,
+            @PathVariable Long businessId,
             @AuthenticationPrincipal UserPrincipal currentUser) {
-        return ResponseEntity.ok(ApiResult.ok(unitService.list(storeId, currentUser)));
+        return ResponseEntity.ok(ApiResult.ok(unitService.list(businessId, currentUser)));
     }
 
     @PostMapping
-    @PreAuthorize("@storeAccess.isOwnerOrManager(#storeId, authentication)")
+    @PreAuthorize("@businessAccess.isOwnerOrManager(#businessId, authentication)")
     public ResponseEntity<ApiResult<UnitResponse>> create(
-            @PathVariable Long storeId,
+            @PathVariable Long businessId,
             @Valid @RequestBody UnitUpsertRequest request,
             @AuthenticationPrincipal UserPrincipal currentUser) {
         return ResponseEntity.status(HttpStatus.CREATED)
-                .body(ApiResult.ok(unitService.create(storeId, request, currentUser)));
+                .body(ApiResult.ok(unitService.create(businessId, request, currentUser)));
     }
 
     @PatchMapping("/{publicId}")
-    @PreAuthorize("@storeAccess.isOwnerOrManager(#storeId, authentication)")
+    @PreAuthorize("@businessAccess.isOwnerOrManager(#businessId, authentication)")
     public ResponseEntity<ApiResult<UnitResponse>> update(
-            @PathVariable Long storeId,
+            @PathVariable Long businessId,
             @PathVariable UUID publicId,
             @Valid @RequestBody UnitUpsertRequest request,
             @AuthenticationPrincipal UserPrincipal currentUser) {
-        return ResponseEntity.ok(ApiResult.ok(unitService.update(storeId, publicId, request, currentUser)));
+        return ResponseEntity.ok(ApiResult.ok(unitService.update(businessId, publicId, request, currentUser)));
     }
 
     @DeleteMapping("/{publicId}")
-    @PreAuthorize("@storeAccess.isOwnerOrManager(#storeId, authentication)")
+    @PreAuthorize("@businessAccess.isOwnerOrManager(#businessId, authentication)")
     public ResponseEntity<ApiResult<Void>> delete(
-            @PathVariable Long storeId,
+            @PathVariable Long businessId,
             @PathVariable UUID publicId,
             @AuthenticationPrincipal UserPrincipal currentUser) {
-        unitService.delete(storeId, publicId, currentUser);
+        unitService.delete(businessId, publicId, currentUser);
         return ResponseEntity.ok(ApiResult.ok());
     }
 }

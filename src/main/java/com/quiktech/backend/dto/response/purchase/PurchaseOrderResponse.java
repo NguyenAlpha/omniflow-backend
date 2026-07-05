@@ -1,5 +1,6 @@
 package com.quiktech.backend.dto.response.purchase;
 
+import com.quiktech.backend.entity.enums.PurchaseOrderStatus;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.List;
@@ -11,8 +12,10 @@ public record PurchaseOrderResponse(
     Long storeId,
     String orderCode,
     UUID supplierPublicId,
+    String supplierName,
     UUID warehousePublicId,
-    String status,
+    String warehouseName,
+    PurchaseOrderStatus status,
     BigDecimal totalAmount,
     BigDecimal paidAmount,
     BigDecimal debtAmount,

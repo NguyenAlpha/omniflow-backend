@@ -10,12 +10,12 @@ import java.util.UUID;
 @Repository
 public interface CategoryRepository extends JpaRepository<Category, Long> {
 
-    List<Category> findByStoreId(Long storeId);
+    List<Category> findByBusinessId(Long businessId);
 
-    Optional<Category> findByStoreIdAndNameAndDeletedAtIsNull(Long storeId, String name);
+    Optional<Category> findByBusinessIdAndNameAndDeletedAtIsNull(Long businessId, String name);
 
     Optional<Category> findByPublicId(UUID publicId);
 
-    long countByStoreIdAndDeletedAtIsNull(Long storeId);
+    long countByBusinessIdAndDeletedAtIsNull(Long businessId);
 }
 

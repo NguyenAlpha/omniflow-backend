@@ -1,6 +1,7 @@
 package com.quiktech.backend.repository;
 
 import com.quiktech.backend.entity.PurchaseOrder;
+import com.quiktech.backend.entity.enums.PurchaseOrderStatus;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -8,6 +9,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
@@ -72,11 +74,59 @@ public interface PurchaseOrderRepository extends JpaRepository<PurchaseOrder, Lo
 
     List<PurchaseOrder> findByStoreIdOrderByCreatedAtDesc(Long storeId);
 
+    @Query(value = """
+        SELECT po FROM PurchaseOrder po
+        WHERE po.store.id = :storeId
+        AND (:status IS NULL OR po.status = :status)
+        AND (:orderCode IS NULL OR LOWER(po.orderCode) LIKE :orderCode)
+        AND po.createdAt >= :fromDate
+        AND po.createdAt <= :toDate
+        ORDER BY po.createdAt DESC
+        """,
+        countQuery = """
+        SELECT COUNT(po) FROM PurchaseOrder po
+        WHERE po.store.id = :storeId
+        AND (:status IS NULL OR po.status = :status)
+        AND (:orderCode IS NULL OR LOWER(po.orderCode) LIKE :orderCode)
+        AND po.createdAt >= :fromDate
+        AND po.createdAt <= :toDate
+        """)
+    Page<PurchaseOrder> search(
+        @Param("storeId") Long storeId,
+        @Param("status") PurchaseOrderStatus status,
+        @Param("orderCode") String orderCode,
+        @Param("fromDate") Instant fromDate,
+        @Param("toDate") Instant toDate,
+        Pageable pageable
+    );
+
     @Query("""
         SELECT DISTINCT p FROM PurchaseOrder p
         JOIN FETCH p.purchaseOrderItems pi JOIN FETCH pi.product
         WHERE p.publicId = :publicId
     """)
     Optional<PurchaseOrder> findByPublicIdWithItems(@Param("publicId") UUID publicId);
+
+    @Query("""
+        SELECT po FROM PurchaseOrder po
+        WHERE po.supplier.id = :supplierId
+        AND po.debtAmount > 0
+        AND po.status = 'RECEIVED'
+        ORDER BY po.createdAt ASC
+    """)
+    List<PurchaseOrder> findReceivedOrdersBySupplierWithDebt(@Param("supplierId") Long supplierId);
+
+    // Export PDF — JOIN FETCH tất cả quan hệ để tránh N+1
+    @Query("""
+        SELECT DISTINCT po FROM PurchaseOrder po
+        JOIN FETCH po.supplier
+        JOIN FETCH po.store
+        JOIN FETCH po.warehouse
+        JOIN FETCH po.purchaseOrderItems poi
+        JOIN FETCH poi.product
+        WHERE po.publicId = :publicId AND po.store.id = :storeId
+    """)
+    Optional<PurchaseOrder> findForExport(@Param("publicId") UUID publicId,
+                                          @Param("storeId") Long storeId);
 }
 

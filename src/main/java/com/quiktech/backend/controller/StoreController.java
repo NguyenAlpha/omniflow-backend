@@ -20,62 +20,81 @@ import org.springframework.web.bind.annotation.*;
 import java.util.List;
 
 @RestController
-@RequestMapping("/api/stores")
+@RequestMapping("/api")
 @RequiredArgsConstructor
 public class StoreController {
 
     private final StoreService storeService;
 
-    @PostMapping
-    public ResponseEntity<ApiResult<StoreResponse>> createStore(@Valid @RequestBody StoreCreateRequest request, @AuthenticationPrincipal UserPrincipal currentUser) {
-        return ResponseEntity.status(HttpStatus.CREATED).body(ApiResult.ok(storeService.createStore(request, currentUser)));
+    @PostMapping("/businesses/{businessId}/stores")
+    @PreAuthorize("@businessAccess.isOwner(#businessId, authentication)")
+    public ResponseEntity<ApiResult<StoreResponse>> createStore(
+            @PathVariable Long businessId,
+            @Valid @RequestBody StoreCreateRequest request,
+            @AuthenticationPrincipal UserPrincipal currentUser) {
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(ApiResult.ok(storeService.createStore(businessId, request, currentUser)));
     }
 
-    @GetMapping
+    @GetMapping("/stores")
     public ResponseEntity<ApiResult<List<StoreResponse>>> getStores(@AuthenticationPrincipal UserPrincipal currentUser) {
         return ResponseEntity.ok(ApiResult.ok(storeService.getStores(currentUser)));
     }
 
-    @GetMapping("/{storeId}")
+    @GetMapping("/stores/{storeId}")
     @PreAuthorize("@storeAccess.isMember(#storeId, authentication)")
     public ResponseEntity<ApiResult<StoreResponse>> getStore(@PathVariable Long storeId) {
         return ResponseEntity.ok(ApiResult.ok(storeService.getStore(storeId)));
     }
 
-    @PatchMapping("/{storeId}")
+    @PatchMapping("/stores/{storeId}")
     @PreAuthorize("@storeAccess.isOwnerOrManager(#storeId, authentication)")
-    public ResponseEntity<ApiResult<StoreResponse>> updateStore(@PathVariable Long storeId, @Valid @RequestBody StoreCreateRequest request) {
+    public ResponseEntity<ApiResult<StoreResponse>> updateStore(
+            @PathVariable Long storeId,
+            @Valid @RequestBody StoreCreateRequest request) {
         return ResponseEntity.ok(ApiResult.ok(storeService.updateStore(storeId, request)));
     }
 
-    @PatchMapping("/{storeId}/status")
+    @PatchMapping("/stores/{storeId}/status")
     @PreAuthorize("@storeAccess.isOwner(#storeId, authentication)")
-    public ResponseEntity<ApiResult<StoreResponse>> setStoreStatus(@PathVariable Long storeId, @Valid @RequestBody SetStatusRequest request) {
+    public ResponseEntity<ApiResult<StoreResponse>> setStoreStatus(
+            @PathVariable Long storeId,
+            @Valid @RequestBody SetStatusRequest request) {
         return ResponseEntity.ok(ApiResult.ok(storeService.setStoreStatus(storeId, request.isActive())));
     }
 
-    @GetMapping("/{storeId}/members")
+    @GetMapping("/stores/{storeId}/members")
     @PreAuthorize("@storeAccess.isMember(#storeId, authentication)")
     public ResponseEntity<ApiResult<List<StoreMemberResponse>>> getMembers(@PathVariable Long storeId) {
         return ResponseEntity.ok(ApiResult.ok(storeService.getMembers(storeId)));
     }
 
-    @PostMapping("/{storeId}/members")
+    @PostMapping("/stores/{storeId}/members")
     @PreAuthorize("@storeAccess.isOwner(#storeId, authentication)")
-    public ResponseEntity<ApiResult<StoreMemberResponse>> addMember(@PathVariable Long storeId, @Valid @RequestBody AddMemberRequest request) {
-        return ResponseEntity.status(HttpStatus.CREATED).body(ApiResult.ok(storeService.addMember(storeId, request)));
+    public ResponseEntity<ApiResult<StoreMemberResponse>> addMember(
+            @PathVariable Long storeId,
+            @Valid @RequestBody AddMemberRequest request) {
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(ApiResult.ok(storeService.addMember(storeId, request)));
     }
 
-    @PatchMapping("/{storeId}/members/{memberId}")
+    @PatchMapping("/stores/{storeId}/members/{memberId}")
     @PreAuthorize("@storeAccess.isOwner(#storeId, authentication)")
-    public ResponseEntity<ApiResult<StoreMemberResponse>> updateMember(@PathVariable Long storeId, @PathVariable Long memberId, @Valid @RequestBody UpdateMemberRequest request, @AuthenticationPrincipal UserPrincipal currentUser) {
+    public ResponseEntity<ApiResult<StoreMemberResponse>> updateMember(
+            @PathVariable Long storeId,
+            @PathVariable Long memberId,
+            @Valid @RequestBody UpdateMemberRequest request,
+            @AuthenticationPrincipal UserPrincipal currentUser) {
         return ResponseEntity.ok(ApiResult.ok(storeService.updateMember(storeId, memberId, request, currentUser)));
     }
 
-    @DeleteMapping("/{storeId}/members/{memberId}")
+    @DeleteMapping("/stores/{storeId}/members/{memberId}")
     @PreAuthorize("@storeAccess.isOwner(#storeId, authentication)")
-    public ResponseEntity<ApiResult<Void>> removeMember(@PathVariable Long storeId, @PathVariable Long memberId) {
+    public ResponseEntity<ApiResult<Void>> removeMember(
+            @PathVariable Long storeId,
+            @PathVariable Long memberId) {
         storeService.removeMember(storeId, memberId);
         return ResponseEntity.ok(ApiResult.ok());
     }
+
 }

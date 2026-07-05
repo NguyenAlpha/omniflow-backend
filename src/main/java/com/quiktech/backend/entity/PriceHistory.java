@@ -8,7 +8,7 @@ import java.time.Instant;
 @Entity
 @Table(name = "price_history", indexes = {
     @Index(name = "idx_price_history_product_id", columnList = "product_id"),
-    @Index(name = "idx_price_history_store_id", columnList = "store_id")
+    @Index(name = "idx_price_history_business_id", columnList = "business_id")
 })
 @Getter
 @Setter
@@ -22,8 +22,8 @@ public class PriceHistory {
     private Long id;
 
     @ManyToOne(optional = false)
-    @JoinColumn(name = "store_id", nullable = false)
-    private Store store;
+    @JoinColumn(name = "business_id", nullable = false)
+    private Business business;
 
     @ManyToOne(optional = false)
     @JoinColumn(name = "product_id", nullable = false)
@@ -45,6 +45,7 @@ public class PriceHistory {
     @JoinColumn(name = "changed_by", nullable = false)
     private User changedBy;
 
+    @Builder.Default
     @Column(nullable = false, columnDefinition = "TIMESTAMPTZ")
     private Instant changedAt = Instant.now();
 }

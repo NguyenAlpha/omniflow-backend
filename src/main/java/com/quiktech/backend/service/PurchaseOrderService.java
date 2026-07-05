@@ -2,23 +2,30 @@ package com.quiktech.backend.service;
 
 import com.quiktech.backend.dto.request.purchase.PurchaseOrderCreateRequest;
 import com.quiktech.backend.dto.request.purchase.PurchaseOrderItemRequest;
+import com.quiktech.backend.dto.request.purchase.PurchaseOrderPayRequest;
 import com.quiktech.backend.dto.response.common.ErrorCode;
+import com.quiktech.backend.dto.response.common.PagedResult;
 import com.quiktech.backend.dto.response.purchase.PurchaseOrderItemResponse;
 import com.quiktech.backend.dto.response.purchase.PurchaseOrderResponse;
 import com.quiktech.backend.entity.*;
-import com.quiktech.backend.entity.*;
+import com.quiktech.backend.entity.enums.PurchaseOrderStatus;
 import com.quiktech.backend.exception.ResourceNotFoundException;
-import com.quiktech.backend.repository.*;
+import com.quiktech.backend.annotation.Auditable;
 import com.quiktech.backend.repository.*;
 import com.quiktech.backend.security.UserPrincipal;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.time.LocalDate;
+import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 
 @Service
@@ -32,13 +39,17 @@ public class PurchaseOrderService {
     private final ProductRepository productRepository;
     private final InventoryRepository inventoryRepository;
     private final InventoryTransactionRepository inventoryTransactionRepository;
+    private final PaymentRepository paymentRepository;
     private final UserRepository userRepository;
 
     @Transactional(readOnly = true)
-    public List<PurchaseOrderResponse> list(Long storeId, UserPrincipal currentUser) {
+    public PagedResult<PurchaseOrderResponse> list(Long storeId, String orderCode, PurchaseOrderStatus status, LocalDate from, LocalDate to, Pageable pageable, UserPrincipal currentUser) {
         findStoreOrThrow(storeId);
-        return purchaseOrderRepository.findByStoreIdOrderByCreatedAtDesc(storeId)
-                .stream().map(po -> toResponse(po, List.of())).toList();
+        String codeFilter = (orderCode != null && !orderCode.isBlank()) ? "%" + orderCode.toLowerCase() + "%" : null;
+        Instant fromInstant = from != null ? from.atStartOfDay(ZoneOffset.UTC).toInstant() : Instant.EPOCH;
+        Instant toInstant = to != null ? to.plusDays(1).atStartOfDay(ZoneOffset.UTC).toInstant() : Instant.parse("9999-12-31T00:00:00Z");
+        Page<PurchaseOrder> page = purchaseOrderRepository.search(storeId, status, codeFilter, fromInstant, toInstant, pageable);
+        return PagedResult.of(page.map(po -> toResponse(po, List.of())));
     }
 
     @Transactional(readOnly = true)
@@ -49,13 +60,10 @@ public class PurchaseOrderService {
         return toResponse(po, po.getPurchaseOrderItems());
     }
 
+    @Auditable(action = "CREATE_PURCHASE_ORDER", entityType = "PURCHASE_ORDER")
     @Transactional
     public PurchaseOrderResponse create(Long storeId, PurchaseOrderCreateRequest request, UserPrincipal currentUser) {
         Store store = findStoreOrThrow(storeId);
-
-        if (purchaseOrderRepository.findByStoreIdAndOrderCode(storeId, request.orderCode()).isPresent()) {
-            throw new IllegalArgumentException("Order code already exists in this store");
-        }
 
         Supplier supplier = supplierRepository.findByPublicId(request.supplierPublicId())
                 .orElseThrow(() -> new ResourceNotFoundException(ErrorCode.SUPPLIER_NOT_FOUND, "Supplier not found"));
@@ -65,12 +73,15 @@ public class PurchaseOrderService {
 
         User userRef = userRepository.getReferenceById(currentUser.userId());
 
+        List<PurchaseOrderItem> items = new ArrayList<>();
+        BigDecimal totalAmount = BigDecimal.ZERO;
+
         PurchaseOrder po = PurchaseOrder.builder()
                 .store(store)
-                .orderCode(request.orderCode())
+                .orderCode("PO-" + UUID.randomUUID().toString().replace("-", "").substring(0, 6).toUpperCase())
                 .supplier(supplier)
                 .warehouse(warehouse)
-                .status("PENDING")
+                .status(PurchaseOrderStatus.PENDING)
                 .totalAmount(BigDecimal.ZERO)
                 .paidAmount(BigDecimal.ZERO)
                 .debtAmount(BigDecimal.ZERO)
@@ -79,9 +90,6 @@ public class PurchaseOrderService {
                 .lastModifiedByUser(userRef)
                 .createdBy(userRef)
                 .build();
-
-        List<PurchaseOrderItem> items = new ArrayList<>();
-        BigDecimal totalAmount = BigDecimal.ZERO;
 
         for (PurchaseOrderItemRequest itemReq : request.items()) {
             Product product = productRepository.findByPublicId(itemReq.productPublicId())
@@ -102,31 +110,43 @@ public class PurchaseOrderService {
             totalAmount = totalAmount.add(lineTotal);
         }
 
-        po.setTotalAmount(totalAmount);
-        po.setDebtAmount(totalAmount);
-        po.setPurchaseOrderItems(items);
-        PurchaseOrder saved = purchaseOrderRepository.save(po);
+        BigDecimal paidAmt = request.paidAmount() != null ? request.paidAmount() : BigDecimal.ZERO;
+        if (paidAmt.compareTo(totalAmount) > 0) {
+            throw new IllegalArgumentException("Paid amount cannot exceed total amount");
+        }
+        String paymentMethod = (request.paymentMethod() != null && !request.paymentMethod().isBlank())
+                ? request.paymentMethod() : "CASH";
 
-        return toResponse(saved, items);
+        po.setTotalAmount(totalAmount);
+        po.setPaidAmount(paidAmt);
+        po.setDebtAmount(totalAmount.subtract(paidAmt));
+        po.setPaymentMethod(paymentMethod);
+        po.setPurchaseOrderItems(items);
+
+        return toResponse(purchaseOrderRepository.save(po), items);
     }
 
+    @Auditable(action = "RECEIVE_PURCHASE_ORDER", entityType = "PURCHASE_ORDER")
     @Transactional
     public PurchaseOrderResponse receive(Long storeId, UUID publicId, UserPrincipal currentUser) {
         findStoreOrThrow(storeId);
         PurchaseOrder po = purchaseOrderRepository.findByPublicIdWithItems(publicId)
                 .orElseThrow(() -> new ResourceNotFoundException(ErrorCode.PURCHASE_ORDER_NOT_FOUND, "Purchase order not found"));
 
-        if (!"PENDING".equals(po.getStatus())) {
+        if (po.getStatus() != PurchaseOrderStatus.PENDING) {
             throw new IllegalArgumentException("Purchase order is not in PENDING status");
         }
 
         User userRef = userRepository.getReferenceById(currentUser.userId());
 
         // Add goods to inventory
+        Set<Long> affectedProductIds = new java.util.HashSet<>();
         for (PurchaseOrderItem item : po.getPurchaseOrderItems()) {
             addToInventory(po.getStore(), item.getProduct(), po.getWarehouse(),
                     item.getQuantity(), po, userRef);
+            affectedProductIds.add(item.getProduct().getId());
         }
+        affectedProductIds.forEach(productRepository::recalculateTotalStock);
 
         // Add debt to supplier balance
         if (po.getDebtAmount().compareTo(BigDecimal.ZERO) > 0) {
@@ -135,31 +155,92 @@ public class PurchaseOrderService {
             supplierRepository.save(supplier);
         }
 
-        po.setStatus("RECEIVED");
+        po.setStatus(PurchaseOrderStatus.RECEIVED);
         po.setLastModifiedByUser(userRef);
         po.setLastModifiedAt(Instant.now());
         po.setUpdatedAt(Instant.now());
 
-        return toResponse(purchaseOrderRepository.save(po), po.getPurchaseOrderItems());
+        PurchaseOrder saved = purchaseOrderRepository.save(po);
+
+        if (saved.getPaidAmount().compareTo(BigDecimal.ZERO) > 0) {
+            paymentRepository.save(Payment.builder()
+                    .store(saved.getStore())
+                    .supplier(saved.getSupplier())
+                    .amount(saved.getPaidAmount())
+                    .paymentMethod(saved.getPaymentMethod())
+                    .note("Purchase order: " + saved.getOrderCode())
+                    .publicId(UUID.randomUUID())
+                    .lastModifiedByUser(userRef)
+                    .createdBy(userRef)
+                    .build());
+        }
+
+        return toResponse(saved, saved.getPurchaseOrderItems());
     }
 
+    @Auditable(action = "CANCEL_PURCHASE_ORDER", entityType = "PURCHASE_ORDER")
     @Transactional
     public PurchaseOrderResponse cancel(Long storeId, UUID publicId, UserPrincipal currentUser) {
         findStoreOrThrow(storeId);
         PurchaseOrder po = purchaseOrderRepository.findByPublicId(publicId)
                 .orElseThrow(() -> new ResourceNotFoundException(ErrorCode.PURCHASE_ORDER_NOT_FOUND, "Purchase order not found"));
 
-        if (!"PENDING".equals(po.getStatus())) {
+        if (po.getStatus() != PurchaseOrderStatus.PENDING) {
             throw new IllegalArgumentException("Purchase order is not in PENDING status");
         }
 
         User userRef = userRepository.getReferenceById(currentUser.userId());
-        po.setStatus("CANCELLED");
+        po.setStatus(PurchaseOrderStatus.CANCELLED);
         po.setLastModifiedByUser(userRef);
         po.setLastModifiedAt(Instant.now());
         po.setUpdatedAt(Instant.now());
 
         return toResponse(purchaseOrderRepository.save(po), List.of());
+    }
+
+    @Transactional
+    public PurchaseOrderResponse pay(Long storeId, UUID publicId, BigDecimal amount, UserPrincipal currentUser) {
+        findStoreOrThrow(storeId);
+        PurchaseOrder po = purchaseOrderRepository.findByPublicId(publicId)
+                .orElseThrow(() -> new ResourceNotFoundException(ErrorCode.PURCHASE_ORDER_NOT_FOUND, "Purchase order not found"));
+
+        if (po.getStatus() == PurchaseOrderStatus.CANCELLED) {
+            throw new IllegalArgumentException("Cannot pay a cancelled purchase order");
+        }
+        if (amount.compareTo(po.getDebtAmount()) > 0) {
+            throw new IllegalArgumentException("Payment amount exceeds remaining debt");
+        }
+
+        po.setPaidAmount(po.getPaidAmount().add(amount));
+        po.setDebtAmount(po.getDebtAmount().subtract(amount));
+
+        if (po.getStatus() == PurchaseOrderStatus.RECEIVED) {
+            Supplier supplier = po.getSupplier();
+            supplier.setDebtBalance(supplier.getDebtBalance().subtract(amount));
+            supplierRepository.save(supplier);
+        }
+
+        User userRef = userRepository.getReferenceById(currentUser.userId());
+        po.setLastModifiedByUser(userRef);
+        po.setLastModifiedAt(Instant.now());
+        po.setUpdatedAt(Instant.now());
+
+        PurchaseOrder saved = purchaseOrderRepository.save(po);
+
+        if (saved.getStatus() == PurchaseOrderStatus.RECEIVED) {
+            paymentRepository.save(Payment.builder()
+                    .store(saved.getStore())
+                    .supplier(saved.getSupplier())
+                    .amount(amount)
+                    .paymentMethod(saved.getPaymentMethod())
+                    .note("Purchase order: " + saved.getOrderCode())
+                    .publicId(UUID.randomUUID())
+                    .lastModifiedByUser(userRef)
+                    .createdBy(userRef)
+                    .build());
+        }
+
+        return toResponse(saved, List.of());
     }
 
     private void addToInventory(Store store, Product product, Warehouse warehouse,
@@ -170,7 +251,8 @@ public class PurchaseOrderService {
                         .quantity(BigDecimal.ZERO).publicId(UUID.randomUUID())
                         .lastModifiedByUser(userRef).build());
 
-        inv.setQuantity(inv.getQuantity().add(quantity));
+        BigDecimal previousQuantity = inv.getQuantity();
+        inv.setQuantity(previousQuantity.add(quantity));
         inv.setLastModifiedAt(Instant.now());
         inv.setUpdatedAt(Instant.now());
         inv.setLastModifiedByUser(userRef);
@@ -178,7 +260,7 @@ public class PurchaseOrderService {
 
         inventoryTransactionRepository.save(InventoryTransaction.builder()
                 .store(store).product(product).warehouse(warehouse)
-                .type("IN").quantity(quantity).purchaseOrder(po)
+                .type("IN").quantity(quantity).previousQuantity(previousQuantity).purchaseOrder(po)
                 .note("Receive PO: " + po.getOrderCode()).createdBy(userRef)
                 .build());
     }
@@ -191,8 +273,8 @@ public class PurchaseOrderService {
     private PurchaseOrderResponse toResponse(PurchaseOrder po, List<PurchaseOrderItem> items) {
         return new PurchaseOrderResponse(
                 po.getId(), po.getPublicId(), po.getStore().getId(),
-                po.getOrderCode(), po.getSupplier().getPublicId(),
-                po.getWarehouse().getPublicId(),
+                po.getOrderCode(), po.getSupplier().getPublicId(), po.getSupplier().getName(),
+                po.getWarehouse().getPublicId(), po.getWarehouse().getName(),
                 po.getStatus(), po.getTotalAmount(), po.getPaidAmount(), po.getDebtAmount(),
                 po.getNote(), po.getSyncVersion(), po.getLastModifiedAt(),
                 po.getCreatedAt(), po.getUpdatedAt(),

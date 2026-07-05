@@ -1,6 +1,7 @@
 package com.quiktech.backend.controller;
 
 import com.quiktech.backend.dto.request.inventory.InventoryAdjustRequest;
+import com.quiktech.backend.dto.request.inventory.InventoryTransferRequest;
 import com.quiktech.backend.dto.response.common.ApiResult;
 import com.quiktech.backend.dto.response.inventory.InventoryResponse;
 import com.quiktech.backend.dto.response.inventory.InventoryTransactionResponse;
@@ -50,5 +51,14 @@ public class InventoryController {
             @Valid @RequestBody InventoryAdjustRequest request,
             @AuthenticationPrincipal UserPrincipal currentUser) {
         return ResponseEntity.ok(ApiResult.ok(inventoryService.adjust(storeId, request, currentUser)));
+    }
+
+    @PostMapping("/transfer")
+    @PreAuthorize("@storeAccess.isOwnerOrManager(#storeId, authentication)")
+    public ResponseEntity<ApiResult<List<InventoryTransactionResponse>>> transfer(
+            @PathVariable Long storeId,
+            @Valid @RequestBody InventoryTransferRequest request,
+            @AuthenticationPrincipal UserPrincipal currentUser) {
+        return ResponseEntity.ok(ApiResult.ok(inventoryService.transfer(storeId, request, currentUser)));
     }
 }

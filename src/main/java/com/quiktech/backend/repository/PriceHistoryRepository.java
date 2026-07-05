@@ -13,11 +13,11 @@ public interface PriceHistoryRepository extends JpaRepository<PriceHistory, Long
 
     List<PriceHistory> findByProductIdOrderByChangedAtDesc(Long productId);
 
-    List<PriceHistory> findByStoreIdOrderByChangedAtDesc(Long storeId);
+    List<PriceHistory> findByBusinessIdOrderByChangedAtDesc(Long businessId);
 
     @Query("""
-        SELECT ph FROM PriceHistory ph 
-        WHERE ph.product.id = :productId 
+        SELECT ph FROM PriceHistory ph
+        WHERE ph.product.id = :productId
         AND ph.changedAt BETWEEN :startDate AND :endDate
         ORDER BY ph.changedAt DESC
     """)
@@ -27,4 +27,3 @@ public interface PriceHistoryRepository extends JpaRepository<PriceHistory, Long
         @Param("endDate") LocalDateTime endDate
     );
 }
-

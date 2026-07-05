@@ -14,27 +14,27 @@ import java.util.UUID;
 @Repository
 public interface CustomerRepository extends JpaRepository<Customer, Long> {
 
-    List<Customer> findByStoreIdAndDeletedAtIsNull(Long storeId);
+    List<Customer> findByBusinessIdAndDeletedAtIsNull(Long businessId);
 
-    Optional<Customer> findByStoreIdAndCodeAndDeletedAtIsNull(Long storeId, String code);
+    Optional<Customer> findByBusinessIdAndCodeAndDeletedAtIsNull(Long businessId, String code);
 
     Optional<Customer> findByPublicId(UUID publicId);
 
     // Customers with debt
     @Query("""
-        SELECT c FROM Customer c 
-        WHERE c.store.id = :storeId 
-        AND c.debtBalance > 0 
+        SELECT c FROM Customer c
+        WHERE c.business.id = :businessId
+        AND c.debtBalance > 0
         AND c.deletedAt IS NULL
         ORDER BY c.debtBalance DESC
     """)
-    List<Customer> findCustomersWithDebt(@Param("storeId") Long storeId);
+    List<Customer> findCustomersWithDebt(@Param("businessId") Long businessId);
 
     // Full-text search
     @Query("""
-        SELECT c FROM Customer c 
-        WHERE c.store.id = :storeId 
-        AND c.deletedAt IS NULL 
+        SELECT c FROM Customer c
+        WHERE c.business.id = :businessId
+        AND c.deletedAt IS NULL
         AND (
             c.name ILIKE CONCAT('%', :searchTerm, '%')
             OR c.code ILIKE CONCAT('%', :searchTerm, '%')
@@ -44,11 +44,10 @@ public interface CustomerRepository extends JpaRepository<Customer, Long> {
         ORDER BY c.name ASC
     """)
     Page<Customer> searchCustomers(
-        @Param("storeId") Long storeId,
+        @Param("businessId") Long businessId,
         @Param("searchTerm") String searchTerm,
         Pageable pageable
     );
 
-    long countByStoreIdAndDeletedAtIsNull(Long storeId);
+    long countByBusinessIdAndDeletedAtIsNull(Long businessId);
 }
-

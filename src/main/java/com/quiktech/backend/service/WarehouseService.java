@@ -26,6 +26,7 @@ public class WarehouseService {
     private final WarehouseRepository warehouseRepository;
     private final StoreRepository storeRepository;
     private final UserRepository userRepository;
+    private final SubscriptionLimitService subscriptionLimitService;
 
     @Transactional(readOnly = true)
     public List<WarehouseResponse> list(Long storeId, UserPrincipal currentUser) {
@@ -43,6 +44,8 @@ public class WarehouseService {
     @Transactional
     public WarehouseResponse create(Long storeId, WarehouseUpsertRequest request, UserPrincipal currentUser) {
         Store store = findStoreOrThrow(storeId);
+
+        subscriptionLimitService.checkWarehouseLimit(store.getBusiness().getId());
 
         if (warehouseRepository.findByStoreIdAndNameAndDeletedAtIsNull(storeId, request.name()).isPresent()) {
             throw new IllegalArgumentException("Warehouse name already exists in this store");

@@ -8,6 +8,7 @@ import java.time.Instant;
 @Table(name = "user_roles", indexes = {
     @Index(name = "idx_user_roles_user_id", columnList = "user_id"),
     @Index(name = "idx_user_roles_role_id", columnList = "role_id"),
+    @Index(name = "idx_user_roles_business_id", columnList = "business_id"),
     @Index(name = "idx_user_roles_store_id", columnList = "store_id")
 })
 @Getter
@@ -29,7 +30,11 @@ public class UserRole {
     @JoinColumn(name = "role_id", nullable = false)
     private Role role;
 
-    // NULL = global/system role; NOT NULL = store-scoped role
+    // NULL/NULL = global; business_id only = OWNER; store_id only = MANAGER/STAFF
+    @ManyToOne
+    @JoinColumn(name = "business_id")
+    private Business business;
+
     @ManyToOne
     @JoinColumn(name = "store_id")
     private Store store;

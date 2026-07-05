@@ -2,17 +2,18 @@ package com.quiktech.backend.entity;
 
 import lombok.*;
 import jakarta.persistence.*;
-import org.hibernate.annotations.Where;
+import org.hibernate.annotations.SQLRestriction;
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.util.List;
 import java.util.UUID;
 
 @Entity
 @Table(name = "products", indexes = {
-    @Index(name = "idx_products_store_id", columnList = "store_id"),
+    @Index(name = "idx_products_business_id", columnList = "business_id"),
     @Index(name = "idx_products_category_id", columnList = "category_id")
 })
-@Where(clause = "deleted_at IS NULL")
+@SQLRestriction("deleted_at IS NULL")
 @Getter
 @Setter
 @NoArgsConstructor
@@ -25,8 +26,8 @@ public class Product {
     private Long id;
 
     @ManyToOne(optional = false)
-    @JoinColumn(name = "store_id", nullable = false)
-    private Store store;
+    @JoinColumn(name = "business_id", nullable = false)
+    private Business business;
 
     @Column(nullable = false, length = 50)
     private String sku;
@@ -56,16 +57,21 @@ public class Product {
     private Integer minStockLevel = 0;
 
     @Builder.Default
+    @Column(nullable = false, precision = 15, scale = 2, insertable = false, updatable = false)
+    private BigDecimal totalStock = BigDecimal.ZERO;
+
+    @Builder.Default
     @Column(nullable = false)
     private Boolean isActive = true;
 
-    @Column(columnDefinition = "TSVECTOR")
-    private String searchVector; // for full-text search
+    @Column(columnDefinition = "TSVECTOR", insertable = false, updatable = false)
+    private String searchVector;
 
     // === Local-first sync fields ===
     @Column(nullable = false, unique = true, columnDefinition = "UUID")
     private UUID publicId;
 
+    @Version
     @Builder.Default
     @Column(nullable = false)
     private Long syncVersion = 0L;
@@ -92,4 +98,12 @@ public class Product {
 
     @Column(columnDefinition = "TIMESTAMPTZ")
     private Instant deletedAt;
+
+    @OneToMany(mappedBy = "product")
+    private List<PriceHistory> priceHistories;
+
+    @PreUpdate
+    void onUpdate() {
+        updatedAt = Instant.now();
+    }
 }

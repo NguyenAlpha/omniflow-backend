@@ -25,6 +25,7 @@ public class Role {
     @Column
     private String description;
 
+    @Builder.Default
     @Column(nullable = false, columnDefinition = "TIMESTAMPTZ")
     private Instant createdAt = Instant.now();
 }

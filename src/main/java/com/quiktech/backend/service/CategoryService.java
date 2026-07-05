@@ -3,12 +3,12 @@ package com.quiktech.backend.service;
 import com.quiktech.backend.dto.request.catalog.CategoryUpsertRequest;
 import com.quiktech.backend.dto.response.catalog.CategoryResponse;
 import com.quiktech.backend.dto.response.common.ErrorCode;
+import com.quiktech.backend.entity.Business;
 import com.quiktech.backend.entity.Category;
-import com.quiktech.backend.entity.Store;
 import com.quiktech.backend.entity.User;
 import com.quiktech.backend.exception.ResourceNotFoundException;
+import com.quiktech.backend.repository.BusinessRepository;
 import com.quiktech.backend.repository.CategoryRepository;
-import com.quiktech.backend.repository.StoreRepository;
 import com.quiktech.backend.repository.UserRepository;
 import com.quiktech.backend.security.UserPrincipal;
 import lombok.RequiredArgsConstructor;
@@ -24,29 +24,29 @@ import java.util.UUID;
 public class CategoryService {
 
     private final CategoryRepository categoryRepository;
-    private final StoreRepository storeRepository;
+    private final BusinessRepository businessRepository;
     private final UserRepository userRepository;
 
     @Transactional(readOnly = true)
-    public List<CategoryResponse> list(Long storeId, UserPrincipal currentUser) {
-        findStoreOrThrow(storeId);
-        return categoryRepository.findByStoreId(storeId).stream()
+    public List<CategoryResponse> list(Long businessId, UserPrincipal currentUser) {
+        findBusinessOrThrow(businessId);
+        return categoryRepository.findByBusinessId(businessId).stream()
                 .map(this::toResponse)
                 .toList();
     }
 
     @Transactional
-    public CategoryResponse create(Long storeId, CategoryUpsertRequest request, UserPrincipal currentUser) {
-        Store store = findStoreOrThrow(storeId);
+    public CategoryResponse create(Long businessId, CategoryUpsertRequest request, UserPrincipal currentUser) {
+        Business business = findBusinessOrThrow(businessId);
 
-        if (categoryRepository.findByStoreIdAndNameAndDeletedAtIsNull(storeId, request.name()).isPresent()) {
-            throw new IllegalArgumentException("Category name already exists in this store");
+        if (categoryRepository.findByBusinessIdAndNameAndDeletedAtIsNull(businessId, request.name()).isPresent()) {
+            throw new IllegalArgumentException("Category name already exists in this business");
         }
 
         User userRef = userRepository.getReferenceById(currentUser.userId());
 
         Category category = Category.builder()
-                .store(store)
+                .business(business)
                 .name(request.name())
                 .description(request.description())
                 .publicId(UUID.randomUUID())
@@ -58,15 +58,15 @@ public class CategoryService {
     }
 
     @Transactional
-    public CategoryResponse update(Long storeId, UUID publicId, CategoryUpsertRequest request, UserPrincipal currentUser) {
-        findStoreOrThrow(storeId);
+    public CategoryResponse update(Long businessId, UUID publicId, CategoryUpsertRequest request, UserPrincipal currentUser) {
+        findBusinessOrThrow(businessId);
 
         Category category = categoryRepository.findByPublicId(publicId)
                 .orElseThrow(() -> new ResourceNotFoundException(ErrorCode.CATEGORY_NOT_FOUND, "Category not found"));
 
-        categoryRepository.findByStoreIdAndNameAndDeletedAtIsNull(storeId, request.name())
+        categoryRepository.findByBusinessIdAndNameAndDeletedAtIsNull(businessId, request.name())
                 .filter(c -> !c.getPublicId().equals(publicId))
-                .ifPresent(c -> { throw new IllegalArgumentException("Category name already exists in this store"); });
+                .ifPresent(c -> { throw new IllegalArgumentException("Category name already exists in this business"); });
 
         User userRef = userRepository.getReferenceById(currentUser.userId());
 
@@ -80,8 +80,8 @@ public class CategoryService {
     }
 
     @Transactional
-    public void delete(Long storeId, UUID publicId, UserPrincipal currentUser) {
-        findStoreOrThrow(storeId);
+    public void delete(Long businessId, UUID publicId, UserPrincipal currentUser) {
+        findBusinessOrThrow(businessId);
 
         Category category = categoryRepository.findByPublicId(publicId)
                 .orElseThrow(() -> new ResourceNotFoundException(ErrorCode.CATEGORY_NOT_FOUND, "Category not found"));
@@ -90,14 +90,14 @@ public class CategoryService {
         categoryRepository.save(category);
     }
 
-    private Store findStoreOrThrow(Long storeId) {
-        return storeRepository.findById(storeId)
-                .orElseThrow(() -> new ResourceNotFoundException(ErrorCode.STORE_NOT_FOUND, "Store not found"));
+    private Business findBusinessOrThrow(Long businessId) {
+        return businessRepository.findById(businessId)
+                .orElseThrow(() -> new ResourceNotFoundException(ErrorCode.BUSINESS_NOT_FOUND, "Business not found"));
     }
 
     private CategoryResponse toResponse(Category c) {
         return new CategoryResponse(
-                c.getId(), c.getPublicId(), c.getStore().getId(),
+                c.getId(), c.getPublicId(), c.getBusiness().getId(),
                 c.getName(), c.getDescription(),
                 c.getSyncVersion(), c.getLastModifiedAt(),
                 c.getCreatedAt(), c.getUpdatedAt()

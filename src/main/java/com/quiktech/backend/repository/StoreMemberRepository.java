@@ -42,5 +42,8 @@ public interface StoreMemberRepository extends JpaRepository<StoreMember, Long> 
           AND sm.deletedAt IS NULL
         """)
     List<StoreMember> findByUserIdAndDeletedAtIsNullWithStore(@Param("userId") Long userId);
+
+    @Query("SELECT COUNT(sm) FROM StoreMember sm WHERE sm.store.business.id = :businessId AND sm.deletedAt IS NULL")
+    long countByBusinessId(@Param("businessId") Long businessId);
 }
 

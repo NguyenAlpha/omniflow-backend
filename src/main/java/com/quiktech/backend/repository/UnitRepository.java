@@ -11,24 +11,23 @@ import java.util.UUID;
 
 @Repository
 public interface UnitRepository extends JpaRepository<Unit, Long> {
-    
+
     // System units
-    List<Unit> findByStoreIdIsNullAndDeletedAtIsNull();
-    
-    // Store-specific units
-    List<Unit> findByStoreIdAndDeletedAtIsNull(Long storeId);
-    
-    Optional<Unit> findByStoreIdAndNameAndDeletedAtIsNull(Long storeId, String name);
-    
+    List<Unit> findByBusinessIdIsNullAndDeletedAtIsNull();
+
+    // Business-specific units
+    List<Unit> findByBusinessIdAndDeletedAtIsNull(Long businessId);
+
+    Optional<Unit> findByBusinessIdAndNameAndDeletedAtIsNull(Long businessId, String name);
+
     Optional<Unit> findByPublicId(UUID publicId);
-    
-    // Get both system and store units
+
+    // Get both system and business units
     @Query("""
-        SELECT u FROM Unit u 
-        WHERE (u.store.id = :storeId OR u.store IS NULL) 
+        SELECT u FROM Unit u
+        WHERE (u.business.id = :businessId OR u.business IS NULL)
         AND u.deletedAt IS NULL
         ORDER BY u.name ASC
     """)
-    List<Unit> findSystemAndStoreUnits(@Param("storeId") Long storeId);
+    List<Unit> findSystemAndBusinessUnits(@Param("businessId") Long businessId);
 }
-

@@ -17,47 +17,47 @@ import java.util.List;
 import java.util.UUID;
 
 @RestController
-@RequestMapping("/api/stores/{storeId}/categories")
+@RequestMapping("/api/businesses/{businessId}/categories")
 @RequiredArgsConstructor
 public class CategoryController {
 
     private final CategoryService categoryService;
 
     @GetMapping
-    @PreAuthorize("@storeAccess.isMember(#storeId, authentication)")
+    @PreAuthorize("@businessAccess.isMember(#businessId, authentication)")
     public ResponseEntity<ApiResult<List<CategoryResponse>>> list(
-            @PathVariable Long storeId,
+            @PathVariable Long businessId,
             @AuthenticationPrincipal UserPrincipal currentUser) {
-        return ResponseEntity.ok(ApiResult.ok(categoryService.list(storeId, currentUser)));
+        return ResponseEntity.ok(ApiResult.ok(categoryService.list(businessId, currentUser)));
     }
 
     @PostMapping
-    @PreAuthorize("@storeAccess.isOwnerOrManager(#storeId, authentication)")
+    @PreAuthorize("@businessAccess.isOwnerOrManager(#businessId, authentication)")
     public ResponseEntity<ApiResult<CategoryResponse>> create(
-            @PathVariable Long storeId,
+            @PathVariable Long businessId,
             @Valid @RequestBody CategoryUpsertRequest request,
             @AuthenticationPrincipal UserPrincipal currentUser) {
         return ResponseEntity.status(HttpStatus.CREATED)
-                .body(ApiResult.ok(categoryService.create(storeId, request, currentUser)));
+                .body(ApiResult.ok(categoryService.create(businessId, request, currentUser)));
     }
 
     @PutMapping("/{publicId}")
-    @PreAuthorize("@storeAccess.isOwnerOrManager(#storeId, authentication)")
+    @PreAuthorize("@businessAccess.isOwnerOrManager(#businessId, authentication)")
     public ResponseEntity<ApiResult<CategoryResponse>> update(
-            @PathVariable Long storeId,
+            @PathVariable Long businessId,
             @PathVariable UUID publicId,
             @Valid @RequestBody CategoryUpsertRequest request,
             @AuthenticationPrincipal UserPrincipal currentUser) {
-        return ResponseEntity.ok(ApiResult.ok(categoryService.update(storeId, publicId, request, currentUser)));
+        return ResponseEntity.ok(ApiResult.ok(categoryService.update(businessId, publicId, request, currentUser)));
     }
 
     @DeleteMapping("/{publicId}")
-    @PreAuthorize("@storeAccess.isOwnerOrManager(#storeId, authentication)")
+    @PreAuthorize("@businessAccess.isOwnerOrManager(#businessId, authentication)")
     public ResponseEntity<ApiResult<Void>> delete(
-            @PathVariable Long storeId,
+            @PathVariable Long businessId,
             @PathVariable UUID publicId,
             @AuthenticationPrincipal UserPrincipal currentUser) {
-        categoryService.delete(storeId, publicId, currentUser);
+        categoryService.delete(businessId, publicId, currentUser);
         return ResponseEntity.ok(ApiResult.ok());
     }
 }

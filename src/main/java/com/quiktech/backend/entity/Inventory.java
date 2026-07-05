@@ -2,7 +2,7 @@ package com.quiktech.backend.entity;
 
 import lombok.*;
 import jakarta.persistence.*;
-import org.hibernate.annotations.Where;
+import org.hibernate.annotations.SQLRestriction;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.UUID;
@@ -12,7 +12,7 @@ import java.util.UUID;
     @Index(name = "idx_inventory_product_id", columnList = "product_id"),
     @Index(name = "idx_inventory_warehouse_id", columnList = "warehouse_id")
 })
-@Where(clause = "deleted_at IS NULL")
+@SQLRestriction("deleted_at IS NULL")
 @Getter
 @Setter
 @NoArgsConstructor
@@ -44,6 +44,7 @@ public class Inventory {
     @Column(nullable = false, unique = true, columnDefinition = "UUID")
     private UUID publicId;
 
+    @Version
     @Builder.Default
     @Column(nullable = false)
     private Long syncVersion = 0L;

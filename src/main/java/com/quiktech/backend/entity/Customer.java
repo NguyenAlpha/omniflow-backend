@@ -2,17 +2,17 @@ package com.quiktech.backend.entity;
 
 import lombok.*;
 import jakarta.persistence.*;
-import org.hibernate.annotations.Where;
+import org.hibernate.annotations.SQLRestriction;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.UUID;
 
 @Entity
 @Table(name = "customers", indexes = {
-    @Index(name = "idx_customers_store_id", columnList = "store_id"),
+    @Index(name = "idx_customers_business_id", columnList = "business_id"),
     @Index(name = "idx_customers_code", columnList = "code")
 })
-@Where(clause = "deleted_at IS NULL")
+@SQLRestriction("deleted_at IS NULL")
 @Getter
 @Setter
 @NoArgsConstructor
@@ -25,8 +25,8 @@ public class Customer {
     private Long id;
 
     @ManyToOne(optional = false)
-    @JoinColumn(name = "store_id", nullable = false)
-    private Store store;
+    @JoinColumn(name = "business_id", nullable = false)
+    private Business business;
 
     @Column(nullable = false, length = 20)
     private String code;
@@ -47,8 +47,8 @@ public class Customer {
     @Column(nullable = false, precision = 15, scale = 2)
     private BigDecimal debtBalance = BigDecimal.ZERO;
 
-    @Column(columnDefinition = "TSVECTOR")
-    private String searchVector; // for full-text search
+    @Column(columnDefinition = "TSVECTOR", insertable = false, updatable = false)
+    private String searchVector;
 
     // === Local-first sync fields ===
     @Column(nullable = false, unique = true, columnDefinition = "UUID")

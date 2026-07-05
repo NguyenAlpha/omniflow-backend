@@ -8,6 +8,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
@@ -53,5 +54,51 @@ public interface PaymentRepository extends JpaRepository<Payment, Long> {
     Page<Payment> findByStoreIdOrderByCreatedAtDesc(Long storeId, Pageable pageable);
 
     List<Payment> findByStoreIdOrderByCreatedAtDesc(Long storeId);
+
+    @Query("""
+        SELECT p FROM Payment p
+        WHERE p.store.id = :storeId
+        AND (:direction IS NULL
+            OR (:direction = 'INCOME' AND p.supplier IS NULL)
+            OR (:direction = 'EXPENSE' AND p.supplier IS NOT NULL))
+        AND (:method IS NULL OR p.paymentMethod = :method)
+        AND p.createdAt >= :fromDate
+        AND p.createdAt <= :toDate
+        ORDER BY p.createdAt DESC
+    """)
+    Page<Payment> search(
+        @Param("storeId") Long storeId,
+        @Param("direction") String direction,
+        @Param("method") String method,
+        @Param("fromDate") Instant fromDate,
+        @Param("toDate") Instant toDate,
+        Pageable pageable
+    );
+
+    @Query("""
+        SELECT COALESCE(SUM(p.amount), 0) FROM Payment p
+        WHERE p.store.id = :storeId
+        AND p.supplier IS NULL
+        AND p.createdAt >= :fromDate
+        AND p.createdAt <= :toDate
+    """)
+    BigDecimal sumIncome(
+        @Param("storeId") Long storeId,
+        @Param("fromDate") Instant fromDate,
+        @Param("toDate") Instant toDate
+    );
+
+    @Query("""
+        SELECT COALESCE(SUM(p.amount), 0) FROM Payment p
+        WHERE p.store.id = :storeId
+        AND p.supplier IS NOT NULL
+        AND p.createdAt >= :fromDate
+        AND p.createdAt <= :toDate
+    """)
+    BigDecimal sumExpense(
+        @Param("storeId") Long storeId,
+        @Param("fromDate") Instant fromDate,
+        @Param("toDate") Instant toDate
+    );
 }
 

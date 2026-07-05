@@ -6,6 +6,7 @@ import java.time.Instant;
 
 @Entity
 @Table(name = "stores", indexes = {
+    @Index(name = "idx_stores_business_id", columnList = "business_id"),
     @Index(name = "idx_stores_name", columnList = "name"),
     @Index(name = "idx_stores_deleted_at", columnList = "deleted_at")
 })
@@ -19,6 +20,10 @@ public class Store {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
+
+    @ManyToOne(optional = false)
+    @JoinColumn(name = "business_id", nullable = false)
+    private Business business;
 
     @Column(nullable = false, length = 200)
     private String name;

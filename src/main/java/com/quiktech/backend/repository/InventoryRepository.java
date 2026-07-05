@@ -24,9 +24,11 @@ public interface InventoryRepository extends JpaRepository<Inventory, Long> {
 
     // Low stock alert
     @Query("""
-        SELECT i FROM Inventory i 
-        WHERE i.warehouse.store.id = :storeId 
-        AND i.quantity < i.product.minStockLevel
+        SELECT i FROM Inventory i
+        JOIN FETCH i.product p
+        JOIN FETCH i.warehouse w
+        WHERE w.store.id = :storeId
+        AND i.quantity < p.minStockLevel
         AND i.deletedAt IS NULL
         ORDER BY i.quantity ASC
     """)
@@ -34,10 +36,20 @@ public interface InventoryRepository extends JpaRepository<Inventory, Long> {
 
     // Total stock by product
     @Query("""
-        SELECT SUM(i.quantity) FROM Inventory i 
-        WHERE i.product.id = :productId 
+        SELECT SUM(i.quantity) FROM Inventory i
+        WHERE i.product.id = :productId
         AND i.deletedAt IS NULL
     """)
     Optional<java.math.BigDecimal> getTotalQuantityByProduct(@Param("productId") Long productId);
+
+    // Export — JOIN FETCH để tránh N+1 khi render Excel
+    @Query("""
+        SELECT i FROM Inventory i
+        JOIN FETCH i.product p
+        LEFT JOIN FETCH p.unit
+        JOIN FETCH i.warehouse
+        WHERE i.store.id = :storeId
+    """)
+    List<Inventory> findByStoreIdWithDetails(@Param("storeId") Long storeId);
 }
 

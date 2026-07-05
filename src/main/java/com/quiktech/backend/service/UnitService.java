@@ -3,12 +3,12 @@ package com.quiktech.backend.service;
 import com.quiktech.backend.dto.request.catalog.UnitUpsertRequest;
 import com.quiktech.backend.dto.response.catalog.UnitResponse;
 import com.quiktech.backend.dto.response.common.ErrorCode;
-import com.quiktech.backend.entity.Store;
+import com.quiktech.backend.entity.Business;
 import com.quiktech.backend.entity.Unit;
 import com.quiktech.backend.entity.User;
 import com.quiktech.backend.exception.ForbiddenException;
 import com.quiktech.backend.exception.ResourceNotFoundException;
-import com.quiktech.backend.repository.StoreRepository;
+import com.quiktech.backend.repository.BusinessRepository;
 import com.quiktech.backend.repository.UnitRepository;
 import com.quiktech.backend.repository.UserRepository;
 import com.quiktech.backend.security.UserPrincipal;
@@ -25,29 +25,29 @@ import java.util.UUID;
 public class UnitService {
 
     private final UnitRepository unitRepository;
-    private final StoreRepository storeRepository;
+    private final BusinessRepository businessRepository;
     private final UserRepository userRepository;
 
     @Transactional(readOnly = true)
-    public List<UnitResponse> list(Long storeId, UserPrincipal currentUser) {
-        findStoreOrThrow(storeId);
-        return unitRepository.findSystemAndStoreUnits(storeId).stream()
+    public List<UnitResponse> list(Long businessId, UserPrincipal currentUser) {
+        findBusinessOrThrow(businessId);
+        return unitRepository.findSystemAndBusinessUnits(businessId).stream()
                 .map(this::toResponse)
                 .toList();
     }
 
     @Transactional
-    public UnitResponse create(Long storeId, UnitUpsertRequest request, UserPrincipal currentUser) {
-        Store store = findStoreOrThrow(storeId);
+    public UnitResponse create(Long businessId, UnitUpsertRequest request, UserPrincipal currentUser) {
+        Business business = findBusinessOrThrow(businessId);
 
-        if (unitRepository.findByStoreIdAndNameAndDeletedAtIsNull(storeId, request.name()).isPresent()) {
-            throw new IllegalArgumentException("Unit name already exists in this store");
+        if (unitRepository.findByBusinessIdAndNameAndDeletedAtIsNull(businessId, request.name()).isPresent()) {
+            throw new IllegalArgumentException("Unit name already exists in this business");
         }
 
         User userRef = userRepository.getReferenceById(currentUser.userId());
 
         Unit unit = Unit.builder()
-                .store(store)
+                .business(business)
                 .name(request.name())
                 .abbreviation(request.abbreviation())
                 .publicId(UUID.randomUUID())
@@ -58,19 +58,19 @@ public class UnitService {
     }
 
     @Transactional
-    public UnitResponse update(Long storeId, UUID publicId, UnitUpsertRequest request, UserPrincipal currentUser) {
-        findStoreOrThrow(storeId);
+    public UnitResponse update(Long businessId, UUID publicId, UnitUpsertRequest request, UserPrincipal currentUser) {
+        findBusinessOrThrow(businessId);
 
         Unit unit = unitRepository.findByPublicId(publicId)
                 .orElseThrow(() -> new ResourceNotFoundException(ErrorCode.UNIT_NOT_FOUND, "Unit not found"));
 
-        if (unit.getStore() == null) {
+        if (unit.getBusiness() == null) {
             throw new ForbiddenException(ErrorCode.FORBIDDEN, "Cannot modify system units");
         }
 
-        unitRepository.findByStoreIdAndNameAndDeletedAtIsNull(storeId, request.name())
+        unitRepository.findByBusinessIdAndNameAndDeletedAtIsNull(businessId, request.name())
                 .filter(u -> !u.getPublicId().equals(publicId))
-                .ifPresent(u -> { throw new IllegalArgumentException("Unit name already exists in this store"); });
+                .ifPresent(u -> { throw new IllegalArgumentException("Unit name already exists in this business"); });
 
         User userRef = userRepository.getReferenceById(currentUser.userId());
 
@@ -83,13 +83,13 @@ public class UnitService {
     }
 
     @Transactional
-    public void delete(Long storeId, UUID publicId, UserPrincipal currentUser) {
-        findStoreOrThrow(storeId);
+    public void delete(Long businessId, UUID publicId, UserPrincipal currentUser) {
+        findBusinessOrThrow(businessId);
 
         Unit unit = unitRepository.findByPublicId(publicId)
                 .orElseThrow(() -> new ResourceNotFoundException(ErrorCode.UNIT_NOT_FOUND, "Unit not found"));
 
-        if (unit.getStore() == null) {
+        if (unit.getBusiness() == null) {
             throw new ForbiddenException(ErrorCode.FORBIDDEN, "Cannot delete system units");
         }
 
@@ -97,15 +97,15 @@ public class UnitService {
         unitRepository.save(unit);
     }
 
-    private Store findStoreOrThrow(Long storeId) {
-        return storeRepository.findById(storeId)
-                .orElseThrow(() -> new ResourceNotFoundException(ErrorCode.STORE_NOT_FOUND, "Store not found"));
+    private Business findBusinessOrThrow(Long businessId) {
+        return businessRepository.findById(businessId)
+                .orElseThrow(() -> new ResourceNotFoundException(ErrorCode.BUSINESS_NOT_FOUND, "Business not found"));
     }
 
     private UnitResponse toResponse(Unit u) {
         return new UnitResponse(
                 u.getId(), u.getPublicId(),
-                u.getStore() != null ? u.getStore().getId() : null,
+                u.getBusiness() != null ? u.getBusiness().getId() : null,
                 u.getName(), u.getAbbreviation(),
                 u.getSyncVersion(), u.getLastModifiedAt()
         );

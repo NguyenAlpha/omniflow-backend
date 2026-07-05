@@ -3,6 +3,7 @@ package com.quiktech.backend.exception;
 import com.quiktech.backend.dto.response.common.ApiResult;
 import com.quiktech.backend.dto.response.common.ErrorCode;
 import com.quiktech.backend.dto.response.common.ErrorDetail;
+import com.quiktech.backend.exception.InvalidTokenException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.AccessDeniedException;
@@ -35,6 +36,20 @@ public class GlobalExceptionHandler {
         );
     }
 
+    @ExceptionHandler(IllegalStateException.class)
+    public ResponseEntity<ApiResult<?>> handleIllegalState(IllegalStateException ex) {
+        return ResponseEntity.badRequest().body(
+                ApiResult.fail(ErrorDetail.of(ErrorCode.INSUFFICIENT_STOCK, ex.getMessage()))
+        );
+    }
+
+    @ExceptionHandler(InvalidTokenException.class)
+    public ResponseEntity<ApiResult<?>> handleInvalidToken(InvalidTokenException ex) {
+        return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(
+                ApiResult.fail(ErrorDetail.of(ex.getErrorCode(), ex.getMessage()))
+        );
+    }
+
     @ExceptionHandler(BadCredentialsException.class)
     public ResponseEntity<ApiResult<?>> handleBadCredentials(BadCredentialsException ignored) {
         return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(
@@ -59,6 +74,13 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(ForbiddenException.class)
     public ResponseEntity<ApiResult<?>> handleForbidden(ForbiddenException ex) {
         return ResponseEntity.status(HttpStatus.FORBIDDEN).body(
+                ApiResult.fail(ErrorDetail.of(ex.getErrorCode(), ex.getMessage()))
+        );
+    }
+
+    @ExceptionHandler(SubscriptionLimitExceededException.class)
+    public ResponseEntity<ApiResult<?>> handleSubscriptionLimit(SubscriptionLimitExceededException ex) {
+        return ResponseEntity.status(HttpStatus.PAYMENT_REQUIRED).body(
                 ApiResult.fail(ErrorDetail.of(ex.getErrorCode(), ex.getMessage()))
         );
     }

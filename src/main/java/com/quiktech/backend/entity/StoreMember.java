@@ -2,7 +2,7 @@ package com.quiktech.backend.entity;
 
 import lombok.*;
 import jakarta.persistence.*;
-import org.hibernate.annotations.Where;
+import org.hibernate.annotations.SQLRestriction;
 import java.time.LocalDate;
 import java.time.Instant;
 import java.util.UUID;
@@ -12,7 +12,7 @@ import java.util.UUID;
     @Index(name = "idx_store_members_user_id", columnList = "user_id"),
     @Index(name = "idx_store_members_store_id", columnList = "store_id")
 })
-@Where(clause = "deleted_at IS NULL")
+@SQLRestriction("deleted_at IS NULL")
 @Getter
 @Setter
 @NoArgsConstructor

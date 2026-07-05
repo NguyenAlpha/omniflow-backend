@@ -2,6 +2,7 @@ package com.quiktech.backend.security;
 
 import com.quiktech.backend.config.SecurityConfig;
 import com.quiktech.backend.entity.enums.RoleName;
+import com.quiktech.backend.repository.StoreRepository;
 import com.quiktech.backend.repository.UserRoleRepository;
 import com.quiktech.backend.service.StoreService;
 import lombok.RequiredArgsConstructor;
@@ -18,39 +19,29 @@ import java.util.concurrent.TimeUnit;
  *
  * <h3>Vì sao cần class này</h3>
  * Spring Security chỉ lưu global role ({@code SUPER_ADMIN}, {@code SUPPORT}) trong
- * {@code SecurityContext} thông qua JWT claims. Store-scoped role ({@code OWNER},
- * {@code MANAGER}, {@code STAFF}) phụ thuộc vào từng store nên không thể nhúng vào
- * JWT — phải kiểm tra riêng theo từng request.
+ * {@code SecurityContext} thông qua JWT claims. Store-scoped role ({@code MANAGER}, {@code STAFF})
+ * và business-scoped role ({@code OWNER}) phụ thuộc vào context nên không thể nhúng vào JWT.
  *
- * <h3>Luồng kiểm tra quyền</h3>
+ * <h3>Luồng kiểm tra quyền (isMember / isOwnerOrManager)</h3>
  * <pre>
- * hasStoreRole(storeId, auth, allowed...)
- *   ↓
- * auth == null ?  → false
- * SUPER_ADMIN ?   → true  (bypass mọi check)
- *   ↓
- * Lấy UserPrincipal từ authentication.getPrincipal()
- *   ↓
- * Đọc Redis key "store:role:{userId}:{storeId}"
- *   ├── Hit  → parse RoleName → kiểm tra trong allowed[]
- *   └── Miss → query DB (findActiveStoreRole, JOIN FETCH role)
- *                ↓
- *             Ghi Redis với TTL (mặc định 300 giây)
- *                ↓
- *             Kiểm tra trong allowed[]
+ * 1. SUPER_ADMIN bypass → true
+ * 2. Kiểm tra business OWNER role:
+ *    - Resolve businessId từ storeId (cached tại store:business:{storeId})
+ *    - isOwnerWithCache(userId, businessId) — cached tại business:role:{userId}:{businessId}
+ * 3. Kiểm tra store-level role (MANAGER/STAFF) qua Redis cache + DB
  * </pre>
  *
  * <h3>Redis down — Graceful degradation</h3>
  * Mọi thao tác Redis đều được bọc try-catch. Khi Redis không available:
  * <ul>
- *   <li>Read fail → tự động fallback về DB (không ném exception, không trả {@code false} sai)</li>
- *   <li>Write fail → bỏ qua, kết quả DB đã có — cache miss lần sau cũng fallback DB</li>
- *   <li>Evict fail → bỏ qua, entry cũ sẽ tự expire sau TTL</li>
+ *   <li>Read fail → fallback về DB</li>
+ *   <li>Write fail → bỏ qua</li>
+ *   <li>Evict fail → entry cũ tự expire sau TTL</li>
  * </ul>
  *
  * <h3>Cache invalidation</h3>
  * {@link #evictStoreRoleCache(Long, Long)} phải được gọi sau mỗi thao tác thay đổi role
- * (add/update/remove member) trong {@link StoreService}.
+ * trong {@link StoreService}.
  *
  * <h3>Cách dùng trong controller</h3>
  * <pre>{@code
@@ -66,6 +57,7 @@ import java.util.concurrent.TimeUnit;
 public class StoreAccessEvaluator {
 
     private final UserRoleRepository userRoleRepository;
+    private final StoreRepository storeRepository;
     private final StringRedisTemplate redisTemplate;
 
     /**
@@ -76,36 +68,29 @@ public class StoreAccessEvaluator {
     private long cacheTtlSeconds;
 
     /**
-     * Kiểm tra user có thuộc store không (bất kỳ role nào: OWNER, MANAGER, STAFF).
-     *
-     * @param storeId        ID của store cần kiểm tra
-     * @param authentication đối tượng auth từ {@code SecurityContext}
-     * @return {@code true} nếu user có ít nhất một role active trong store
+     * Kiểm tra user có thuộc store không — business OWNER hoặc MANAGER/STAFF của store.
      */
     public boolean isMember(Long storeId, Authentication authentication) {
-        return hasStoreRole(storeId, authentication, RoleName.ROLE_OWNER, RoleName.ROLE_MANAGER, RoleName.ROLE_STAFF);
+        return hasAccess(storeId, authentication, RoleName.ROLE_MANAGER, RoleName.ROLE_STAFF);
     }
 
     /**
-     * Kiểm tra user có quyền quản lý store không (OWNER hoặc MANAGER).
-     *
-     * @param storeId        ID của store cần kiểm tra
-     * @param authentication đối tượng auth từ {@code SecurityContext}
-     * @return {@code true} nếu user có role OWNER hoặc MANAGER
+     * Kiểm tra user có quyền quản lý store không — business OWNER hoặc MANAGER của store.
      */
     public boolean isOwnerOrManager(Long storeId, Authentication authentication) {
-        return hasStoreRole(storeId, authentication, RoleName.ROLE_OWNER, RoleName.ROLE_MANAGER);
+        return hasAccess(storeId, authentication, RoleName.ROLE_MANAGER);
     }
 
     /**
-     * Kiểm tra user có phải OWNER của store không.
-     *
-     * @param storeId        ID của store cần kiểm tra
-     * @param authentication đối tượng auth từ {@code SecurityContext}
-     * @return {@code true} nếu user có role OWNER
+     * Kiểm tra user có phải OWNER của business chứa store này không.
      */
     public boolean isOwner(Long storeId, Authentication authentication) {
-        return hasStoreRole(storeId, authentication, RoleName.ROLE_OWNER);
+        if (authentication == null) return false;
+        if (isSuperAdmin(authentication)) return true;
+        UserPrincipal principal = extractPrincipal(authentication);
+        if (principal == null) return false;
+        Long businessId = resolveBusinessId(storeId);
+        return businessId != null && isOwnerWithCache(principal.userId(), businessId);
     }
 
     /**
@@ -123,38 +108,34 @@ public class StoreAccessEvaluator {
      */
     public void evictStoreRoleCache(Long userId, Long storeId) {
         try {
-            redisTemplate.delete(cacheKey(userId, storeId));
+            redisTemplate.delete(storeRoleCacheKey(userId, storeId));
         } catch (Exception ignored) {
             // Redis down — cache sẽ expire tự nhiên sau TTL
         }
     }
 
     /**
-     * Hàm kiểm tra quyền dùng chung cho {@link #isMember}, {@link #isOwnerOrManager}, {@link #isOwner}.
+     * Kiểm tra quyền: business OWNER của store's business OR store-level role trong {@code allowedStoreRoles}.
      *
-     * <p>Thứ tự kiểm tra được tối ưu: guard clause trước, SUPER_ADMIN bypass trước,
-     * Redis trước DB — để thoát sớm trong trường hợp phổ biến nhất.
-     *
-     * @param storeId        ID của store
-     * @param authentication auth object từ SecurityContext
-     * @param allowed        danh sách role được phép truy cập
-     * @return {@code true} nếu user có role nằm trong {@code allowed}
+     * <p>Business OWNER được kiểm tra trước để thoát sớm nếu user là OWNER.
+     * Store-level role dùng Redis cache + DB fallback.
      */
-    private boolean hasStoreRole(Long storeId, Authentication authentication, RoleName... allowed) {
+    private boolean hasAccess(Long storeId, Authentication authentication, RoleName... allowedStoreRoles) {
         if (authentication == null) return false;
-
-        // SUPER_ADMIN có quyền truy cập mọi store — không cần kiểm tra DB hay cache
         if (isSuperAdmin(authentication)) return true;
 
         UserPrincipal principal = extractPrincipal(authentication);
         if (principal == null) return false;
 
-        String key = cacheKey(principal.userId(), storeId);
+        // Kiểm tra business OWNER — dùng cache thay vì DB trực tiếp
+        Long businessId = resolveBusinessId(storeId);
+        if (businessId != null && isOwnerWithCache(principal.userId(), businessId)) {
+            return true;
+        }
 
-        RoleName role = resolveRoleWithCache(key, principal.userId(), storeId);
-        if (role == null) return false; // user không phải member của store
-
-        return Arrays.asList(allowed).contains(role);
+        // Kiểm tra store-level role (MANAGER/STAFF) qua Redis cache
+        RoleName storeRole = resolveStoreRoleWithCache(principal.userId(), storeId);
+        return storeRole != null && Arrays.asList(allowedStoreRoles).contains(storeRole);
     }
 
     /**
@@ -162,61 +143,103 @@ public class StoreAccessEvaluator {
      *
      * <p>Hai khối try-catch độc lập: khối đầu cho read (fallback về DB),
      * khối sau cho write (bỏ qua nếu fail, DB đã trả kết quả rồi).
-     *
-     * @param key     Redis cache key cho cặp (userId, storeId)
-     * @param userId  ID của user
-     * @param storeId ID của store
-     * @return role hiện tại của user; {@code null} nếu không phải member
      */
-    private RoleName resolveRoleWithCache(String key, Long userId, Long storeId) {
-        // Bước 1: thử đọc từ Redis
+    private RoleName resolveStoreRoleWithCache(Long userId, Long storeId) {
+        String key = storeRoleCacheKey(userId, storeId);
+
         try {
             String cached = redisTemplate.opsForValue().get(key);
-            if (cached != null) return RoleName.valueOf(cached); // cache hit — trả về ngay
+            if (cached != null) return RoleName.valueOf(cached);
         } catch (Exception ignored) {
-            // Redis down — tiếp tục xuống DB, không trả false sai
+            // Redis down — tiếp tục xuống DB
         }
 
-        // Bước 2: cache miss hoặc Redis down — query DB với JOIN FETCH (không N+1)
         var ur = userRoleRepository.findActiveStoreRole(userId, storeId);
-        if (ur.isEmpty()) return null; // user không phải member hoặc role đã bị xóa
+        if (ur.isEmpty()) return null;
 
         RoleName role = ur.get().getRole().getName();
 
-        // Bước 3: lưu vào Redis để cache hit cho lần sau
         try {
             redisTemplate.opsForValue().set(key, role.name(), cacheTtlSeconds, TimeUnit.SECONDS);
         } catch (Exception ignored) {
-            // Redis down — bỏ qua, kết quả DB đã đủ để trả về
+            // Redis down — bỏ qua
         }
         return role;
     }
 
     /**
-     * Kiểm tra trong authorities của {@code SecurityContext} có {@code ROLE_SUPER_ADMIN} không.
-     * Authorities này được extract từ JWT claims bởi {@link UserPrincipalConverter} — không cần DB.
+     * Lấy businessId của một store — ưu tiên Redis cache {@code store:business:{storeId}},
+     * fallback về DB. Cache businessId để tránh DB call mỗi request kiểm tra OWNER.
      */
+    private Long resolveBusinessId(Long storeId) {
+        String key = "store:business:" + storeId;
+
+        try {
+            String cached = redisTemplate.opsForValue().get(key);
+            if (cached != null) return Long.parseLong(cached);
+        } catch (Exception ignored) {
+            // Redis down — tiếp tục xuống DB
+        }
+
+        Long businessId = storeRepository.findBusinessIdByStoreId(storeId).orElse(null);
+
+        if (businessId != null) {
+            try {
+                redisTemplate.opsForValue().set(key, businessId.toString(), cacheTtlSeconds, TimeUnit.SECONDS);
+            } catch (Exception ignored) {
+                // Redis down — bỏ qua
+            }
+        }
+        return businessId;
+    }
+
     private static boolean isSuperAdmin(Authentication authentication) {
         return authentication.getAuthorities().stream()
                 .anyMatch(a -> RoleName.ROLE_SUPER_ADMIN.name().equals(a.getAuthority()));
     }
 
-    /**
-     * Lấy {@link UserPrincipal} từ principal của {@code Authentication}.
-     *
-     * <p>Trả về {@code null} nếu principal không phải {@code UserPrincipal} —
-     * ví dụ khi request đến từ anonymous user hoặc authentication được tạo bởi
-     * cơ chế khác (test context, basic auth, ...).
-     */
     private static UserPrincipal extractPrincipal(Authentication authentication) {
         return authentication.getPrincipal() instanceof UserPrincipal p ? p : null;
     }
 
     /**
-     * Tạo Redis key cho cặp (userId, storeId).
-     * Format: {@code store:role:{userId}:{storeId}} — namespace rõ ràng, tránh collision với key khác.
+     * Kiểm tra OWNER với Redis cache — dùng chung key {@code business:role:{userId}:{businessId}}
+     * với {@link BusinessAccessEvaluator}. Cache hit từ evaluator này có hiệu lực cho cả evaluator kia.
      */
-    private static String cacheKey(Long userId, Long storeId) {
+    private boolean isOwnerWithCache(Long userId, Long businessId) {
+        String key = businessRoleCacheKey(userId, businessId);
+
+        try {
+            if (redisTemplate.opsForValue().get(key) != null) return true;
+        } catch (Exception ignored) {
+            // Redis down — tiếp tục xuống DB
+        }
+
+        boolean isOwner = userRoleRepository.findActiveBusinessRole(userId, businessId).isPresent();
+
+        if (isOwner) {
+            try {
+                redisTemplate.opsForValue().set(key, RoleName.ROLE_OWNER.name(), cacheTtlSeconds, TimeUnit.SECONDS);
+            } catch (Exception ignored) {
+                // Redis down — bỏ qua
+            }
+        }
+
+        return isOwner;
+    }
+
+    /**
+     * Redis key cho store-level role: {@code store:role:{userId}:{storeId}}.
+     */
+    private static String storeRoleCacheKey(Long userId, Long storeId) {
         return "store:role:" + userId + ":" + storeId;
+    }
+
+    /**
+     * Redis key cho business-level OWNER role: {@code business:role:{userId}:{businessId}}.
+     * Dùng chung với {@link BusinessAccessEvaluator} — evict qua {@code businessAccess.evictBusinessRoleCache()}.
+     */
+    private static String businessRoleCacheKey(Long userId, Long businessId) {
+        return "business:role:" + userId + ":" + businessId;
     }
 }

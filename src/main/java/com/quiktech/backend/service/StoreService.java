@@ -5,6 +5,7 @@ import com.quiktech.backend.dto.request.store.StoreCreateRequest;
 import com.quiktech.backend.dto.request.store.UpdateMemberRequest;
 import com.quiktech.backend.dto.response.store.StoreMemberResponse;
 import com.quiktech.backend.dto.response.store.StoreResponse;
+import com.quiktech.backend.entity.Business;
 import com.quiktech.backend.entity.Role;
 import com.quiktech.backend.entity.Store;
 import com.quiktech.backend.entity.StoreMember;
@@ -14,6 +15,7 @@ import com.quiktech.backend.entity.enums.RoleName;
 import com.quiktech.backend.exception.ForbiddenException;
 import com.quiktech.backend.exception.ResourceNotFoundException;
 import com.quiktech.backend.dto.response.common.ErrorCode;
+import com.quiktech.backend.repository.BusinessRepository;
 import com.quiktech.backend.repository.RoleRepository;
 import com.quiktech.backend.repository.StoreMemberRepository;
 import com.quiktech.backend.repository.StoreRepository;
@@ -27,6 +29,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
 import java.time.LocalDate;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -38,40 +41,29 @@ public class StoreService {
 
     private final StoreRepository storeRepository;
     private final StoreMemberRepository storeMemberRepository;
+    private final BusinessRepository businessRepository;
     private final UserRepository userRepository;
     private final UserRoleRepository userRoleRepository;
     private final RoleRepository roleRepository;
     private final StoreAccessEvaluator storeAccessEvaluator;
+    private final SubscriptionLimitService subscriptionLimitService;
 
     @Transactional
-    public StoreResponse createStore(StoreCreateRequest request, UserPrincipal currentUser) {
+    public StoreResponse createStore(Long businessId, StoreCreateRequest request, UserPrincipal currentUser) {
+        Business business = businessRepository.findById(businessId)
+                .orElseThrow(() -> new ResourceNotFoundException(ErrorCode.BUSINESS_NOT_FOUND, "Business not found"));
+
+        subscriptionLimitService.checkStoreLimit(businessId);
+
         Store store = Store.builder()
+                .business(business)
                 .name(request.name())
                 .address(request.address())
                 .phone(request.phone())
                 .email(request.email())
                 .build();
-        storeRepository.save(store);
 
-        // getReferenceById tạo JPA proxy — không cần SELECT, chỉ cần ID cho FK
-        User userRef = userRepository.getReferenceById(currentUser.userId());
-
-        StoreMember member = StoreMember.builder()
-                .user(userRef)
-                .store(store)
-                .isActive(true)
-                .publicId(UUID.randomUUID())
-                .build();
-        storeMemberRepository.save(member);
-
-        userRoleRepository.save(UserRole.builder()
-                .user(userRef)
-                .role(findRoleOrThrow(RoleName.ROLE_OWNER))
-                .store(store)
-                .isActive(true)
-                .build());
-
-        return toStoreResponse(store);
+        return toStoreResponse(storeRepository.save(store));
     }
 
     @Transactional(readOnly = true)
@@ -88,10 +80,18 @@ public class StoreService {
                     .map(this::toStoreResponse)
                     .toList();
         }
-        return storeMemberRepository.findByUserIdAndDeletedAtIsNull(currentUser.userId())
-                .stream()
-                .map(m -> toStoreResponse(m.getStore()))
-                .toList();
+
+        // Stores qua business OWNER role
+        Map<Long, Store> combined = new LinkedHashMap<>();
+        userRoleRepository.findActiveBusinessRolesForUser(currentUser.userId())
+                .forEach(ur -> storeRepository.findByBusinessIdAndDeletedAtIsNull(ur.getBusiness().getId())
+                        .forEach(s -> combined.put(s.getId(), s)));
+
+        // Stores qua direct StoreMember — JOIN FETCH store để tránh N+1
+        storeMemberRepository.findByUserIdAndDeletedAtIsNullWithStore(currentUser.userId())
+                .forEach(m -> combined.put(m.getStore().getId(), m.getStore()));
+
+        return combined.values().stream().map(this::toStoreResponse).toList();
     }
 
     @Transactional
@@ -138,6 +138,7 @@ public class StoreService {
                 .orElseThrow(() -> new ResourceNotFoundException(ErrorCode.USER_NOT_FOUND, "User not found"));
 
         Store store = findStoreOrThrow(storeId);
+        subscriptionLimitService.checkStaffLimit(store.getBusiness().getId());
 
         StoreMember member = StoreMember.builder()
                 .user(targetUser)
@@ -174,10 +175,6 @@ public class StoreService {
                 .findActiveStoreRole(member.getUser().getId(), storeId)
                 .orElseThrow(() -> new ResourceNotFoundException(ErrorCode.STORE_MEMBER_NOT_FOUND, "Member role not found"));
 
-        if (RoleName.ROLE_OWNER == userRole.getRole().getName() && !member.getUser().getId().equals(currentUser.userId())) {
-            throw new ForbiddenException(ErrorCode.FORBIDDEN, "Cannot modify another OWNER");
-        }
-
         userRole.setRole(findRoleOrThrow(request.role()));
         userRole.setIsActive(request.isActive());
         userRoleRepository.save(userRole);
@@ -191,7 +188,7 @@ public class StoreService {
         return toMemberResponse(member, userRole);
     }
 
-@Transactional
+    @Transactional
     public void removeMember(Long storeId, Long memberId) {
         findStoreOrThrow(storeId);
 
@@ -201,10 +198,6 @@ public class StoreService {
         UserRole userRole = userRoleRepository
                 .findActiveStoreRole(member.getUser().getId(), storeId)
                 .orElse(null);
-
-        if (userRole != null && RoleName.ROLE_OWNER == userRole.getRole().getName()) {
-            throw new ForbiddenException(ErrorCode.FORBIDDEN, "Cannot remove the OWNER from store");
-        }
 
         Instant now = Instant.now();
         member.setDeletedAt(now);

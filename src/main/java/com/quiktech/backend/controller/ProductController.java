@@ -1,12 +1,17 @@
 package com.quiktech.backend.controller;
 
 import com.quiktech.backend.dto.request.catalog.ProductUpsertRequest;
+import com.quiktech.backend.dto.request.common.SetStatusRequest;
+import com.quiktech.backend.dto.response.catalog.ProductDetailResponse;
+import com.quiktech.backend.dto.response.catalog.ProductImportResponse;
 import com.quiktech.backend.dto.response.catalog.ProductResponse;
 import com.quiktech.backend.dto.response.common.ApiResult;
 import com.quiktech.backend.dto.response.common.PagedResult;
 import com.quiktech.backend.security.UserPrincipal;
 import com.quiktech.backend.service.ProductService;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
@@ -14,75 +19,112 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
 import java.util.UUID;
 
+@Validated
 @RestController
-@RequestMapping("/api/stores/{storeId}/products")
+@RequestMapping("/api/businesses/{businessId}/products")
 @RequiredArgsConstructor
 public class ProductController {
 
     private final ProductService productService;
 
     @GetMapping
-    @PreAuthorize("@storeAccess.isMember(#storeId, authentication)")
+    @PreAuthorize("@businessAccess.isMember(#businessId, authentication)")
     public ResponseEntity<ApiResult<List<ProductResponse>>> list(
-            @PathVariable Long storeId,
+            @PathVariable Long businessId,
             @RequestParam(required = false) Boolean isActive,
             @AuthenticationPrincipal UserPrincipal currentUser) {
-        return ResponseEntity.ok(ApiResult.ok(productService.list(storeId, isActive, currentUser)));
+        return ResponseEntity.ok(ApiResult.ok(productService.list(businessId, isActive, currentUser)));
     }
 
     @GetMapping("/search")
-    @PreAuthorize("@storeAccess.isMember(#storeId, authentication)")
+    @PreAuthorize("@businessAccess.isMember(#businessId, authentication)")
     public ResponseEntity<ApiResult<PagedResult<ProductResponse>>> search(
-            @PathVariable Long storeId,
-            @RequestParam String q,
-            @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "20") int size,
+            @PathVariable Long businessId,
+            @RequestParam(required = false) String q,
+            @RequestParam(required = false) Boolean isActive,
+            @RequestParam(required = false) UUID categoryPublicId,
+            @RequestParam(defaultValue = "0") @Min(0) int page,
+            @RequestParam(defaultValue = "20") @Min(1) @Max(100) int size,
+            @RequestParam(defaultValue = "updatedAt") String sortBy,
+            @RequestParam(defaultValue = "desc") String sort,
             @AuthenticationPrincipal UserPrincipal currentUser) {
-        var pageable = PageRequest.of(page, size, Sort.by("name").ascending());
-        return ResponseEntity.ok(ApiResult.ok(productService.search(storeId, q, pageable, currentUser)));
+        String field = "name".equals(sortBy) ? "name" : "updatedAt";
+        Sort.Direction direction = "asc".equalsIgnoreCase(sort) ? Sort.Direction.ASC : Sort.Direction.DESC;
+        var pageable = PageRequest.of(page, size, Sort.by(direction, field));
+        return ResponseEntity.ok(ApiResult.ok(productService.search(businessId, q, isActive, categoryPublicId, pageable, currentUser)));
+    }
+
+    @GetMapping("/sku/{sku}")
+    @PreAuthorize("@businessAccess.isMember(#businessId, authentication)")
+    public ResponseEntity<ApiResult<ProductResponse>> getBySku(
+            @PathVariable Long businessId,
+            @PathVariable String sku,
+            @AuthenticationPrincipal UserPrincipal currentUser) {
+        return ResponseEntity.ok(ApiResult.ok(productService.findBySku(businessId, sku, currentUser)));
     }
 
     @GetMapping("/{publicId}")
-    @PreAuthorize("@storeAccess.isMember(#storeId, authentication)")
-    public ResponseEntity<ApiResult<ProductResponse>> get(
-            @PathVariable Long storeId,
+    @PreAuthorize("@businessAccess.isMember(#businessId, authentication)")
+    public ResponseEntity<ApiResult<ProductDetailResponse>> get(
+            @PathVariable Long businessId,
             @PathVariable UUID publicId,
             @AuthenticationPrincipal UserPrincipal currentUser) {
-        return ResponseEntity.ok(ApiResult.ok(productService.get(storeId, publicId, currentUser)));
+        return ResponseEntity.ok(ApiResult.ok(productService.get(businessId, publicId, currentUser)));
+    }
+
+    @PostMapping("/import")
+    @PreAuthorize("@businessAccess.isOwnerOrManager(#businessId, authentication)")
+    public ResponseEntity<ApiResult<ProductImportResponse>> importCsv(
+            @PathVariable Long businessId,
+            @RequestParam("file") MultipartFile file,
+            @AuthenticationPrincipal UserPrincipal currentUser) {
+        return ResponseEntity.ok(ApiResult.ok(productService.importCsv(businessId, file, currentUser)));
     }
 
     @PostMapping
-    @PreAuthorize("@storeAccess.isOwnerOrManager(#storeId, authentication)")
+    @PreAuthorize("@businessAccess.isOwnerOrManager(#businessId, authentication)")
     public ResponseEntity<ApiResult<ProductResponse>> create(
-            @PathVariable Long storeId,
+            @PathVariable Long businessId,
             @Valid @RequestBody ProductUpsertRequest request,
             @AuthenticationPrincipal UserPrincipal currentUser) {
         return ResponseEntity.status(HttpStatus.CREATED)
-                .body(ApiResult.ok(productService.create(storeId, request, currentUser)));
+                .body(ApiResult.ok(productService.create(businessId, request, currentUser)));
     }
 
     @PutMapping("/{publicId}")
-    @PreAuthorize("@storeAccess.isOwnerOrManager(#storeId, authentication)")
+    @PreAuthorize("@businessAccess.isOwnerOrManager(#businessId, authentication)")
     public ResponseEntity<ApiResult<ProductResponse>> update(
-            @PathVariable Long storeId,
+            @PathVariable Long businessId,
             @PathVariable UUID publicId,
             @Valid @RequestBody ProductUpsertRequest request,
             @AuthenticationPrincipal UserPrincipal currentUser) {
-        return ResponseEntity.ok(ApiResult.ok(productService.update(storeId, publicId, request, currentUser)));
+        return ResponseEntity.ok(ApiResult.ok(productService.update(businessId, publicId, request, currentUser)));
+    }
+
+    @PatchMapping("/{publicId}/status")
+    @PreAuthorize("@businessAccess.isOwnerOrManager(#businessId, authentication)")
+    public ResponseEntity<ApiResult<ProductResponse>> setStatus(
+            @PathVariable Long businessId,
+            @PathVariable UUID publicId,
+            @Valid @RequestBody SetStatusRequest request,
+            @AuthenticationPrincipal UserPrincipal currentUser) {
+        return ResponseEntity.ok(ApiResult.ok(productService.setStatus(businessId, publicId, request.isActive(), currentUser)));
     }
 
     @DeleteMapping("/{publicId}")
-    @PreAuthorize("@storeAccess.isOwnerOrManager(#storeId, authentication)")
+    @PreAuthorize("@businessAccess.isOwnerOrManager(#businessId, authentication)")
     public ResponseEntity<ApiResult<Void>> delete(
-            @PathVariable Long storeId,
+            @PathVariable Long businessId,
             @PathVariable UUID publicId,
             @AuthenticationPrincipal UserPrincipal currentUser) {
-        productService.delete(storeId, publicId, currentUser);
+        productService.delete(businessId, publicId, currentUser);
         return ResponseEntity.ok(ApiResult.ok());
     }
 }

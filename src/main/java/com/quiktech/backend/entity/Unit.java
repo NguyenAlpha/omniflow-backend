@@ -8,7 +8,7 @@ import java.util.UUID;
 
 @Entity
 @Table(name = "units", indexes = {
-        @Index(name = "idx_units_store_id", columnList = "store_id")
+        @Index(name = "idx_units_business_id", columnList = "business_id")
 })
 @SQLRestriction("deleted_at IS NULL")
 @Getter
@@ -23,8 +23,8 @@ public class Unit {
     private Long id;
 
     @ManyToOne
-    @JoinColumn(name = "store_id")
-    private Store store; // null = system unit
+    @JoinColumn(name = "business_id")
+    private Business business; // null = system unit
 
     @Column(nullable = false, length = 50)
     private String name;

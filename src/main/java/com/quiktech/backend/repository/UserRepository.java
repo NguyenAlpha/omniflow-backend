@@ -29,5 +29,9 @@ public interface UserRepository extends JpaRepository<User, Long> {
            " LOWER(u.email)    LIKE LOWER(CONCAT('%', :q, '%')) OR " +
            " LOWER(u.fullName) LIKE LOWER(CONCAT('%', :q, '%')))")
     Page<User> searchUsers(@Param("q") String q, Pageable pageable);
+
+    long countByDeletedAtIsNull();
+
+    long countByIsActiveAndDeletedAtIsNull(boolean isActive);
 }
 

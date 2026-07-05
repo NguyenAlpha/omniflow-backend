@@ -37,6 +37,7 @@ public class SyncChangeLog {
     @Column(nullable = false)
     private Long syncVersion;
 
+    @Builder.Default
     @Column(nullable = false, columnDefinition = "TIMESTAMPTZ")
     private Instant changedAt = Instant.now();
 

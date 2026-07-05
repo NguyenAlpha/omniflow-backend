@@ -2,6 +2,8 @@ package com.quiktech.backend.repository;
 
 import com.quiktech.backend.entity.Warehouse;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 import java.util.List;
 import java.util.Optional;
@@ -19,5 +21,8 @@ public interface WarehouseRepository extends JpaRepository<Warehouse, Long> {
     Optional<Warehouse> findByPublicId(UUID publicId);
 
     long countByStoreIdAndDeletedAtIsNull(Long storeId);
+
+    @Query("SELECT COUNT(w) FROM Warehouse w WHERE w.store.business.id = :businessId AND w.deletedAt IS NULL")
+    long countByBusinessId(@Param("businessId") Long businessId);
 }
 

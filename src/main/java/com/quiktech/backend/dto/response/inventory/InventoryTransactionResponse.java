@@ -13,6 +13,7 @@ public record InventoryTransactionResponse(
     String warehouseName,
     String type,
     BigDecimal quantity,
+    BigDecimal previousQuantity,
     UUID orderPublicId,
     UUID purchaseOrderPublicId,
     String note,

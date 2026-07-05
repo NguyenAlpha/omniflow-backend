@@ -14,27 +14,27 @@ import java.util.UUID;
 @Repository
 public interface SupplierRepository extends JpaRepository<Supplier, Long> {
 
-    List<Supplier> findByStoreIdAndDeletedAtIsNull(Long storeId);
+    List<Supplier> findByBusinessIdAndDeletedAtIsNull(Long businessId);
 
-    Optional<Supplier> findByStoreIdAndCodeAndDeletedAtIsNull(Long storeId, String code);
+    Optional<Supplier> findByBusinessIdAndCodeAndDeletedAtIsNull(Long businessId, String code);
 
     Optional<Supplier> findByPublicId(UUID publicId);
 
     // Suppliers with debt
     @Query("""
-        SELECT s FROM Supplier s 
-        WHERE s.store.id = :storeId 
-        AND s.debtBalance > 0 
+        SELECT s FROM Supplier s
+        WHERE s.business.id = :businessId
+        AND s.debtBalance > 0
         AND s.deletedAt IS NULL
         ORDER BY s.debtBalance DESC
     """)
-    List<Supplier> findSuppliersWithDebt(@Param("storeId") Long storeId);
+    List<Supplier> findSuppliersWithDebt(@Param("businessId") Long businessId);
 
     // Search suppliers
     @Query("""
-        SELECT s FROM Supplier s 
-        WHERE s.store.id = :storeId 
-        AND s.deletedAt IS NULL 
+        SELECT s FROM Supplier s
+        WHERE s.business.id = :businessId
+        AND s.deletedAt IS NULL
         AND (
             s.name ILIKE CONCAT('%', :searchTerm, '%')
             OR s.code ILIKE CONCAT('%', :searchTerm, '%')
@@ -44,11 +44,10 @@ public interface SupplierRepository extends JpaRepository<Supplier, Long> {
         ORDER BY s.name ASC
     """)
     Page<Supplier> searchSuppliers(
-        @Param("storeId") Long storeId,
+        @Param("businessId") Long businessId,
         @Param("searchTerm") String searchTerm,
         Pageable pageable
     );
 
-    long countByStoreIdAndDeletedAtIsNull(Long storeId);
+    long countByBusinessIdAndDeletedAtIsNull(Long businessId);
 }
-

@@ -9,6 +9,9 @@ public enum ErrorCode {
     // User
     USER_NOT_FOUND,
 
+    // Business
+    BUSINESS_NOT_FOUND,
+
     // Store
     STORE_NOT_FOUND,
     STORE_MEMBER_NOT_FOUND,
@@ -46,6 +49,18 @@ public enum ErrorCode {
 
     // Payment
     PAYMENT_NOT_FOUND,
+
+    // Subscription
+    SUBSCRIPTION_NOT_FOUND,
+    SUBSCRIPTION_LIMIT_EXCEEDED,
+    INVOICE_NOT_FOUND,
+
+    // Refresh token
+    REFRESH_TOKEN_INVALID,
+    REFRESH_TOKEN_EXPIRED,
+
+    // Rate limiting
+    RATE_LIMIT_EXCEEDED,
 
     // Validation
     VALIDATION_ERROR,

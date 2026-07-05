@@ -6,7 +6,7 @@ import java.util.UUID;
 public record UnitResponse(
     Long id,
     UUID publicId,
-    Long storeId,
+    Long businessId,
     String name,
     String abbreviation,
     Long syncVersion,

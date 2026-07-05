@@ -6,7 +6,7 @@ import java.util.UUID;
 
 public record PriceHistoryResponse(
     Long id,
-    Long storeId,
+    Long businessId,
     UUID productPublicId,
     String productName,
     BigDecimal oldCostPrice,

@@ -1,6 +1,8 @@
 package com.quiktech.backend.entity;
 
+import com.quiktech.backend.entity.enums.PurchaseOrderStatus;
 import lombok.*;
+import org.hibernate.annotations.BatchSize;
 import jakarta.persistence.*;
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -39,8 +41,9 @@ public class PurchaseOrder {
     @JoinColumn(name = "warehouse_id", nullable = false)
     private Warehouse warehouse;
 
+    @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
-    private String status; // PENDING, RECEIVED, CANCELLED
+    private PurchaseOrderStatus status;
 
     @Column(nullable = false, precision = 15, scale = 2)
     private BigDecimal totalAmount;
@@ -53,6 +56,10 @@ public class PurchaseOrder {
     @Column(nullable = false, precision = 15, scale = 2)
     private BigDecimal debtAmount = BigDecimal.ZERO;
 
+    @Builder.Default
+    @Column(nullable = false, length = 20)
+    private String paymentMethod = "CASH";
+
     @Column(columnDefinition = "TEXT")
     private String note;
 
@@ -60,6 +67,7 @@ public class PurchaseOrder {
     @Column(nullable = false, unique = true, columnDefinition = "UUID")
     private UUID publicId;
 
+    @Version
     @Builder.Default
     @Column(nullable = false)
     private Long syncVersion = 0L;
@@ -89,6 +97,7 @@ public class PurchaseOrder {
     private Instant updatedAt = Instant.now();
 
     // === Relationships ===
+    @BatchSize(size = 20)
     @OneToMany(mappedBy = "purchaseOrder", fetch = FetchType.LAZY, cascade = CascadeType.ALL, orphanRemoval = true)
     private List<PurchaseOrderItem> purchaseOrderItems;
 }

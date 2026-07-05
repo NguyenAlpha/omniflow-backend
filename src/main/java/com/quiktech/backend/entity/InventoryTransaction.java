@@ -40,6 +40,9 @@ public class InventoryTransaction {
     @Column(nullable = false, precision = 15, scale = 2)
     private BigDecimal quantity;
 
+    @Column(precision = 15, scale = 2)
+    private BigDecimal previousQuantity;
+
     @ManyToOne
     @JoinColumn(name = "order_id")
     private Order order;

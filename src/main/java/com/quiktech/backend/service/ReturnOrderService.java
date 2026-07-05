@@ -6,9 +6,7 @@ import com.quiktech.backend.dto.response.common.ErrorCode;
 import com.quiktech.backend.dto.response.order.ReturnOrderItemResponse;
 import com.quiktech.backend.dto.response.order.ReturnOrderResponse;
 import com.quiktech.backend.entity.*;
-import com.quiktech.backend.entity.*;
 import com.quiktech.backend.exception.ResourceNotFoundException;
-import com.quiktech.backend.repository.*;
 import com.quiktech.backend.repository.*;
 import com.quiktech.backend.security.UserPrincipal;
 import lombok.RequiredArgsConstructor;
@@ -19,6 +17,7 @@ import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 
 @Service
@@ -123,17 +122,31 @@ public class ReturnOrderService {
         User userRef = userRepository.getReferenceById(currentUser.userId());
 
         // Restore inventory for each returned item
+        Set<Long> affectedProductIds = new java.util.HashSet<>();
         for (ReturnOrderItem item : returnOrder.getReturnOrderItems()) {
             restoreInventory(returnOrder.getStore(), item.getProduct(), returnOrder.getWarehouse(),
                     item.getQuantity(), userRef, returnOrder.getReturnCode());
+            affectedProductIds.add(item.getProduct().getId());
         }
+        affectedProductIds.forEach(productRepository::recalculateTotalStock);
 
-        // Reduce customer debt if applicable
-        Customer customer = returnOrder.getOriginalOrder().getCustomer();
+        // Reduce customer debt and original order debt if applicable
+        Order originalOrder = returnOrder.getOriginalOrder();
+        Customer customer = originalOrder.getCustomer();
         if (customer != null && returnOrder.getTotalRefund().compareTo(BigDecimal.ZERO) > 0) {
-            BigDecimal newDebt = customer.getDebtBalance().subtract(returnOrder.getTotalRefund());
-            customer.setDebtBalance(newDebt.max(BigDecimal.ZERO));
+            BigDecimal refund = returnOrder.getTotalRefund();
+
+            BigDecimal newCustomerDebt = customer.getDebtBalance().subtract(refund).max(BigDecimal.ZERO);
+            customer.setDebtBalance(newCustomerDebt);
             customerRepository.save(customer);
+
+            if (originalOrder.getDebtAmount().compareTo(BigDecimal.ZERO) > 0) {
+                BigDecimal applied = refund.min(originalOrder.getDebtAmount());
+                originalOrder.setDebtAmount(originalOrder.getDebtAmount().subtract(applied));
+                originalOrder.setLastModifiedAt(Instant.now());
+                originalOrder.setUpdatedAt(Instant.now());
+                orderRepository.save(originalOrder);
+            }
         }
 
         returnOrder.setStatus("COMPLETED");
@@ -171,7 +184,8 @@ public class ReturnOrderService {
                         .quantity(BigDecimal.ZERO).publicId(UUID.randomUUID())
                         .lastModifiedByUser(userRef).build());
 
-        inv.setQuantity(inv.getQuantity().add(quantity));
+        BigDecimal previousQuantity = inv.getQuantity();
+        inv.setQuantity(previousQuantity.add(quantity));
         inv.setLastModifiedAt(Instant.now());
         inv.setUpdatedAt(Instant.now());
         inv.setLastModifiedByUser(userRef);
@@ -179,7 +193,7 @@ public class ReturnOrderService {
 
         inventoryTransactionRepository.save(InventoryTransaction.builder()
                 .store(store).product(product).warehouse(warehouse)
-                .type("IN").quantity(quantity)
+                .type("IN").quantity(quantity).previousQuantity(previousQuantity)
                 .note("Return: " + returnCode).createdBy(userRef)
                 .build());
     }

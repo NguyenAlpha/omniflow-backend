@@ -7,7 +7,7 @@ import java.util.UUID;
 public record SupplierResponse(
     Long id,
     UUID publicId,
-    Long storeId,
+    Long businessId,
     String code,
     String name,
     String phone,

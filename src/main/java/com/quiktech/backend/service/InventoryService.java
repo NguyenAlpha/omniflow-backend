@@ -1,13 +1,13 @@
 package com.quiktech.backend.service;
 
 import com.quiktech.backend.dto.request.inventory.InventoryAdjustRequest;
+import com.quiktech.backend.dto.request.inventory.InventoryTransferRequest;
 import com.quiktech.backend.dto.response.common.ErrorCode;
 import com.quiktech.backend.dto.response.inventory.InventoryResponse;
 import com.quiktech.backend.dto.response.inventory.InventoryTransactionResponse;
 import com.quiktech.backend.entity.*;
-import com.quiktech.backend.entity.*;
 import com.quiktech.backend.exception.ResourceNotFoundException;
-import com.quiktech.backend.repository.*;
+import com.quiktech.backend.annotation.Auditable;
 import com.quiktech.backend.repository.*;
 import com.quiktech.backend.security.UserPrincipal;
 import lombok.RequiredArgsConstructor;
@@ -53,6 +53,7 @@ public class InventoryService {
                 .stream().map(this::toTxResponse).toList();
     }
 
+    @Auditable(action = "ADJUST_INVENTORY", entityType = "INVENTORY")
     @Transactional
     public InventoryTransactionResponse adjust(Long storeId, InventoryAdjustRequest request, UserPrincipal currentUser) {
         Store store = findStoreOrThrow(storeId);
@@ -76,11 +77,13 @@ public class InventoryService {
                         .lastModifiedByUser(userRef)
                         .build());
 
-        inv.setQuantity(inv.getQuantity().add(request.quantity()));
+        BigDecimal previousQuantity = inv.getQuantity();
+        inv.setQuantity(previousQuantity.add(request.quantity()));
         inv.setLastModifiedAt(Instant.now());
         inv.setUpdatedAt(Instant.now());
         inv.setLastModifiedByUser(userRef);
         inventoryRepository.save(inv);
+        productRepository.recalculateTotalStock(product.getId());
 
         InventoryTransaction tx = InventoryTransaction.builder()
                 .store(store)
@@ -88,12 +91,84 @@ public class InventoryService {
                 .warehouse(warehouse)
                 .type("ADJUSTMENT")
                 .quantity(request.quantity())
+                .previousQuantity(previousQuantity)
                 .note(request.note())
                 .createdBy(userRef)
                 .build();
         inventoryTransactionRepository.save(tx);
 
         return toTxResponse(tx);
+    }
+
+    @Auditable(action = "TRANSFER_INVENTORY", entityType = "INVENTORY")
+    @Transactional
+    public List<InventoryTransactionResponse> transfer(Long storeId, InventoryTransferRequest request, UserPrincipal currentUser) {
+        Store store = findStoreOrThrow(storeId);
+
+        if (request.fromWarehousePublicId().equals(request.toWarehousePublicId())) {
+            throw new IllegalArgumentException("Source and destination warehouse must be different");
+        }
+
+        Product product = productRepository.findByPublicId(request.productPublicId())
+                .orElseThrow(() -> new ResourceNotFoundException(ErrorCode.PRODUCT_NOT_FOUND, "Product not found"));
+
+        Warehouse fromWarehouse = warehouseRepository.findByPublicId(request.fromWarehousePublicId())
+                .orElseThrow(() -> new ResourceNotFoundException(ErrorCode.WAREHOUSE_NOT_FOUND, "Source warehouse not found"));
+
+        Warehouse toWarehouse = warehouseRepository.findByPublicId(request.toWarehousePublicId())
+                .orElseThrow(() -> new ResourceNotFoundException(ErrorCode.WAREHOUSE_NOT_FOUND, "Destination warehouse not found"));
+
+        User userRef = userRepository.getReferenceById(currentUser.userId());
+
+        Inventory fromInv = inventoryRepository.findByProductIdAndWarehouseId(product.getId(), fromWarehouse.getId())
+                .orElseThrow(() -> new ResourceNotFoundException(ErrorCode.INVENTORY_NOT_FOUND, "No inventory found in source warehouse"));
+
+        if (fromInv.getQuantity().compareTo(request.quantity()) < 0) {
+            throw new IllegalStateException("Insufficient stock in source warehouse");
+        }
+
+        BigDecimal fromPrev = fromInv.getQuantity();
+        fromInv.setQuantity(fromPrev.subtract(request.quantity()));
+        fromInv.setLastModifiedAt(Instant.now());
+        fromInv.setUpdatedAt(Instant.now());
+        fromInv.setLastModifiedByUser(userRef);
+        inventoryRepository.save(fromInv);
+
+        Inventory toInv = inventoryRepository
+                .findByProductIdAndWarehouseId(product.getId(), toWarehouse.getId())
+                .orElseGet(() -> Inventory.builder()
+                        .product(product)
+                        .warehouse(toWarehouse)
+                        .store(store)
+                        .quantity(BigDecimal.ZERO)
+                        .publicId(UUID.randomUUID())
+                        .lastModifiedByUser(userRef)
+                        .build());
+
+        BigDecimal toPrev = toInv.getQuantity();
+        toInv.setQuantity(toPrev.add(request.quantity()));
+        toInv.setLastModifiedAt(Instant.now());
+        toInv.setUpdatedAt(Instant.now());
+        toInv.setLastModifiedByUser(userRef);
+        inventoryRepository.save(toInv);
+
+        productRepository.recalculateTotalStock(product.getId());
+
+        String note = request.note();
+        InventoryTransaction outTx = InventoryTransaction.builder()
+                .store(store).product(product).warehouse(fromWarehouse)
+                .type("TRANSFER").quantity(request.quantity().negate()).previousQuantity(fromPrev)
+                .note(note).createdBy(userRef).build();
+
+        InventoryTransaction inTx = InventoryTransaction.builder()
+                .store(store).product(product).warehouse(toWarehouse)
+                .type("TRANSFER").quantity(request.quantity()).previousQuantity(toPrev)
+                .note(note).createdBy(userRef).build();
+
+        inventoryTransactionRepository.save(outTx);
+        inventoryTransactionRepository.save(inTx);
+
+        return List.of(toTxResponse(outTx), toTxResponse(inTx));
     }
 
     private Store findStoreOrThrow(Long storeId) {
@@ -116,7 +191,7 @@ public class InventoryService {
                 tx.getId(), tx.getStore().getId(),
                 tx.getProduct().getPublicId(), tx.getProduct().getName(),
                 tx.getWarehouse().getPublicId(), tx.getWarehouse().getName(),
-                tx.getType(), tx.getQuantity(),
+                tx.getType(), tx.getQuantity(), tx.getPreviousQuantity(),
                 tx.getOrder() != null ? tx.getOrder().getPublicId() : null,
                 tx.getPurchaseOrder() != null ? tx.getPurchaseOrder().getPublicId() : null,
                 tx.getNote(), tx.getCreatedBy().getUsername(),

@@ -351,6 +351,7 @@ CREATE TABLE orders (
     total_amount NUMERIC(15,2) NOT NULL,
     paid_amount NUMERIC(15,2) NOT NULL DEFAULT 0,
     debt_amount NUMERIC(15,2) NOT NULL DEFAULT 0,
+    payment_method VARCHAR(20) NOT NULL DEFAULT 'CASH',
     note TEXT,
     public_id UUID NOT NULL UNIQUE,
     sync_version BIGINT NOT NULL DEFAULT 0,
@@ -444,6 +445,7 @@ CREATE TABLE purchase_orders (
     total_amount NUMERIC(15,2) NOT NULL,
     paid_amount NUMERIC(15,2) NOT NULL DEFAULT 0,
     debt_amount NUMERIC(15,2) NOT NULL DEFAULT 0,
+    payment_method VARCHAR(20) NOT NULL DEFAULT 'CASH',
     note TEXT,
     public_id UUID NOT NULL UNIQUE,
     sync_version BIGINT NOT NULL DEFAULT 0,
@@ -669,7 +671,7 @@ ALTER TABLE purchase_order_items ADD CONSTRAINT chk_poi_quantity CHECK (quantity
 
 ALTER TABLE payments ADD CONSTRAINT chk_payments_amount CHECK (amount > 0);
 ALTER TABLE payments ADD CONSTRAINT chk_payments_method CHECK (payment_method IN ('CASH', 'BANK_TRANSFER'));
-ALTER TABLE payments ADD CONSTRAINT chk_payments_reference CHECK ((customer_id IS NOT NULL) != (supplier_id IS NOT NULL));
+ALTER TABLE payments ADD CONSTRAINT chk_payments_reference CHECK (customer_id IS NULL OR supplier_id IS NULL);
 
 ALTER TABLE inventory ADD CONSTRAINT chk_inventory_qty CHECK (quantity >= 0);
 

@@ -3,23 +3,30 @@ package com.quiktech.backend.service;
 import com.quiktech.backend.dto.request.order.OrderCreateRequest;
 import com.quiktech.backend.dto.request.order.OrderItemRequest;
 import com.quiktech.backend.dto.response.common.ErrorCode;
+import com.quiktech.backend.dto.response.common.PagedResult;
 import com.quiktech.backend.dto.response.order.OrderItemResponse;
 import com.quiktech.backend.dto.response.order.OrderResponse;
 import com.quiktech.backend.entity.*;
-import com.quiktech.backend.entity.*;
+import com.quiktech.backend.entity.enums.DiscountType;
+import com.quiktech.backend.entity.enums.OrderStatus;
 import com.quiktech.backend.exception.ResourceNotFoundException;
-import com.quiktech.backend.repository.*;
+import com.quiktech.backend.annotation.Auditable;
 import com.quiktech.backend.repository.*;
 import com.quiktech.backend.security.UserPrincipal;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import org.springframework.data.domain.Pageable;
+
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.Instant;
+import java.time.LocalDate;
+import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 
 @Service
@@ -33,13 +40,21 @@ public class OrderService {
     private final ProductRepository productRepository;
     private final InventoryRepository inventoryRepository;
     private final InventoryTransactionRepository inventoryTransactionRepository;
+    private final PaymentRepository paymentRepository;
     private final UserRepository userRepository;
+    private final SubscriptionLimitService subscriptionLimitService;
 
     @Transactional(readOnly = true)
-    public List<OrderResponse> list(Long storeId, UserPrincipal currentUser) {
+    public PagedResult<OrderResponse> list(Long storeId, String orderCode, String status, LocalDate from, LocalDate to, UUID customerPublicId, Pageable pageable, UserPrincipal currentUser) {
         findStoreOrThrow(storeId);
-        return orderRepository.findByStoreIdOrderByCreatedAtDesc(storeId)
-                .stream().map(o -> toResponse(o, List.of())).toList();
+        String codeFilter = (orderCode != null && !orderCode.isBlank()) ? "%" + orderCode.toLowerCase() + "%" : null;
+        String statusFilter = (status != null && !status.isBlank()) ? status : null;
+        Instant fromInstant = from != null ? from.atStartOfDay(ZoneOffset.UTC).toInstant() : Instant.EPOCH;
+        Instant toInstant = to != null ? to.plusDays(1).atStartOfDay(ZoneOffset.UTC).toInstant() : Instant.parse("9999-12-31T00:00:00Z");
+        return PagedResult.of(
+                orderRepository.search(storeId, statusFilter, codeFilter, customerPublicId, fromInstant, toInstant, pageable)
+                        .map(o -> toResponse(o, List.of()))
+        );
     }
 
     @Transactional(readOnly = true)
@@ -50,35 +65,245 @@ public class OrderService {
         return toResponse(order, order.getOrderItems());
     }
 
+    @Auditable(action = "CREATE_ORDER", entityType = "ORDER")
     @Transactional
     public OrderResponse create(Long storeId, OrderCreateRequest request, UserPrincipal currentUser) {
+        subscriptionLimitService.checkOrderLimit(storeId);
         Store store = findStoreOrThrow(storeId);
+        Customer customer = resolveCustomer(request.customerPublicId());
+        Warehouse warehouse = resolveWarehouse(request.warehousePublicId());
+        User userRef = userRepository.getReferenceById(currentUser.userId());
 
-        if (orderRepository.findByStoreIdAndOrderCode(storeId, request.orderCode()).isPresent()) {
-            throw new IllegalArgumentException("Order code already exists in this store");
+        // Build order shell with all references
+        Order order = buildOrderShell(store, customer, warehouse, request, userRef);
+        order = orderRepository.save(order); // persist before @Modifying flush in buildOrderItemsAndDeductInventory
+
+        // Build items, compute subtotal, and deduct inventory
+        List<OrderItem> items = buildOrderItemsAndDeductInventory(
+                order, store, request.items(), warehouse, userRef
+        );
+
+        // Calculate totals
+        BigDecimal subtotal = items.stream()
+                .map(OrderItem::getTotalPrice)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        
+        BigDecimal discountAmt = computeDiscount(subtotal, request.discount(), request.discountType());
+        BigDecimal totalAmount = subtotal.subtract(discountAmt).add(request.tax());
+
+        BigDecimal paidAmt = request.paidAmount() != null ? request.paidAmount() : BigDecimal.ZERO;
+        if (paidAmt.compareTo(totalAmount) > 0) {
+            throw new IllegalArgumentException("Paid amount cannot exceed total amount");
+        }
+        if (customer == null && totalAmount.subtract(paidAmt).compareTo(BigDecimal.ZERO) > 0) {
+            throw new IllegalArgumentException("Walk-in customer orders must be fully paid");
         }
 
-        Customer customer = null;
-        if (request.customerPublicId() != null) {
-            customer = customerRepository.findByPublicId(request.customerPublicId())
-                    .orElseThrow(() -> new ResourceNotFoundException(ErrorCode.CUSTOMER_NOT_FOUND, "Customer not found"));
+        String paymentMethod = (request.paymentMethod() != null && !request.paymentMethod().isBlank())
+                ? request.paymentMethod() : "CASH";
+
+        order.setSubtotal(subtotal);
+        order.setTotalAmount(totalAmount);
+        order.setPaidAmount(paidAmt);
+        order.setDebtAmount(totalAmount.subtract(paidAmt));
+        order.setPaymentMethod(paymentMethod);
+        order.setOrderItems(items);
+
+        return toResponse(orderRepository.save(order), items);
+    }
+
+    @Auditable(action = "COMPLETE_ORDER", entityType = "ORDER")
+    @Transactional
+    public OrderResponse complete(Long storeId, UUID publicId, UserPrincipal currentUser) {
+        Store store = findStoreOrThrow(storeId);
+        Order order = orderRepository.findByPublicIdWithCustomer(publicId)
+                .orElseThrow(() -> new ResourceNotFoundException(ErrorCode.ORDER_NOT_FOUND, "Order not found"));
+
+        validateOrderCanTransition(order);
+
+        // Add debt to customer balance only when completing order
+        if (order.getCustomer() != null && order.getDebtAmount().compareTo(BigDecimal.ZERO) > 0) {
+            Customer customer = order.getCustomer();
+            customer.setDebtBalance(customer.getDebtBalance().add(order.getDebtAmount()));
+            customerRepository.save(customer);
         }
 
-        Warehouse warehouse = warehouseRepository.findByPublicId(request.warehousePublicId())
-                .orElseThrow(() -> new ResourceNotFoundException(ErrorCode.WAREHOUSE_NOT_FOUND, "Warehouse not found"));
+        User userRef = userRepository.getReferenceById(currentUser.userId());
+        order.setStatus(OrderStatus.COMPLETED);
+        order.setLastModifiedByUser(userRef);
+        order.setLastModifiedAt(Instant.now());
+        order.setUpdatedAt(Instant.now());
+
+        Order saved = orderRepository.save(order);
+
+        if (saved.getPaidAmount().compareTo(BigDecimal.ZERO) > 0) {
+            paymentRepository.save(Payment.builder()
+                    .store(saved.getStore())
+                    .customer(saved.getCustomer())
+                    .amount(saved.getPaidAmount())
+                    .paymentMethod(saved.getPaymentMethod())
+                    .note("Order: " + saved.getOrderCode())
+                    .publicId(UUID.randomUUID())
+                    .lastModifiedByUser(userRef)
+                    .createdBy(userRef)
+                    .build());
+        }
+
+        return toResponse(saved, List.of());
+    }
+
+    @Auditable(action = "PAY_ORDER", entityType = "ORDER")
+    @Transactional
+    public OrderResponse pay(Long storeId, UUID publicId, BigDecimal amount, UserPrincipal currentUser) {
+        findStoreOrThrow(storeId);
+        Order order = orderRepository.findByPublicIdWithCustomer(publicId)
+                .orElseThrow(() -> new ResourceNotFoundException(ErrorCode.ORDER_NOT_FOUND, "Order not found"));
+
+        if (OrderStatus.CANCELLED.equals(order.getStatus())) {
+            throw new IllegalArgumentException("Cannot pay a cancelled order");
+        }
+        if (amount.compareTo(order.getDebtAmount()) > 0) {
+            throw new IllegalArgumentException("Payment amount exceeds remaining debt");
+        }
+
+        order.setPaidAmount(order.getPaidAmount().add(amount));
+        order.setDebtAmount(order.getDebtAmount().subtract(amount));
+
+        if (OrderStatus.COMPLETED.equals(order.getStatus()) && order.getCustomer() != null) {
+            Customer customer = order.getCustomer();
+            customer.setDebtBalance(customer.getDebtBalance().subtract(amount));
+            customerRepository.save(customer);
+        }
+
+        User userRef = userRepository.getReferenceById(currentUser.userId());
+        order.setLastModifiedByUser(userRef);
+        order.setLastModifiedAt(Instant.now());
+        order.setUpdatedAt(Instant.now());
+
+        Order saved = orderRepository.save(order);
+
+        // Only record payment when order is already COMPLETED (post-completion debt payment)
+        if (OrderStatus.COMPLETED.equals(saved.getStatus())) {
+            paymentRepository.save(Payment.builder()
+                    .store(saved.getStore())
+                    .customer(saved.getCustomer())
+                    .amount(amount)
+                    .paymentMethod(saved.getPaymentMethod())
+                    .note("Order: " + saved.getOrderCode())
+                    .publicId(UUID.randomUUID())
+                    .lastModifiedByUser(userRef)
+                    .createdBy(userRef)
+                    .build());
+        }
+
+        return toResponse(saved, List.of());
+    }
+
+    @Auditable(action = "CANCEL_ORDER", entityType = "ORDER")
+    @Transactional
+    public OrderResponse cancel(Long storeId, UUID publicId, UserPrincipal currentUser) {
+        Store store = findStoreOrThrow(storeId);
+        Order order = orderRepository.findByPublicIdWithItems(publicId)
+                .orElseThrow(() -> new ResourceNotFoundException(ErrorCode.ORDER_NOT_FOUND, "Order not found"));
+
+        validateOrderCanTransition(order);
 
         User userRef = userRepository.getReferenceById(currentUser.userId());
 
-        // Build order shell first so items can reference it
-        Order order = Order.builder()
+        // Restore inventory for each item
+        Set<Long> affectedProductIds = new java.util.HashSet<>();
+        for (OrderItem item : order.getOrderItems()) {
+            restoreInventory(order.getStore(), item.getProduct(), order.getWarehouse(),
+                    item.getQuantity(), order, userRef);
+            affectedProductIds.add(item.getProduct().getId());
+        }
+        affectedProductIds.forEach(productRepository::recalculateTotalStock);
+
+        order.setStatus(OrderStatus.CANCELLED);
+        order.setLastModifiedByUser(userRef);
+        order.setLastModifiedAt(Instant.now());
+        order.setUpdatedAt(Instant.now());
+
+        return toResponse(orderRepository.save(order), order.getOrderItems());
+    }
+
+    private void deductInventory(Store store, Product product, Warehouse warehouse, BigDecimal quantity, Order order, User userRef) {
+        Inventory inv = inventoryRepository.findByProductIdAndWarehouseId(product.getId(), warehouse.getId())
+                .orElseThrow(() -> new ResourceNotFoundException(ErrorCode.INVENTORY_NOT_FOUND,
+                        "No stock for '" + product.getName() + "' in selected warehouse"));
+
+        if (inv.getQuantity().compareTo(quantity) < 0) {
+            throw new IllegalArgumentException("Insufficient stock for product: " + product.getName());
+        }
+
+        BigDecimal previousQuantity = inv.getQuantity();
+        inv.setQuantity(previousQuantity.subtract(quantity));
+        inv.setLastModifiedAt(Instant.now());
+        inv.setUpdatedAt(Instant.now());
+        inv.setLastModifiedByUser(userRef);
+        inventoryRepository.save(inv);
+
+        inventoryTransactionRepository.save(InventoryTransaction.builder()
                 .store(store)
-                .orderCode(request.orderCode())
+                .product(product)
+                .warehouse(warehouse)
+                .type("OUT")
+                .quantity(quantity)
+                .previousQuantity(previousQuantity)
+                .order(order)
+                .note("Order: " + order.getOrderCode())
+                .createdBy(userRef)
+                .build());
+    }
+
+    private void restoreInventory(Store store, Product product, Warehouse warehouse,
+            BigDecimal quantity, Order order, User userRef) {
+        Inventory inv = inventoryRepository.findByProductIdAndWarehouseId(product.getId(), warehouse.getId())
+                .orElseGet(() -> Inventory.builder()
+                        .product(product).warehouse(warehouse).store(store)
+                        .quantity(BigDecimal.ZERO).publicId(UUID.randomUUID())
+                        .lastModifiedByUser(userRef).build());
+
+        BigDecimal previousQuantity = inv.getQuantity();
+        inv.setQuantity(previousQuantity.add(quantity));
+        inv.setLastModifiedAt(Instant.now());
+        inv.setUpdatedAt(Instant.now());
+        inv.setLastModifiedByUser(userRef);
+        inventoryRepository.save(inv);
+
+        inventoryTransactionRepository.save(InventoryTransaction.builder()
+                .store(store).product(product).warehouse(warehouse)
+                .type("IN").quantity(quantity).previousQuantity(previousQuantity).order(order)
+                .note("Cancel order: " + order.getOrderCode()).createdBy(userRef)
+                .build());
+    }
+
+    // ==== Helper Methods for create() ====
+
+    private Customer resolveCustomer(UUID customerPublicId) {
+        if (customerPublicId == null) {
+            return null;  // Walk-in customer
+        }
+        return customerRepository.findByPublicId(customerPublicId)
+                .orElseThrow(() -> new ResourceNotFoundException(ErrorCode.CUSTOMER_NOT_FOUND, "Customer not found"));
+    }
+
+    private Warehouse resolveWarehouse(UUID warehousePublicId) {
+        return warehouseRepository.findByPublicId(warehousePublicId)
+                .orElseThrow(() -> new ResourceNotFoundException(ErrorCode.WAREHOUSE_NOT_FOUND, "Warehouse not found"));
+    }
+
+    private Order buildOrderShell(Store store, Customer customer, Warehouse warehouse,
+            OrderCreateRequest request, User userRef) {
+        return Order.builder()
+                .store(store)
+                .orderCode("ORD-" + UUID.randomUUID().toString().replace("-", "").substring(0, 6).toUpperCase())
                 .customer(customer)
                 .warehouse(warehouse)
-                .status("PENDING")
+                .status(OrderStatus.PENDING)
                 .subtotal(BigDecimal.ZERO)
                 .discount(request.discount())
-                .discountType(request.discountType())
+                .discountType(DiscountType.valueOf(request.discountType()))
                 .tax(request.tax())
                 .totalAmount(BigDecimal.ZERO)
                 .paidAmount(BigDecimal.ZERO)
@@ -88,12 +313,14 @@ public class OrderService {
                 .lastModifiedByUser(userRef)
                 .createdBy(userRef)
                 .build();
+    }
 
-        // Build items and compute totals
+    private List<OrderItem> buildOrderItemsAndDeductInventory(Order order, Store store, List<OrderItemRequest> itemRequests,
+            Warehouse warehouse, User userRef) {
         List<OrderItem> items = new ArrayList<>();
-        BigDecimal subtotal = BigDecimal.ZERO;
+        Set<Long> affectedProductIds = new java.util.HashSet<>();
 
-        for (OrderItemRequest itemReq : request.items()) {
+        for (OrderItemRequest itemReq : itemRequests) {
             Product product = productRepository.findByPublicId(itemReq.productPublicId())
                     .orElseThrow(() -> new ResourceNotFoundException(ErrorCode.PRODUCT_NOT_FOUND, "Product not found"));
 
@@ -107,131 +334,30 @@ public class OrderService {
                     .quantity(itemReq.quantity())
                     .unitPrice(itemReq.unitPrice())
                     .discount(itemReq.discount())
-                    .discountType(itemReq.discountType())
+                    .discountType(DiscountType.valueOf(itemReq.discountType()))
                     .totalPrice(lineTotal)
                     .publicId(UUID.randomUUID())
                     .lastModifiedByUser(userRef)
                     .build();
 
             items.add(item);
-            subtotal = subtotal.add(lineTotal);
 
             // Deduct inventory immediately when order is placed
             deductInventory(store, product, warehouse, itemReq.quantity(), order, userRef);
+            affectedProductIds.add(product.getId());
         }
+        affectedProductIds.forEach(productRepository::recalculateTotalStock);
 
-        BigDecimal discountAmt = computeDiscount(subtotal, request.discount(), request.discountType());
-        BigDecimal totalAmount = subtotal.subtract(discountAmt).add(request.tax());
-
-        order.setSubtotal(subtotal);
-        order.setTotalAmount(totalAmount);
-        order.setDebtAmount(totalAmount);
-        order.setOrderItems(items);
-
-        Order saved = orderRepository.save(order);
-        return toResponse(saved, items);
+        return items;
     }
 
-    @Transactional
-    public OrderResponse complete(Long storeId, UUID publicId, UserPrincipal currentUser) {
-        findStoreOrThrow(storeId);
-        Order order = orderRepository.findByPublicId(publicId)
-                .orElseThrow(() -> new ResourceNotFoundException(ErrorCode.ORDER_NOT_FOUND, "Order not found"));
-
-        if ("COMPLETED".equals(order.getStatus())) {
+    private void validateOrderCanTransition(Order order) {
+        if (OrderStatus.COMPLETED.equals(order.getStatus())) {
             throw new IllegalArgumentException("Order is already completed");
         }
-        if ("CANCELLED".equals(order.getStatus())) {
+        if (OrderStatus.CANCELLED.equals(order.getStatus())) {
             throw new IllegalArgumentException("Order is already cancelled");
         }
-
-        // Add debt to customer balance
-        if (order.getCustomer() != null && order.getDebtAmount().compareTo(BigDecimal.ZERO) > 0) {
-            Customer customer = order.getCustomer();
-            customer.setDebtBalance(customer.getDebtBalance().add(order.getDebtAmount()));
-            customerRepository.save(customer);
-        }
-
-        User userRef = userRepository.getReferenceById(currentUser.userId());
-        order.setStatus("COMPLETED");
-        order.setLastModifiedByUser(userRef);
-        order.setLastModifiedAt(Instant.now());
-        order.setUpdatedAt(Instant.now());
-
-        return toResponse(orderRepository.save(order), List.of());
-    }
-
-    @Transactional
-    public OrderResponse cancel(Long storeId, UUID publicId, UserPrincipal currentUser) {
-        findStoreOrThrow(storeId);
-        Order order = orderRepository.findByPublicIdWithItems(publicId)
-                .orElseThrow(() -> new ResourceNotFoundException(ErrorCode.ORDER_NOT_FOUND, "Order not found"));
-
-        if ("COMPLETED".equals(order.getStatus())) {
-            throw new IllegalArgumentException("Order is already completed");
-        }
-        if ("CANCELLED".equals(order.getStatus())) {
-            throw new IllegalArgumentException("Order is already cancelled");
-        }
-
-        User userRef = userRepository.getReferenceById(currentUser.userId());
-
-        // Restore inventory for each item
-        for (OrderItem item : order.getOrderItems()) {
-            restoreInventory(order.getStore(), item.getProduct(), order.getWarehouse(),
-                    item.getQuantity(), order, userRef);
-        }
-
-        order.setStatus("CANCELLED");
-        order.setLastModifiedByUser(userRef);
-        order.setLastModifiedAt(Instant.now());
-        order.setUpdatedAt(Instant.now());
-
-        return toResponse(orderRepository.save(order), order.getOrderItems());
-    }
-
-    private void deductInventory(Store store, Product product, Warehouse warehouse,
-            BigDecimal quantity, Order order, User userRef) {
-        Inventory inv = inventoryRepository.findByProductIdAndWarehouseId(product.getId(), warehouse.getId())
-                .orElseThrow(() -> new ResourceNotFoundException(ErrorCode.INVENTORY_NOT_FOUND,
-                        "No stock for '" + product.getName() + "' in selected warehouse"));
-
-        if (inv.getQuantity().compareTo(quantity) < 0) {
-            throw new IllegalArgumentException("Insufficient stock for product: " + product.getName());
-        }
-
-        inv.setQuantity(inv.getQuantity().subtract(quantity));
-        inv.setLastModifiedAt(Instant.now());
-        inv.setUpdatedAt(Instant.now());
-        inv.setLastModifiedByUser(userRef);
-        inventoryRepository.save(inv);
-
-        inventoryTransactionRepository.save(InventoryTransaction.builder()
-                .store(store).product(product).warehouse(warehouse)
-                .type("OUT").quantity(quantity).order(order)
-                .note("Order: " + order.getOrderCode()).createdBy(userRef)
-                .build());
-    }
-
-    private void restoreInventory(Store store, Product product, Warehouse warehouse,
-            BigDecimal quantity, Order order, User userRef) {
-        Inventory inv = inventoryRepository.findByProductIdAndWarehouseId(product.getId(), warehouse.getId())
-                .orElseGet(() -> Inventory.builder()
-                        .product(product).warehouse(warehouse).store(store)
-                        .quantity(BigDecimal.ZERO).publicId(UUID.randomUUID())
-                        .lastModifiedByUser(userRef).build());
-
-        inv.setQuantity(inv.getQuantity().add(quantity));
-        inv.setLastModifiedAt(Instant.now());
-        inv.setUpdatedAt(Instant.now());
-        inv.setLastModifiedByUser(userRef);
-        inventoryRepository.save(inv);
-
-        inventoryTransactionRepository.save(InventoryTransaction.builder()
-                .store(store).product(product).warehouse(warehouse)
-                .type("IN").quantity(quantity).order(order)
-                .note("Cancel order: " + order.getOrderCode()).createdBy(userRef)
-                .build());
     }
 
     private BigDecimal computeLineTotal(BigDecimal unitPrice, BigDecimal quantity,
@@ -261,7 +387,7 @@ public class OrderService {
                 o.getOrderCode(),
                 o.getCustomer() != null ? o.getCustomer().getPublicId() : null,
                 o.getWarehouse().getPublicId(),
-                o.getStatus(), o.getSubtotal(), o.getDiscount(), o.getDiscountType(),
+                o.getStatus().toString(), o.getSubtotal(), o.getDiscount(), o.getDiscountType().name(),
                 o.getTax(), o.getTotalAmount(), o.getPaidAmount(), o.getDebtAmount(),
                 o.getNote(), o.getSyncVersion(), o.getLastModifiedAt(),
                 o.getCreatedAt(), o.getUpdatedAt(),
@@ -274,7 +400,7 @@ public class OrderService {
                 i.getId(), i.getPublicId(),
                 i.getProduct().getPublicId(), i.getProduct().getName(),
                 i.getQuantity(), i.getUnitPrice(),
-                i.getDiscount(), i.getDiscountType(), i.getTotalPrice(),
+                i.getDiscount(), i.getDiscountType().name(), i.getTotalPrice(),
                 i.getSyncVersion()
         );
     }

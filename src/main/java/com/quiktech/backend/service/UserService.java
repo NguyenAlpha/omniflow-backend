@@ -4,9 +4,11 @@ import com.quiktech.backend.dto.request.user.ChangePasswordRequest;
 import com.quiktech.backend.dto.request.user.SetUserStatusRequest;
 import com.quiktech.backend.dto.request.user.UpdateProfileRequest;
 import com.quiktech.backend.dto.response.auth.UserSummaryResponse;
+import com.quiktech.backend.dto.response.common.ErrorCode;
 import com.quiktech.backend.dto.response.common.PagedResult;
 import com.quiktech.backend.dto.response.user.UserAdminResponse;
 import com.quiktech.backend.entity.User;
+import com.quiktech.backend.exception.ResourceNotFoundException;
 import com.quiktech.backend.repository.UserRepository;
 import com.quiktech.backend.security.UserPrincipal;
 import lombok.RequiredArgsConstructor;
@@ -109,7 +111,7 @@ public class UserService {
 
     private User findOrThrow(Long userId) {
         return userRepository.findById(userId)
-                .orElseThrow(() -> new IllegalStateException("User not found: " + userId));
+                .orElseThrow(() -> new ResourceNotFoundException(ErrorCode.USER_NOT_FOUND, "User not found: " + userId));
     }
 
     private UserSummaryResponse toResponse(User user) {

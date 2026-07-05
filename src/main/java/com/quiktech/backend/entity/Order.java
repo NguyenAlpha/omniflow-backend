@@ -2,6 +2,8 @@ package com.quiktech.backend.entity;
 
 import lombok.*;
 import jakarta.persistence.*;
+import com.quiktech.backend.entity.enums.DiscountType;
+import com.quiktech.backend.entity.enums.OrderStatus;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.List;
@@ -39,8 +41,9 @@ public class Order {
     @JoinColumn(name = "warehouse_id", nullable = false)
     private Warehouse warehouse;
 
+    @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
-    private String status; // PENDING, COMPLETED, CANCELLED
+    private OrderStatus status;
 
     @Column(nullable = false, precision = 15, scale = 2)
     private BigDecimal subtotal;
@@ -49,9 +52,10 @@ public class Order {
     @Column(nullable = false, precision = 15, scale = 2)
     private BigDecimal discount = BigDecimal.ZERO;
 
+    @Enumerated(EnumType.STRING)
     @Builder.Default
     @Column(nullable = false, length = 10)
-    private String discountType = "FIXED"; // FIXED, PERCENT
+    private DiscountType discountType = DiscountType.FIXED;
 
     @Builder.Default
     @Column(nullable = false, precision = 15, scale = 2)
@@ -68,6 +72,10 @@ public class Order {
     @Column(nullable = false, precision = 15, scale = 2)
     private BigDecimal debtAmount = BigDecimal.ZERO;
 
+    @Builder.Default
+    @Column(nullable = false, length = 20)
+    private String paymentMethod = "CASH";
+
     @Column(columnDefinition = "TEXT")
     private String note;
 
@@ -75,6 +83,7 @@ public class Order {
     @Column(nullable = false, unique = true, columnDefinition = "UUID")
     private UUID publicId;
 
+    @Version
     @Builder.Default
     @Column(nullable = false)
     private Long syncVersion = 0L;

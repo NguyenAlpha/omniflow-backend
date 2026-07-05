@@ -3,11 +3,14 @@ package com.quiktech.backend.service;
 import com.quiktech.backend.dto.request.auth.LoginRequest;
 import com.quiktech.backend.dto.request.auth.RegisterRequest;
 import com.quiktech.backend.dto.response.auth.AuthResponse;
+import com.quiktech.backend.dto.response.auth.BusinessMembershipResponse;
+import com.quiktech.backend.dto.response.auth.StoreInfo;
 import com.quiktech.backend.dto.response.auth.UserSummaryResponse;
-import com.quiktech.backend.dto.response.store.StoreMemberResponse;
 import com.quiktech.backend.entity.StoreMember;
 import com.quiktech.backend.entity.User;
+import com.quiktech.backend.entity.UserRole;
 import com.quiktech.backend.repository.StoreMemberRepository;
+import com.quiktech.backend.repository.StoreRepository;
 import com.quiktech.backend.repository.UserRepository;
 import com.quiktech.backend.repository.UserRoleRepository;
 import com.quiktech.backend.security.JwtService;
@@ -21,6 +24,8 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -32,10 +37,12 @@ public class AuthService {
 
     private final UserRepository userRepository;
     private final StoreMemberRepository storeMemberRepository;
+    private final StoreRepository storeRepository;
     private final UserRoleRepository userRoleRepository;
     private final PasswordEncoder passwordEncoder;
     private final JwtService jwtService;
     private final AuthenticationManager authenticationManager;
+    private final RefreshTokenService refreshTokenService;
 
     @Value("${jwt.expiration}")
     private long jwtExpiration;
@@ -61,6 +68,7 @@ public class AuthService {
         return response;
     }
 
+    @Transactional
     public AuthResponse login(LoginRequest request) {
         authenticationManager.authenticate(
                 new UsernamePasswordAuthenticationToken(request.usernameOrEmail(), request.password())
@@ -73,48 +81,84 @@ public class AuthService {
         return buildAuthResponse(user);
     }
 
-    /**
-     * Tạo AuthResponse đầy đủ: JWT (chứa userId + global roles) + user summary + store memberships.
-     * JWT nhúng global roles để UserPrincipalConverter extract trực tiếp, không cần DB call.
-     */
+    @Transactional
+    public AuthResponse refresh(String refreshToken) {
+        RefreshTokenService.RotateResult result = refreshTokenService.rotate(refreshToken);
+        User user = userRepository.findById(result.userId()).orElseThrow();
+        return buildBundle(user, result.newToken());
+    }
+
+    @Transactional
+    public void logout(Long userId) {
+        refreshTokenService.revokeAll(userId);
+        log.info("User logged out: userId={}", userId);
+    }
+
+    // ── Private helpers ───────────────────────────────────────────────────────
+
     private AuthResponse buildAuthResponse(User user) {
-        // StoreMember kèm Store — tránh lazy load
-        Map<Long, StoreMember> membershipByStoreId = storeMemberRepository
-                .findByUserIdAndDeletedAtIsNullWithStore(user.getId())
-                .stream()
-                .collect(Collectors.toMap(m -> m.getStore().getId(), m -> m));
+        String rtValue = refreshTokenService.create(user.getId());
+        return buildBundle(user, rtValue);
+    }
 
-        // Store-scoped roles với Role + Store JOIN FETCH
-        List<StoreMemberResponse> memberships = userRoleRepository
-                .findActiveStoreRolesWithDetails(user.getId())
-                .stream()
-                .map(ur -> {
-                    StoreMember m = membershipByStoreId.get(ur.getStore().getId());
-                    return new StoreMemberResponse(
-                            m != null ? m.getId() : null,
-                            m != null ? m.getPublicId() : null,
-                            user.getId(),
-                            user.getUsername(),
-                            ur.getStore().getId(),
-                            ur.getRole().getName(),
-                            m != null ? m.getPositionTitle() : null,
-                            m != null ? m.getJoinedDate() : null,
-                            ur.getIsActive(),
-                            m != null ? m.getSyncVersion() : null,
-                            m != null ? m.getLastModifiedAt() : null
-                    );
-                })
-                .toList();
+    /**
+     * Tạo AuthResponse: JWT (userId + global roles) + user summary + business memberships.
+     * OWNER → tất cả stores của business; MANAGER/STAFF → stores được assign, grouped by business.
+     */
+    private AuthResponse buildBundle(User user, String rtValue) {
+        List<BusinessMembershipResponse> memberships = new ArrayList<>();
 
-        // Global roles nhúng vào JWT — UserPrincipalConverter sẽ extract, không cần DB
+        // Business OWNER entries — role + business eagerly fetched
+        List<UserRole> businessRoles = userRoleRepository.findActiveBusinessRolesForUser(user.getId());
+        for (UserRole ur : businessRoles) {
+            Long businessId = ur.getBusiness().getId();
+            List<StoreInfo> storeInfos = storeRepository.findByBusinessIdAndDeletedAtIsNull(businessId)
+                    .stream()
+                    .map(s -> new StoreInfo(s.getId(), s.getName(), ur.getRole().getName(), null))
+                    .toList();
+            memberships.add(new BusinessMembershipResponse(businessId, ur.getBusiness().getName(), storeInfos));
+        }
+
+        // MANAGER / STAFF entries — role + store + store.business eagerly fetched
+        List<UserRole> storeRoles = userRoleRepository.findActiveStoreRolesWithBusinessDetails(user.getId());
+        if (!storeRoles.isEmpty()) {
+            Map<Long, StoreMember> memberByStoreId = storeMemberRepository
+                    .findByUserIdAndDeletedAtIsNullWithStore(user.getId())
+                    .stream()
+                    .collect(Collectors.toMap(m -> m.getStore().getId(), m -> m));
+
+            storeRoles.stream()
+                    .collect(Collectors.groupingBy(
+                            ur -> ur.getStore().getBusiness().getId(),
+                            LinkedHashMap::new,
+                            Collectors.toList()))
+                    .forEach((businessId, roles) -> {
+                        String businessName = roles.get(0).getStore().getBusiness().getName();
+                        List<StoreInfo> storeInfos = roles.stream()
+                                .map(ur -> {
+                                    StoreMember m = memberByStoreId.get(ur.getStore().getId());
+                                    return new StoreInfo(
+                                            ur.getStore().getId(),
+                                            ur.getStore().getName(),
+                                            ur.getRole().getName(),
+                                            m != null ? m.getPositionTitle() : null
+                                    );
+                                })
+                                .toList();
+                        memberships.add(new BusinessMembershipResponse(businessId, businessName, storeInfos));
+                    });
+        }
+
+        // Global roles nhúng vào JWT — UserPrincipalConverter extract, không cần DB call
         List<String> globalRoles = userRoleRepository
-                .findByUserIdAndStoreIsNullAndDeletedAtIsNull(user.getId())
+                .findByUserIdAndBusinessIsNullAndStoreIsNullAndDeletedAtIsNull(user.getId())
                 .stream()
                 .filter(ur -> Boolean.TRUE.equals(ur.getIsActive()))
                 .map(ur -> ur.getRole().getName().name())
                 .toList();
 
-        log.info("Building token for userId={}: globalRoles={}, storeCount={}", user.getId(), globalRoles, memberships.size());
+        log.info("Building token for userId={}: globalRoles={}, businessCount={}",
+                user.getId(), globalRoles, memberships.size());
 
         String token = jwtService.generateToken(user, Map.of(
                 "userId", user.getId(),
@@ -122,15 +166,10 @@ public class AuthService {
         ));
 
         UserSummaryResponse userSummary = new UserSummaryResponse(
-                user.getId(),
-                null,
-                user.getUsername(),
-                user.getEmail(),
-                user.getFullName(),
-                user.getPhone(),
-                user.getIsActive()
+                user.getId(), null, user.getUsername(), user.getEmail(),
+                user.getFullName(), user.getPhone(), user.getIsActive()
         );
 
-        return new AuthResponse(token, "Bearer", jwtExpiration, userSummary, memberships);
+        return new AuthResponse(token, "Bearer", jwtExpiration / 1000, userSummary, memberships, rtValue);
     }
 }

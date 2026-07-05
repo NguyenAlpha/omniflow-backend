@@ -1,8 +1,9 @@
 package com.quiktech.backend.entity;
 
+import com.quiktech.backend.entity.enums.DiscountType;
 import lombok.*;
 import jakarta.persistence.*;
-import org.hibernate.annotations.Where;
+import org.hibernate.annotations.SQLRestriction;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.UUID;
@@ -10,9 +11,10 @@ import java.util.UUID;
 @Entity
 @Table(name = "order_items", indexes = {
     @Index(name = "idx_order_items_order_id", columnList = "order_id"),
-    @Index(name = "idx_order_items_product_id", columnList = "product_id")
+    @Index(name = "idx_order_items_product_id", columnList = "product_id"),
+    @Index(name = "idx_order_items_store_id", columnList = "store_id")
 })
-@Where(clause = "deleted_at IS NULL")
+@SQLRestriction("deleted_at IS NULL")
 @Getter
 @Setter
 @NoArgsConstructor
@@ -46,9 +48,10 @@ public class OrderItem {
     @Column(nullable = false, precision = 15, scale = 2)
     private BigDecimal discount = BigDecimal.ZERO;
 
+    @Enumerated(EnumType.STRING)
     @Builder.Default
     @Column(nullable = false, length = 10)
-    private String discountType = "FIXED"; // FIXED, PERCENT
+    private DiscountType discountType = DiscountType.FIXED;
 
     @Column(nullable = false, precision = 15, scale = 2)
     private BigDecimal totalPrice;
@@ -57,6 +60,7 @@ public class OrderItem {
     @Column(nullable = false, unique = true, columnDefinition = "UUID")
     private UUID publicId;
 
+    @Version
     @Builder.Default
     @Column(nullable = false)
     private Long syncVersion = 0L;
