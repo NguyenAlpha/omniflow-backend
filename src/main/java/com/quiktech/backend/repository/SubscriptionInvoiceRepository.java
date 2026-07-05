@@ -1,53 +1,63 @@
 package com.quiktech.backend.repository;
 
 import com.quiktech.backend.entity.SubscriptionInvoice;
+import com.quiktech.backend.entity.enums.InvoiceStatus;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
-import java.time.LocalDateTime;
+
+import java.math.BigDecimal;
+import java.time.Instant;
 import java.util.List;
+import java.util.Optional;
 
 @Repository
 public interface SubscriptionInvoiceRepository extends JpaRepository<SubscriptionInvoice, Long> {
 
-    // Invoices by store
-    Page<SubscriptionInvoice> findByStoreIdOrderByCreatedAtDesc(Long storeId, Pageable pageable);
+    // Business owner: danh sách invoice theo business, mới nhất trước
+    Page<SubscriptionInvoice> findByBusinessIdOrderByCreatedAtDesc(Long businessId, Pageable pageable);
 
-    // Pending invoices for store
+    // Admin: tất cả invoice theo status, mới nhất trước
+    Page<SubscriptionInvoice> findByStatusOrderByCreatedAtDesc(InvoiceStatus status, Pageable pageable);
+
+    // Kiểm tra xem business có invoice PENDING nào không trước khi tạo mới
     @Query("""
-        SELECT si FROM SubscriptionInvoice si 
-        WHERE si.store.id = :storeId 
-        AND si.status = 'PENDING'
+        SELECT si FROM SubscriptionInvoice si
+        WHERE si.business.id = :businessId
+        AND si.status = :status
         ORDER BY si.createdAt DESC
     """)
-    List<SubscriptionInvoice> findPendingInvoices(@Param("storeId") Long storeId);
+    List<SubscriptionInvoice> findPendingByBusinessId(
+            @Param("businessId") Long businessId,
+            @Param("status") InvoiceStatus status);
 
-    // Current/latest invoice
-    @Query("""
-        SELECT si FROM SubscriptionInvoice si 
-        WHERE si.store.id = :storeId 
-        ORDER BY si.createdAt DESC
-        LIMIT 1
-    """)
-    SubscriptionInvoice findLatestInvoice(@Param("storeId") Long storeId);
+    // Invoice mới nhất của business
+    Optional<SubscriptionInvoice> findFirstByBusinessIdOrderByCreatedAtDesc(Long businessId);
 
-    // Invoices by status
-    Page<SubscriptionInvoice> findByStoreIdAndStatusOrderByCreatedAtDesc(
-        Long storeId,
-        String status,
-        Pageable pageable
-    );
+    long countByStatus(InvoiceStatus status);
 
-    // Invoices by date range
-    List<SubscriptionInvoice> findByStoreIdAndCreatedAtBetweenOrderByCreatedAtDesc(
-        Long storeId,
-        LocalDateTime startDate,
-        LocalDateTime endDate
-    );
+    long countByBusinessIdAndStatus(Long businessId, InvoiceStatus status);
 
-    long countByStoreIdAndStatus(Long storeId, String status);
+    @Query(value = """
+        SELECT COALESCE(SUM(amount), 0)
+        FROM subscription_invoices
+        WHERE status = 'PAID'
+        AND created_at >= :from
+        AND created_at < :to
+    """, nativeQuery = true)
+    BigDecimal sumPaidAmountBetween(@Param("from") Instant from, @Param("to") Instant to);
+
+    @Query(value = """
+        SELECT TO_CHAR(DATE_TRUNC('month', created_at), 'YYYY-MM') AS month,
+               COALESCE(SUM(amount), 0) AS amount
+        FROM subscription_invoices
+        WHERE status = 'PAID'
+        AND created_at >= :from
+        GROUP BY DATE_TRUNC('month', created_at)
+        ORDER BY DATE_TRUNC('month', created_at)
+    """, nativeQuery = true)
+    List<Object[]> monthlyRevenueSince(@Param("from") Instant from);
 }
-

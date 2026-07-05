@@ -1,0 +1,94 @@
+package com.quiktech.backend.service;
+
+import com.quiktech.backend.entity.Subscription;
+import com.quiktech.backend.entity.enums.PlanLimits;
+import com.quiktech.backend.entity.enums.SubscriptionPlan;
+import com.quiktech.backend.entity.enums.SubscriptionStatus;
+import com.quiktech.backend.repository.SubscriptionRepository;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.scheduling.annotation.Scheduled;
+import org.springframework.stereotype.Component;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.time.Instant;
+import java.time.temporal.ChronoUnit;
+import java.util.List;
+
+@Slf4j
+@Component
+@RequiredArgsConstructor
+public class SubscriptionExpiryScheduler {
+
+    private final SubscriptionRepository subscriptionRepository;
+    private final EmailService emailService;
+
+    /**
+     * Chạy hàng ngày lúc 01:00 AM (cấu hình qua subscription.expiry.cron).
+     * 1. Áp dụng pending downgrade cho các sub đã hết hạn (FREE → ACTIVE, paid → EXPIRED).
+     * 2. Bulk-expire các sub ACTIVE đã qua expiresAt còn lại.
+     */
+    @Scheduled(cron = "${subscription.expiry.cron:0 0 1 * * *}")
+    @Transactional
+    public void expireOverdueSubscriptions() {
+        Instant now = Instant.now();
+
+        // 1. Xử lý các subscription có pending downgrade
+        List<Subscription> pendingDowngrades = subscriptionRepository
+                .findOverdueWithPendingPlan(SubscriptionStatus.ACTIVE, now);
+
+        for (Subscription sub : pendingDowngrades) {
+            SubscriptionPlan targetPlan = sub.getPendingPlan();
+            PlanLimits limits = PlanLimits.valueOf(targetPlan.name());
+
+            sub.setPlan(targetPlan);
+            sub.setMaxStores(limits.maxStores);
+            sub.setMaxStaff(limits.maxStaff);
+            sub.setMaxProducts(limits.maxProducts);
+            sub.setMaxWarehouses(limits.maxWarehouses);
+            sub.setPendingPlan(null);
+            sub.setPendingBillingCycle(null);
+
+            if (targetPlan == SubscriptionPlan.FREE) {
+                // FREE không có expiry — giữ ACTIVE mãi
+                sub.setStatus(SubscriptionStatus.ACTIVE);
+                sub.setExpiresAt(null);
+                sub.setBillingCycle(null);
+            } else {
+                // Paid plan thấp hơn: EXPIRED, user cần re-subscribe
+                sub.setStatus(SubscriptionStatus.EXPIRED);
+            }
+        }
+
+        if (!pendingDowngrades.isEmpty()) {
+            subscriptionRepository.saveAll(pendingDowngrades);
+            log.info("Applied pending downgrade for {} subscription(s)", pendingDowngrades.size());
+        }
+
+        // 2. Bulk-expire phần còn lại (không có pending plan)
+        int expired = subscriptionRepository.expireOverdue(
+                SubscriptionStatus.EXPIRED,
+                SubscriptionStatus.ACTIVE,
+                now);
+
+        if (expired > 0) {
+            log.info("Expired {} subscription(s) past their expiresAt", expired);
+        }
+
+        // 3. Gửi email cảnh báo các subscription ACTIVE sắp hết hạn trong 7 ngày tới
+        Instant warningDeadline = now.plus(7, ChronoUnit.DAYS);
+        List<Subscription> expiringSoon = subscriptionRepository.findExpiringSoon(
+                SubscriptionStatus.ACTIVE, now, warningDeadline);
+
+        for (Subscription sub : expiringSoon) {
+            emailService.sendSubscriptionExpiryWarning(
+                    sub.getBusiness().getEmail(),
+                    sub.getBusiness().getName(),
+                    sub.getExpiresAt());
+        }
+
+        if (!expiringSoon.isEmpty()) {
+            log.info("Sent expiry warning emails for {} subscription(s)", expiringSoon.size());
+        }
+    }
+}

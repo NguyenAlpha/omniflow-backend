@@ -1,5 +1,8 @@
 package com.quiktech.backend.entity;
 
+import com.quiktech.backend.entity.enums.BillingCycle;
+import com.quiktech.backend.entity.enums.InvoiceStatus;
+import com.quiktech.backend.entity.enums.SubscriptionPlan;
 import lombok.*;
 import jakarta.persistence.*;
 import java.math.BigDecimal;
@@ -7,7 +10,7 @@ import java.time.Instant;
 
 @Entity
 @Table(name = "subscription_invoices", indexes = {
-    @Index(name = "idx_subscription_invoices_store_id", columnList = "store_id"),
+    @Index(name = "idx_subscription_invoices_business_id", columnList = "business_id"),
     @Index(name = "idx_subscription_invoices_status", columnList = "status")
 })
 @Getter
@@ -22,23 +25,41 @@ public class SubscriptionInvoice {
     private Long id;
 
     @ManyToOne(optional = false)
-    @JoinColumn(name = "store_id", nullable = false)
-    private Store store;
+    @JoinColumn(name = "business_id", nullable = false)
+    private Business business;
 
+    @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
-    private String plan; // FREE, BASIC, PRO
+    private SubscriptionPlan plan;
 
+    @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
-    private String billingCycle; // MONTHLY, YEARLY
+    private BillingCycle billingCycle;
 
     @Column(nullable = false, precision = 15, scale = 2)
     private BigDecimal amount;
 
+    @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
-    private String status; // PAID, PENDING, FAILED
+    private InvoiceStatus status;
 
     @Column(length = 20)
     private String paymentMethod; // BANK_TRANSFER, CARD, MOMO, ...
+
+    // Mã/nội dung chuyển khoản do business owner gửi lên để admin đối chiếu
+    @Column(length = 100)
+    private String bankTransferRef;
+
+    // ID của admin user đã xác nhận thanh toán
+    @Column(name = "confirmed_by")
+    private Long confirmedBy;
+
+    // Ghi chú của admin khi confirm hoặc reject
+    @Column(columnDefinition = "TEXT")
+    private String adminNote;
+
+    @Column(columnDefinition = "TIMESTAMPTZ")
+    private Instant confirmedAt;
 
     @Column(nullable = false, columnDefinition = "TIMESTAMPTZ")
     private Instant periodStart;
@@ -49,10 +70,16 @@ public class SubscriptionInvoice {
     @Column(columnDefinition = "TIMESTAMPTZ")
     private Instant paidAt;
 
+    @Builder.Default
     @Column(nullable = false, columnDefinition = "TIMESTAMPTZ")
     private Instant createdAt = Instant.now();
 
+    @Builder.Default
     @Column(nullable = false, columnDefinition = "TIMESTAMPTZ")
     private Instant updatedAt = Instant.now();
-}
 
+    @PreUpdate
+    void onUpdate() {
+        updatedAt = Instant.now();
+    }
+}
