@@ -61,8 +61,11 @@ public class SecurityConfig {
 
                 // config quyền truy cập API
                 .authorizeHttpRequests(auth -> auth
-                        // Auth endpoints công khai — đăng ký / đăng nhập không cần token
-                        .requestMatchers("/api/auth/**").permitAll()
+                        // Auth endpoints công khai — đăng ký / đăng nhập / refresh không cần token
+                        // logout yêu cầu JWT hợp lệ (không trong danh sách này)
+                        .requestMatchers("/api/auth/login", "/api/auth/register", "/api/auth/refresh").permitAll()
+                        .requestMatchers("/actuator/**").permitAll()
+                        .requestMatchers("/swagger-ui/**", "/swagger-ui.html", "/v3/api-docs/**").permitAll()
                         // Mọi request còn lại bắt buộc phải có JWT hợp lệ
                         .anyRequest().authenticated()
                 )
