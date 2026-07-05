@@ -1,4 +1,4 @@
-package com.quiktech.backend.config;
+package com.quiktech.backend.config.seed;
 
 import com.quiktech.backend.entity.Role;
 import com.quiktech.backend.entity.User;
@@ -78,7 +78,7 @@ public class SystemAdminSeeder implements ApplicationRunner {
                         .updatedAt(Instant.now())
                         .build()));
 
-        if (userRoleRepository.existsByUserIdAndStoreIsNullAndDeletedAtIsNull(user.getId())) {
+        if (userRoleRepository.existsByUserIdAndBusinessIsNullAndStoreIsNullAndDeletedAtIsNull(user.getId())) {
             return;
         }
 
@@ -88,6 +88,7 @@ public class SystemAdminSeeder implements ApplicationRunner {
         userRoleRepository.save(UserRole.builder()
                 .user(user)
                 .role(roleEntity)
+                .business(null)
                 .store(null)
                 .isActive(active)
                 .createdAt(Instant.now())
