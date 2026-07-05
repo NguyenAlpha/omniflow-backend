@@ -14,33 +14,64 @@ BearerTokenAuthenticationFilter  — extract Bearer token, NimbusJwtDecoder vali
   ↓
 UserPrincipalConverter            — convert JWT claims → UserPrincipal vào SecurityContext
   ↓
-@PreAuthorize                     — gọi StoreAccessEvaluator để check store-scoped role
-  ↓
-StoreAccessEvaluator
-  ├── SUPER_ADMIN?      → bypass (quyết định từ JWT authorities, 0 DB/Redis)
-  ├── Redis hit?        → dùng cached role (0 DB call)
-  └── Redis miss?       → query DB → cache Redis TTL 300s → return
+@PreAuthorize
+  ├── @businessAccess → BusinessAccessEvaluator  — catalog endpoints (product, category, unit, ...)
+  └── @storeAccess    → StoreAccessEvaluator     — transactional endpoints (order, inventory, ...)
+        ↓
+        ├── SUPER_ADMIN?      → bypass (từ JWT authorities, 0 DB/Redis)
+        ├── Business OWNER?   → isOwnerWithCache (Redis → DB, business:role:{userId}:{businessId})
+        ├── Redis hit?        → dùng cached store role (0 DB call)
+        └── Redis miss?       → query DB → cache Redis TTL 300s → return
 ```
 
 ---
 
-## 2. Phân loại Role
+## 2. Mô hình phân cấp tenant
 
-| Role          | Scope        | Lưu ở đâu khi check                             |
-|:--------------|:-------------|:------------------------------------------------|
-| `SUPER_ADMIN` | Global       | JWT claim `roles` → SecurityContext authorities |
-| `SUPPORT`     | Global       | JWT claim `roles` → SecurityContext authorities |
-| `OWNER`       | Store-scoped | Redis / DB — không nhúng vào JWT                |
-| `MANAGER`     | Store-scoped | Redis / DB — không nhúng vào JWT                |
-| `STAFF`       | Store-scoped | Redis / DB — không nhúng vào JWT                |
+```
+User
+ └── Business (1 user có thể sở hữu nhiều business)
+       ├── Subscription  (1 subscription per business)
+       ├── Store / chi nhánh (1 business có nhiều stores)
+       │     └── Warehouse (kho vật lý trong store)
+       ├── Catalog dùng chung: Product, Category, Unit, Customer, Supplier
+       └── Transactional per-store: Order, Inventory, PurchaseOrder, Payment
+```
 
-**Tại sao store-scoped roles không vào JWT:**
-User có thể là OWNER ở store A, STAFF ở store B. Nhúng tất cả vào token sẽ làm token phình to
-và không revoke được khi role thay đổi. Giải pháp: check Redis/DB theo từng `storeId` khi cần.
+**Catalog thuộc Business, không thuộc Store.**
+Một sản phẩm tạo ở business level — tất cả các chi nhánh đều thấy. Tương tự category, unit, customer, supplier.
+
+**Transactional thuộc Store.**
+Order, Inventory... gắn với từng chi nhánh cụ thể.
 
 ---
 
-## 3. BearerTokenAuthenticationFilter + UserPrincipalConverter — 0 DB call
+## 3. Phân loại Role
+
+| Role          | Scope           | Lưu ở đâu khi check                             |
+|:--------------|:----------------|:------------------------------------------------|
+| `SUPER_ADMIN` | Global          | JWT claim `roles` → SecurityContext authorities |
+| `SUPPORT`     | Global          | JWT claim `roles` → SecurityContext authorities |
+| `OWNER`       | Business-scoped | DB (`user_roles.business_id`) — không vào JWT   |
+| `MANAGER`     | Store-scoped    | Redis / DB — không vào JWT                      |
+| `STAFF`       | Store-scoped    | Redis / DB — không vào JWT                      |
+
+**DB schema của user_roles:**
+```
+business_id  store_id  → Ý nghĩa
+    NULL        NULL   → Global (SUPER_ADMIN / SUPPORT)
+    SET         NULL   → Business OWNER
+    NULL        SET    → Store MANAGER / STAFF
+```
+Constraint: `CHECK (NOT (business_id IS NOT NULL AND store_id IS NOT NULL))` — không được set cả hai.
+
+**Tại sao OWNER / MANAGER / STAFF không vào JWT:**
+User có thể là OWNER ở business A, MANAGER ở store B của business C. Nhúng tất cả vào token
+sẽ làm token phình to và không revoke được khi role thay đổi.
+
+---
+
+## 4. BearerTokenAuthenticationFilter + UserPrincipalConverter — 0 DB call
 
 `BearerTokenAuthenticationFilter` không dùng `UserDetailsService`. Mọi thông tin được extract từ JWT:
 
@@ -48,7 +79,7 @@ và không revoke được khi role thay đổi. Giải pháp: check Redis/DB th
 JWT claims
   sub     → username
   userId  → Long
-  roles   → List<String> (VD: ["SUPER_ADMIN"])
+  roles   → List<String> (VD: ["SUPER_ADMIN"])   ← chỉ global roles
 ```
 
 Luồng xử lý mỗi request:
@@ -65,64 +96,151 @@ Luồng xử lý mỗi request:
 
 ---
 
-## 4. StoreAccessEvaluator — Cách dùng
+## 5. BusinessAccessEvaluator — Catalog endpoints
 
-Bean name `"storeAccess"`, dùng trong `@PreAuthorize` qua SpEL:
+Bean name `"businessAccess"`, dùng cho mọi endpoint thuộc catalog (product, category, unit, customer, supplier).
 
 ```java
-// Chỉ member (bất kỳ role nào)
-@PreAuthorize("@storeAccess.isMember(#storeId, authentication)")
+// Đọc catalog — business OWNER hoặc MANAGER/STAFF của bất kỳ store trong business
+@PreAuthorize("@businessAccess.isMember(#businessId, authentication)")
 
-// Owner hoặc Manager
-@PreAuthorize("@storeAccess.isOwnerOrManager(#storeId, authentication)")
+// Ghi catalog — business OWNER hoặc MANAGER của bất kỳ store trong business
+@PreAuthorize("@businessAccess.isOwnerOrManager(#businessId, authentication)")
 
-// Chỉ Owner
-@PreAuthorize("@storeAccess.isOwner(#storeId, authentication)")
+// Chỉ OWNER — dùng khi tạo store mới trong business
+@PreAuthorize("@businessAccess.isOwner(#businessId, authentication)")
 ```
 
-`@EnableMethodSecurity` trong `SecurityConfig` là điều kiện để `@PreAuthorize` hoạt động.
+**Luồng kiểm tra `isMember(businessId)` / `isOwnerOrManager(businessId)`:**
+```
+SUPER_ADMIN?                              → true (bypass)
+isOwnerWithCache(userId, businessId)?
+  Redis HIT "business:role:{userId}:{businessId}"   → true (OWNER)           [0 DB, 1 Redis]
+  Redis MISS → findActiveBusinessRole(userId, businessId) → cache if OWNER   [1 DB, 1 write]
+resolveBusinessMemberRoleWithCache(userId, businessId)?
+  Redis HIT "business:member:{userId}:{businessId}" → role → check allowed   [0 DB, 1 Redis]
+  Redis MISS → findActiveStoreRolesInBusiness → cache highest role           [1 DB, 1 write]
+→ false
+```
 
-**Redis cache key:** `store:role:{userId}:{storeId}` — TTL cấu hình qua `store.role.cache.ttl` (mặc định 300s).
+**Redis cache keys:**
+- Business OWNER role: `business:role:{userId}:{businessId}` — TTL từ `store.role.cache.ttl` (mặc định 300s)
+- Business store membership: `business:member:{userId}:{businessId}` — TTL 300s, lưu role cao nhất (`ROLE_MANAGER` hoặc `ROLE_STAFF`)
 
-**Cache invalidation:** Gọi `StoreAccessEvaluator.evictStoreRoleCache(userId, storeId)` sau mỗi thao tác
-thay đổi role (add / update / remove member). Xem chi tiết: [STORE_MEMBER_LIFECYCLE.md](STORE_MEMBER_LIFECYCLE.md).
+**Cache invalidation:**
+- `BusinessAccessEvaluator.evictBusinessRoleCache(userId, businessId)` — sau khi thay đổi OWNER role
+- `BusinessAccessEvaluator.evictBusinessMemberCache(userId, businessId)` — sau khi thay đổi store membership
 
 ---
 
-## 5. Performance
+## 6. StoreAccessEvaluator — Transactional endpoints
+
+Bean name `"storeAccess"`, dùng cho mọi endpoint thuộc transactional data (order, inventory, warehouse, ...).
+
+```java
+// Member của store — business OWNER hoặc MANAGER/STAFF của store đó
+@PreAuthorize("@storeAccess.isMember(#storeId, authentication)")
+
+// Quản lý store — business OWNER hoặc MANAGER của store đó
+@PreAuthorize("@storeAccess.isOwnerOrManager(#storeId, authentication)")
+
+// Chỉ OWNER business — addMember, removeMember, setStatus
+@PreAuthorize("@storeAccess.isOwner(#storeId, authentication)")
+```
+
+**Luồng kiểm tra `isMember(storeId)` / `isOwnerOrManager(storeId)`:**
+```
+SUPER_ADMIN?                              → true (bypass)
+resolveBusinessId(storeId)
+  Redis HIT "store:business:{storeId}"   → businessId                 [0 DB, 1 Redis]
+  Redis MISS → findBusinessIdByStoreId   → cache                      [1 DB, 1 write]
+isOwnerWithCache(userId, businessId)?    → true (OWNER)
+  Redis HIT "business:role:{userId}:{businessId}" → true              [0 DB, 1 Redis]
+  Redis MISS → findActiveBusinessRole (DB) → cache if OWNER           [1 DB, 1 write]
+resolveStoreRoleWithCache(userId, storeId)?  → true nếu role trong allowed
+  Redis HIT "store:role:{userId}:{storeId}" → role                    [0 DB, 1 Redis]
+  Redis MISS → findActiveStoreRole (DB) → cache                       [1 DB, 1 write]
+→ false
+```
+
+**Luồng kiểm tra `isOwner(storeId)`:**
+```
+SUPER_ADMIN?                              → true
+resolveBusinessId(storeId)               → businessId (cached: store:business:{storeId})
+isOwnerWithCache(userId, businessId)?    → true / false
+```
+
+**Redis cache keys:**
+- Store role: `store:role:{userId}:{storeId}` — TTL từ `store.role.cache.ttl` (mặc định 300s)
+- Store → businessId: `store:business:{storeId}` — TTL 300s (businessId không bao giờ thay đổi sau khi set)
+- Business OWNER role: `business:role:{userId}:{businessId}` — TTL 300s (shared key với `BusinessAccessEvaluator`, chỉ cache OWNER)
+
+**Cache invalidation:** Gọi `StoreAccessEvaluator.evictStoreRoleCache(userId, storeId)` sau khi add/update/remove member của store.
+Gọi `BusinessAccessEvaluator.evictBusinessRoleCache(userId, businessId)` sau khi thay đổi OWNER role của business.
+
+---
+
+## 7. Performance
 
 | Scenario | DB calls | Redis calls |
 |:---|:---:|:---:|
 | Xác thực mỗi request (JWT) | 0 | 0 |
-| Store authorization — cache hit | 0 | 1 read |
-| Store authorization — cache miss | 1 | 1 read + 1 write |
+| Business authorization — OWNER, Redis hit | 0 | 1 read |
+| Business authorization — OWNER, Redis miss | 1 | 1 read + 1 write |
+| Business authorization — MANAGER/STAFF, Redis hit | 0 | 1 read |
+| Business authorization — MANAGER/STAFF, Redis miss | 1 | 1 read + 1 write |
+| Store authorization — OWNER (store:business + business:role hit) | 0 | 2 read |
+| Store authorization — OWNER (một trong hai miss) | 1 | 2 read + 1 write |
+| Store authorization — OWNER (cả hai miss) | 2 | 2 read + 2 write |
+| Store authorization — MANAGER/STAFF, store:role hit | 1 | 2 read |
+| Store authorization — MANAGER/STAFF, store:role miss | 2 | 2 read + 1 write |
 | Login / Register | ~3 | 0 |
 
 ---
 
-## 6. Conventions bắt buộc
+## 8. Conventions bắt buộc
 
 ### Multi-tenant isolation
-Mọi query nghiệp vụ **phải** filter `store_id`. Không được để user đọc data của store khác:
 
+**Catalog data** (product, category, unit, customer, supplier) — filter theo `business_id`:
 ```java
 // Đúng
-productRepository.findByStoreIdAndDeletedAtIsNull(storeId);
+productRepository.findByBusinessIdAndDeletedAtIsNull(businessId);
 
-// Sai — lộ data cross-store
+// Sai — lộ data cross-business
 productRepository.findAll();
 ```
 
-### Thêm endpoint mới
-Mọi endpoint store-scoped phải có `@PreAuthorize` tương ứng:
-
+**Transactional data** (order, inventory, purchase_order) — filter theo `store_id`:
 ```java
-// GET — chỉ cần là member
-@GetMapping("/{storeId}/something")
+// Đúng
+inventoryRepository.findByStoreIdAndDeletedAtIsNull(storeId);
+
+// Sai — lộ data cross-store
+inventoryRepository.findAll();
+```
+
+### Thêm endpoint mới
+
+**Catalog endpoint** (URL pattern `/api/businesses/{businessId}/...`):
+```java
+// GET — đọc catalog
+@GetMapping
+@PreAuthorize("@businessAccess.isMember(#businessId, authentication)")
+
+// POST / PUT / DELETE — ghi catalog
+@PostMapping
+@PreAuthorize("@businessAccess.isOwnerOrManager(#businessId, authentication)")
+```
+
+**Transactional endpoint** (URL pattern `/api/stores/{storeId}/...`):
+```java
+// GET — chỉ cần là member của store
+@GetMapping
 @PreAuthorize("@storeAccess.isMember(#storeId, authentication)")
 
 // POST / PUT / DELETE — cần OWNER hoặc MANAGER
-@PostMapping("/{storeId}/something")
+@PostMapping
 @PreAuthorize("@storeAccess.isOwnerOrManager(#storeId, authentication)")
 ```
 
@@ -144,3 +262,36 @@ entity.setLastModifiedByUser(user);
 ### SystemAdminSeeder
 Bật bằng `admin.seed.enabled=true` trong `application.properties` (mặc định `false`).
 Chỉ bật khi cần seed lần đầu — tắt ngay sau đó.
+
+---
+
+## 9. Cấu hình bảo mật (application.properties)
+
+### Biến môi trường bắt buộc khi deploy production
+
+| Property | Env var | Mô tả |
+|:---|:---|:---|
+| `spring.datasource.password` | `DB_PASSWORD` | Mật khẩu PostgreSQL |
+| `jwt.secret` | `JWT_SECRET` | HMAC-SHA256 key (Base64, ≥32 bytes) |
+| `admin.seed.password` | `ADMIN_SEED_PASSWORD` | Mật khẩu seed SUPER_ADMIN |
+
+Các property trên có fallback default trong file (dùng cho local dev). **Production phải set env var** — không commit credentials vào repo.
+
+### Actuator endpoints
+
+Chỉ expose `health` và `prometheus` — các endpoint khác (env, beans, mappings) bị tắt:
+```
+management.endpoints.web.exposure.include=health,prometheus
+```
+
+### CORS allowed headers
+
+Chỉ cho phép các header cần thiết (không dùng wildcard `*` cùng `setAllowCredentials(true)`):
+```
+Authorization, Content-Type, X-Requested-With, Accept, Origin
+```
+
+### Admin service: @PreAuthorize bắt buộc
+
+`SubscriptionService.changePlan()` — endpoint admin override plan — có `@PreAuthorize("hasRole('ROLE_SUPER_ADMIN')")`.
+Mọi service method dành riêng cho admin phải có annotation này để đảm bảo không bị gọi từ context không đúng quyền.

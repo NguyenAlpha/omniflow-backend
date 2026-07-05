@@ -12,15 +12,19 @@ Mỗi thành viên của store được đại diện bởi **2 entity tồn t�
 | Entity | Lưu gì | Source of truth cho |
 |:---|:---|:---|
 | `StoreMember` | `positionTitle`, `joinedDate`, `isActive`, sync fields | Metadata hiển thị (chức danh, ngày vào) |
-| `UserRole` | `role` (OWNER/MANAGER/STAFF), `isActive` | **Phân quyền** — ai được làm gì trong store |
+| `UserRole` | `role` (MANAGER/STAFF), `isActive` | **Phân quyền** — ai được làm gì trong store |
 
 ```
 users ──┐
         ├──► store_members  (metadata)
-        └──► user_roles     (authorization)  ──► roles
+        └──► user_roles     (authorization, store_id SET)  ──► roles
 stores ─┘
 ```
 
+> **Lưu ý:** OWNER không có record trong `store_members` hay `user_roles` ở store level.
+> OWNER được quản lý ở business level (`user_roles.business_id SET, store_id = NULL`)
+> và có quyền truy cập mọi store trong business một cách tự động.
+>
 > **Quy tắc:** Mọi thao tác thay đổi membership đều phải update **cả hai** trong cùng
 > `@Transactional`. Không được để hai entity lệch nhau.
 
@@ -29,11 +33,10 @@ stores ─┘
 ## 2. Vòng đời đầy đủ
 
 ```
-createStore
+createStore  (user phải là OWNER của business)
     │
     ▼
-[OWNER] ──────────────────────────────────────────────────────────►  removeMember
-    │                                                                  (không được xóa OWNER)
+[Store tồn tại — OWNER implicit từ business ownership]
     │
     ├── addMember(MANAGER) ──► updateMember ──► removeMember
     │
@@ -44,28 +47,25 @@ createStore
 
 ## 3. Luồng chi tiết từng thao tác
 
-### 3a. createStore — Tạo store, tự động gán OWNER
+### 3a. createStore — Tạo store mới trong business
 
 ```
-StoreService.createStore(request, currentUser)
+StoreService.createStore(businessId, request, currentUser)
+    [yêu cầu: currentUser là OWNER của business — @businessAccess.isOwner(businessId)]
     │
     ├── [TX BEGIN]
     │
-    ├── INSERT stores (name, address, phone, email)
-    │
-    ├── INSERT store_members
-    │   └── user = currentUser, store = store, isActive = true, publicId = UUID
-    │
-    ├── INSERT user_roles
-    │   └── user = currentUser, role = OWNER, store = store, isActive = true
+    ├── INSERT stores (business_id, name, address, phone, email)
     │
     ├── [TX COMMIT]
     │
     └── return StoreResponse
 
 Lưu ý:
-- Không cần evictCache vì user chưa có cache entry cho store này
-- userRepository.getReferenceById(userId) — không SELECT, chỉ tạo JPA proxy cho FK
+- Không INSERT store_members hay user_roles — OWNER không có store-level membership.
+  Quyền của OWNER trên store mới là implicit từ business ownership đã có sẵn.
+- Không cần evictCache — không có cache entry nào thay đổi khi tạo store mới.
+- userRepository.getReferenceById(userId) — không SELECT, chỉ tạo JPA proxy cho FK.
 ```
 
 ### 3b. addMember — Thêm thành viên mới
@@ -101,10 +101,6 @@ StoreService.updateMember(storeId, memberId, request, currentUser)    [yêu cầ
     ├── findById(memberId) → StoreMember
     ├── findActiveStoreRole(member.userId, storeId) → UserRole
     │
-    ├── Guard: UserRole.role == OWNER AND member.userId ≠ currentUser.userId ?
-    │   └── true → throw ForbiddenException("Cannot modify another OWNER")
-    │   (OWNER chỉ có thể tự thay đổi role của mình, không thay đổi OWNER khác)
-    │
     ├── [TX BEGIN]
     │
     ├── UPDATE user_roles SET role = request.role, isActive = request.isActive
@@ -115,7 +111,13 @@ StoreService.updateMember(storeId, memberId, request, currentUser)    [yêu cầ
     ├── evictStoreRoleCache(member.userId, storeId)
     │   └── bắt buộc — role đã thay đổi, cache cũ không còn đúng
     │
+    ├── evictBusinessMemberCache(member.userId, businessId)
+    │   └── bắt buộc — role cao nhất trong business có thể thay đổi (VD: MANAGER → STAFF)
+    │
     └── return StoreMemberResponse
+
+Lưu ý: không cần guard "Cannot modify OWNER" — OWNER không có store_members record,
+không thể tìm thấy qua findById(memberId), nên không thể bị updateMember.
 ```
 
 ### 3d. removeMember — Xóa thành viên (soft delete)
@@ -125,10 +127,6 @@ StoreService.removeMember(storeId, memberId, currentUser)    [yêu cầu: OWNER]
     │
     ├── findById(memberId) → StoreMember
     ├── findActiveStoreRole(member.userId, storeId) → UserRole (nullable)
-    │
-    ├── Guard: UserRole.role == OWNER ?
-    │   └── true → throw ForbiddenException("Cannot remove the OWNER from store")
-    │   (Store phải luôn có ít nhất 1 OWNER)
     │
     ├── [TX BEGIN]
     │
@@ -140,10 +138,16 @@ StoreService.removeMember(storeId, memberId, currentUser)    [yêu cầu: OWNER]
     ├── evictStoreRoleCache(member.userId, storeId)
     │   └── bắt buộc — user không còn là member, cache phải xóa ngay
     │
+    ├── evictBusinessMemberCache(member.userId, businessId)
+    │   └── bắt buộc — user có thể mất quyền truy cập catalog của business
+    │
     └── (void)
 
 Soft delete: deleted_at được set, bản ghi vẫn còn trong DB.
 Mọi query tìm member active đều filter AND deleted_at IS NULL.
+
+Lưu ý: không cần guard "Cannot remove OWNER" — OWNER không có store_members record,
+không thể tìm thấy qua findById(memberId), nên không thể bị removeMember.
 ```
 
 ---
@@ -152,28 +156,28 @@ Mọi query tìm member active đều filter AND deleted_at IS NULL.
 
 | Ràng buộc | Được kiểm tra ở đâu |
 |:---|:---|
-| Chỉ OWNER mới được thêm / sửa / xóa member | `@PreAuthorize("@storeAccess.isOwner(...)")` |
+| Chỉ OWNER mới được thêm / sửa / xóa member | `@PreAuthorize("@storeAccess.isOwner(#storeId, authentication)")` |
 | Không thêm user đã là member | `StoreService.addMember` — check `findActiveStoreRole` |
-| Không xóa OWNER | `StoreService.removeMember` — check role trước khi soft delete |
-| Không sửa OWNER khác | `StoreService.updateMember` — check `userId ≠ currentUser` |
-| Store luôn có ít nhất 1 OWNER | Ràng buộc ngầm — không có API `transferOwnership`, OWNER tự xóa bị chặn |
+| OWNER không thể bị removeMember / updateMember | Tự nhiên — OWNER không có `store_members` record |
+| Business luôn có OWNER | Quản lý ở business level — xem `BUSINESS_MEMBER_LIFECYCLE.md` |
 
 ---
 
 ## 5. Cache invalidation — khi nào và tại sao
 
-Redis lưu role của user trong store theo key `store:role:{userId}:{storeId}`.
-Cache phải được xóa ngay sau khi DB commit để lần check tiếp theo phản ánh đúng role mới.
+Hai cache key bị ảnh hưởng khi store membership thay đổi:
+- `store:role:{userId}:{storeId}` — role của user trong store cụ thể
+- `business:member:{userId}:{businessId}` — role cao nhất của user trong business
 
 ```
-Thao tác          Evict cần thiết?   Lý do
-──────────────────────────────────────────────────────────────────
-addMember         Có                 User có thể đã có cache cũ (từ lần member trước)
-updateMember      Có                 Role đổi → cache cũ sai
-removeMember      Có                 User không còn là member → cache phải xóa
-createStore       Không              User chưa có entry cache cho store mới
-getStore          Không              Read-only
-getMembers        Không              Read-only
+Thao tác       store:role   business:member   Lý do
+─────────────────────────────────────────────────────────────────────────────
+addMember      Có           Có                Có thể có cache cũ; business member role thay đổi
+updateMember   Có           Có                Role đổi → cả hai cache cũ đều sai
+removeMember   Có           Có                User mất quyền ở store và có thể mất quyền catalog
+createStore    Không        Không             Không có cache entry nào thay đổi
+getStore       Không        Không             Read-only
+getMembers     Không        Không             Read-only
 ```
 
 > **Thứ tự bắt buộc:** evict phải gọi **sau** `@Transactional` commit.
@@ -191,9 +195,12 @@ StoreService.getMembers(storeId, currentUser)
     │   └── trả về List<StoreMember>  [1 query]
     │
     ├── findByStoreIdAndIsActiveTrueAndDeletedAtIsNull(storeId)
-    │   └── trả về List<UserRole>  [1 query]
+    │   └── trả về List<UserRole> (chỉ MANAGER/STAFF)  [1 query]
     │   └── collect thành Map<userId, UserRole>
     │
     └── join in-memory: members.stream().map(m -> toMemberResponse(m, roleMap.get(m.user.id)))
         └── tổng: 2 query, không có vòng lặp gọi DB
+
+Lưu ý: OWNER không xuất hiện trong kết quả — họ không có store_members record.
+Nếu UI cần hiển thị OWNER, query riêng từ business_members + user_roles (business level).
 ```

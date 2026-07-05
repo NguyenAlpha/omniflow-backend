@@ -9,7 +9,11 @@
 - Đăng ký tài khoản bằng username + email + password
 - Đăng nhập bằng username hoặc email
 - Mã hóa mật khẩu bằng BCrypt
-- Cấp JWT token sau đăng nhập (TTL 24h, stateless)
+- Cấp JWT access token sau đăng nhập (TTL 24h, stateless)
+- Cấp refresh token sau đăng nhập (TTL 30 ngày, lưu DB table `refresh_tokens`)
+- Làm mới access token qua `POST /api/auth/refresh` (token rotation: refresh token cũ bị revoke)
+- Phát hiện reuse refresh token → vô hiệu hóa toàn bộ token của user (family invalidation)
+- Đăng xuất `POST /api/auth/logout` → revoke tất cả refresh token của user
 - Trả về danh sách store membership và role tương ứng trong response đăng nhập
 - Vô hiệu hóa tài khoản (`is_active = false`) — không đăng nhập được
 - Soft delete tài khoản (`deleted_at`) — không xoá vật lý
@@ -52,14 +56,29 @@
 
 ## 5. Quản lý Gói dịch vụ (Subscription)
 
-- 3 gói: `FREE`, `BASIC`, `PRO`
-- Giới hạn theo gói: số nhân viên, số sản phẩm, số kho, số đơn hàng/tháng
-- Tạo store tự động kích hoạt gói FREE
-- Nâng cấp / hạ cấp gói (`plan`)
-- Gia hạn gói (`billing_cycle`: `MONTHLY` / `YEARLY`)
-- Huỷ gói (`status = CANCELLED`)
-- Kiểm tra giới hạn gói trước khi tạo resource mới (staff, product, warehouse, order)
-- Lưu lịch sử thanh toán subscription (`subscription_invoices`) — immutable
+- 3 gói: `FREE`, `BASIC`, `PRO` — giới hạn số store, staff, product, warehouse theo gói
+- Tạo business tự động kích hoạt gói FREE (không giới hạn thời gian)
+- Kiểm tra giới hạn gói trước khi tạo resource mới (store, staff, product, warehouse)
+
+**Luồng nâng cấp gói (chuyển khoản ngân hàng thủ công):**
+- Business owner tạo yêu cầu nâng cấp → hệ thống tạo invoice PENDING + cung cấp thông tin TK ngân hàng
+- Owner chuyển khoản thực tế → gửi nội dung/mã CK lên hệ thống
+- Admin vào web xem danh sách invoice PENDING → đối chiếu giao dịch → confirm hoặc reject
+- Confirm → invoice `PAID`, subscription cập nhật plan mới + tính `expiresAt`
+- Reject → invoice `FAILED`, subscription không thay đổi, owner có thể tạo yêu cầu mới
+
+**Invoice lifecycle:**
+- 1 business chỉ có tối đa 1 invoice `PENDING` tại 1 thời điểm
+- Lịch sử toàn bộ invoice được lưu (`subscription_invoices`) — immutable
+- Chu kỳ: `MONTHLY` (30 ngày) hoặc `YEARLY` (365 ngày)
+
+**Email notification (async, qua Spring Mail):**
+- Admin confirm invoice → gửi email xác nhận đến business email
+- Admin reject invoice → gửi email thông báo từ chối kèm lý do
+- Scheduler hàng ngày (01:00 AM) → gửi email cảnh báo subscription sắp hết hạn trong 7 ngày
+
+**Chưa triển khai:**
+- Huỷ gói (`CANCELLED`)
 
 ---
 
@@ -161,6 +180,9 @@
 - Hoàn thành đơn hàng (`COMPLETED`):
   - Trừ tồn kho (tạo `inventory_transaction` loại `OUT`)
   - Cộng `customers.debt_balance` nếu `debt_amount > 0`
+- Ghi nhận thanh toán nợ (`PUT /pay`):
+  - Cập nhật `paid_amount` và `debt_amount` trên đơn hàng
+  - Giảm `customers.debt_balance` nếu đơn đã `COMPLETED` và có khách hàng
 - Huỷ đơn hàng (`CANCELLED`):
   - Hoàn tồn kho nếu đã `COMPLETED`
   - Rollback `customers.debt_balance` nếu đã `COMPLETED`
@@ -242,7 +264,62 @@
 
 ---
 
-## 19. Quản trị Hệ thống (System Admin)
+## 19. Audit Log
+
+Ghi nhận mọi hành động quan trọng — ai xóa đơn hàng, ai thay đổi giá, ai điều chỉnh tồn kho.
+
+**Bảng:** `audit_logs(id, user_id, business_id, store_id, action, entity_type, entity_id, old_value jsonb, new_value jsonb, ip, created_at)`
+
+- Implement qua **Spring AOP** (`@Auditable` annotation + `AuditAspect`) — không đụng vào business logic
+- Lưu log async (`@Async` + `Propagation.REQUIRES_NEW`) — lỗi audit không roll back business transaction
+- Capture: user_id, store_id / business_id, IP, action, entity_type, new_value (JSON request)
+- Các operation được audit:
+  - Order: `CREATE_ORDER`, `COMPLETE_ORDER`, `PAY_ORDER`, `CANCEL_ORDER`
+  - Inventory: `ADJUST_INVENTORY`
+  - Product: `CREATE_PRODUCT`, `UPDATE_PRODUCT`, `DELETE_PRODUCT`
+  - PurchaseOrder: `CREATE_PURCHASE_ORDER`, `RECEIVE_PURCHASE_ORDER`, `CANCEL_PURCHASE_ORDER`
+- `old_value` chưa được capture (requires pre-method DB fetch — có thể mở rộng sau)
+
+---
+
+## 20. Idempotency Key (Order Creation)
+
+Chống tạo đơn trùng khi client retry (mạng yếu, timeout).
+
+- Client gửi header `Idempotency-Key: <uuid>` khi tạo đơn
+- Server check Redis: key tồn tại → trả về response đã cache (24h TTL)
+- Response được cache sau khi tạo đơn thành công (2xx)
+- Chỉ áp dụng cho `POST /api/stores/{id}/orders`
+- Header `X-Idempotency-Cached: true` được trả về khi response đến từ cache
+
+---
+
+## 21. Export Dữ Liệu
+
+B2B khách hàng cần xuất báo cáo — không phải làm thủ công.
+
+- **`GET /api/stores/{storeId}/export/orders?from=&to=`** → Excel (.xlsx) danh sách đơn hàng
+  - Columns: Mã đơn, Khách hàng, Trạng thái, Tiền hàng, Giảm giá, Thuế, Tổng, Đã TT, Còn nợ, PTTT, Ngày
+- **`GET /api/stores/{storeId}/export/inventory`** → Excel (.xlsx) tồn kho hiện tại
+  - Columns: Sản phẩm, SKU, Kho, Số lượng, Đơn vị
+- **`GET /api/stores/{storeId}/export/purchase-orders/{publicId}/pdf`** → PDF phiếu nhập hàng
+  - Gồm: header (cửa hàng, nhà cung cấp, kho), bảng sản phẩm, tổng tiền, ghi chú
+- Yêu cầu quyền MANAGER hoặc OWNER
+- Apache POI 5.3 cho Excel, OpenPDF 2.0 cho PDF
+
+---
+
+## 23. API Documentation (Swagger / OpenAPI)
+
+- Tích hợp SpringDoc OpenAPI 2.8.4 — tự động generate từ controller annotations
+- Swagger UI tại `/swagger-ui/index.html`
+- OpenAPI JSON tại `/v3/api-docs`
+- JWT Bearer scheme được cấu hình sẵn — có thể Authorize trực tiếp trên Swagger UI
+- Các endpoint Swagger được permit public (không cần token để xem docs)
+
+---
+
+## 24. Quản trị Hệ thống (System Admin)
 
 - Tài khoản SUPER_ADMIN có thể truy cập mọi store mà không cần membership
 - Seed tài khoản SUPER_ADMIN khi khởi động hệ thống (có thể bật/tắt qua config)
@@ -252,7 +329,7 @@
 
 ---
 
-## 20. Sync Offline — Local-First (Mobile)
+## 25. Sync Offline — Local-First (Mobile)
 
 - Mọi entity có `public_id` (UUID) làm khóa sync ổn định giữa server và client
 - `sync_version` tăng dần theo store — client biết cần pull từ version nào

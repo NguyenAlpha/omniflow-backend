@@ -1,7 +1,7 @@
 # JWT Token Lifecycle
 
-Mô tả vòng đời của JWT token — từ lúc được tạo ra đến khi hết hạn —
-bao gồm cấu trúc payload, giới hạn thiết kế, và hành vi khi token hết hạn.
+Mô tả vòng đời của JWT access token và refresh token — từ lúc được tạo ra đến khi hết hạn —
+bao gồm cấu trúc payload, luồng refresh, và các giới hạn thiết kế.
 
 ---
 
@@ -11,28 +11,31 @@ bao gồm cấu trúc payload, giới hạn thiết kế, và hành vi khi token
 Login / Register
       │
       ▼
-  Token issued
-  TTL: 24h
+  Access token (24h) + Refresh token (30 ngày)
       │
-      │  Client lưu token, gửi kèm mỗi request
-      │  Authorization: Bearer <token>
+      │  Client lưu cả hai token
       │
       ▼
-  Token active ──────────────────────────────────────────────────┐
-      │                                                           │
-      │  BearerTokenAuthenticationFilter validate mỗi request    │
-      │  (NimbusJwtDecoder — 0 DB call)                          │
-      │                                                           │
-      ▼                                                           │
-  Token expired (sau 24h)                                        │
-      │                                                           │
-      ▼                                                           │
-  401 Unauthorized ← Client phải login lại để lấy token mới ────┘
+  Access token còn hạn ──────────────────────────────────────────────────┐
+      │                                                                   │
+      │  Authorization: Bearer <access_token>                            │
+      │  BearerTokenAuthenticationFilter validate (0 DB call)            │
+      │                                                                   │
+      ▼                                                                   │
+  Access token hết hạn (sau 24h)                                        │
+      │                                                                   │
+      ▼                                                                   │
+  Client gửi POST /api/auth/refresh { refreshToken: "..." }              │
+      │                                                                   │
+      ├── Refresh token hợp lệ → New access token + New refresh token ───┘
+      │   (token rotation: refresh token cũ bị revoke)
+      │
+      └── Refresh token hết hạn / không hợp lệ → 401 → Login lại
 ```
 
 ---
 
-## 2. Cấu trúc JWT payload
+## 2. Cấu trúc JWT access token payload
 
 ```json
 {
@@ -52,38 +55,39 @@ Login / Register
 | `iat` | Unix epoch | Thời điểm token được cấp |
 | `exp` | Unix epoch | Thời điểm token hết hạn = `iat` + 86400 giây (24h) |
 
-**Store-scoped roles (`OWNER`, `MANAGER`, `STAFF`) không có trong token.**
-Chúng phụ thuộc context store, được kiểm tra riêng qua `StoreAccessEvaluator` (Redis → DB) mỗi request.
+**Business/store-scoped roles (`OWNER`, `MANAGER`, `STAFF`) không có trong token.**
+- `OWNER` — business-scoped, check qua `BusinessAccessEvaluator` hoặc `StoreAccessEvaluator` (DB) mỗi request.
+- `MANAGER`, `STAFF` — store-scoped, check qua `StoreAccessEvaluator` (Redis → DB) mỗi request.
 
 ---
 
-## 3. Luồng issue token
+## 3. Luồng issue token (login / register)
 
 ```
 AuthService.buildAuthResponse(user)
     │
-    ├── Query DB: findByUserIdAndStoreIsNullAndDeletedAtIsNull(userId)
-    │   └── lấy global roles (SUPER_ADMIN, SUPPORT) để nhúng vào token
-    │   └── user thường: roles = []
+    ├── RefreshTokenService.create(userId)
+    │   └── Generate 64-char opaque token (2x UUID without dashes)
+    │   └── INSERT refresh_tokens (token, user_id, expires_at = now + 30 days)
+    │   └── Trả về token value
     │
-    └── jwtService.generateToken(user, { userId, roles })
+    └── buildBundle(user, rtValue)
+        ├── Query DB: findByUserIdAndBusinessIsNullAndStoreIsNullAndDeletedAtIsNull(userId)
+        │   └── lấy global roles (SUPER_ADMIN, SUPPORT) để nhúng vào token
         │
-        ├── JwtClaimsSet.builder()
-        │   ├── .claim("userId", userId)
-        │   ├── .claim("roles", roles)
-        │   ├── .subject(username)           ← claim "sub"
-        │   ├── .issuedAt(now)
-        │   └── .expiresAt(now + expiration)
+        ├── jwtService.generateToken(user, { userId, roles })
+        │   └── HS256 JWT, exp = now + 24h
         │
-        ├── JwtEncoderParameters.from(HS256_HEADER, claimsSet)
-        │   └── HS256_HEADER bắt buộc — mặc định NimbusJwtEncoder dùng RS256
-        │
-        └── NimbusJwtEncoder.encode(...) → trả về "eyJhbGci....eyJ1c2VyS..."
+        └── Trả về AuthResponse {
+              accessToken, tokenType, expiresIn,
+              user, memberships,
+              refreshToken  ← opaque token, lưu phía client
+            }
 ```
 
 ---
 
-## 4. Luồng validate token (mỗi request)
+## 4. Luồng validate access token (mỗi request)
 
 ```
 BearerTokenAuthenticationFilter nhận "Authorization: Bearer <token>"
@@ -104,70 +108,102 @@ BearerTokenAuthenticationFilter nhận "Authorization: Bearer <token>"
 
 ---
 
-## 5. Giới hạn thiết kế cần biết
+## 5. Luồng refresh token
 
-### 5a. Không có refresh token
+```
+POST /api/auth/refresh { "refreshToken": "<64-char opaque token>" }
+    │
+    └── RefreshTokenService.rotate(tokenValue)
+        │
+        ├── SELECT refresh_tokens WHERE token = ?
+        │   └── Không tìm thấy → InvalidTokenException (REFRESH_TOKEN_INVALID) → 401
+        │
+        ├── Token đã bị revoke (revokedAt IS NOT NULL)?
+        │   └── Reuse detected — có thể bị đánh cắp
+        │       → revokeAllByUserId (vô hiệu toàn bộ token của user)
+        │       → InvalidTokenException (REFRESH_TOKEN_INVALID) → 401
+        │
+        ├── Token đã hết hạn (expiresAt < now)?
+        │   └── SET revokedAt = now
+        │       → InvalidTokenException (REFRESH_TOKEN_EXPIRED) → 401
+        │
+        └── Token hợp lệ:
+            ├── SET old_token.revokedAt = now  ← revoke cái cũ
+            ├── INSERT new refresh_token       ← issue cái mới (30 ngày)
+            └── Trả về AuthResponse mới (access token 24h + refresh token mới)
+```
 
-Project hiện tại **không có** refresh token. Khi token hết hạn sau 24h:
-- Client nhận `401 Unauthorized`
-- Client phải gọi `POST /api/auth/login` để lấy token mới
-- Không có cơ chế tự động renew
+**Rotation:** Mỗi lần refresh, refresh token cũ bị revoke, token mới được cấp.
+Client phải lưu token mới sau mỗi lần refresh.
 
-### 5b. Token không thể thu hồi trước hạn
+---
+
+## 6. Luồng logout
+
+```
+POST /api/auth/logout  (yêu cầu Bearer token hợp lệ)
+    │
+    └── AuthService.logout(userId)
+        └── RefreshTokenService.revokeAll(userId)
+            └── UPDATE refresh_tokens SET revoked_at = now
+                WHERE user_id = ? AND revoked_at IS NULL
+```
+
+Sau logout: toàn bộ refresh token bị revoke. Access token hiện tại vẫn hợp lệ
+cho đến khi hết hạn (tối đa 24h) — đây là trade-off chấp nhận được với JWT stateless.
+
+---
+
+## 7. Giới hạn thiết kế cần biết
+
+### 7a. Access token không thể thu hồi trước hạn
 
 JWT là stateless — server không lưu danh sách token đã cấp.
-Khi cần vô hiệu hóa token (VD: user đổi password, bị deactivate):
+Khi cần vô hiệu hóa access token:
 - Token vẫn hợp lệ cho đến khi hết hạn (tối đa 24h)
-- Server không có cách biết token đó "nên bị từ chối"
 
 Các trường hợp cụ thể:
 
 | Sự kiện | Hành vi hiện tại |
 |:---|:---|
-| User bị deactivate (`isActive = false`) | Token vẫn pass `BearerTokenAuthenticationFilter` (không check DB). Chỉ bị chặn ở `DaoAuthProvider` nếu login lại |
-| User bị soft-delete | Tương tự — token cũ vẫn hoạt động trong 24h |
+| User bị deactivate (`isActive = false`) | Token vẫn pass filter. Chỉ bị chặn ở `DaoAuthProvider` nếu login lại |
+| User bị soft-delete | Tương tự — access token cũ vẫn hoạt động trong 24h |
 | Global role bị thu hồi | Role cũ vẫn còn trong token — có hiệu lực đến khi hết hạn |
 
-> Đây là **trade-off chấp nhận được** với scope Phase 1. Giải pháp nếu cần revoke:
-> dùng Redis blacklist lưu `jti` (JWT ID) của token bị thu hồi, check trong `BearerTokenAuthenticationFilter`.
+> Giải pháp nếu cần revoke access token ngay: dùng Redis blacklist lưu `jti` của token bị thu hồi.
 
-### 5c. Global role thay đổi không phản ánh ngay
+### 7b. Global role thay đổi không phản ánh ngay
 
 Nếu user được cấp hoặc thu hồi `SUPER_ADMIN`:
-- Token hiện tại **không thay đổi** — vẫn chứa roles cũ
-- Phải login lại để lấy token mới với roles mới
+- Access token hiện tại **không thay đổi** — vẫn chứa roles cũ
+- Phải refresh hoặc login lại để lấy token mới với roles mới
 
 ---
 
-## 6. Hành vi khi token hết hạn
+## 8. Hành vi khi access token hết hạn
 
 ```
 Client gửi request với token đã hết hạn
     │
-    ├── BearerTokenAuthenticationFilter
-    │   └── NimbusJwtDecoder.decode(token) → ném JwtException (token expired)
-    │   └── Filter bắt exception → không set SecurityContext
+    ├── BearerTokenAuthenticationFilter → 401 Unauthorized
     │
-    ├── AuthorizationFilter: endpoint cần auth, SecurityContext trống → từ chối
-    │
-    ├── ExceptionTranslationFilter → authenticationEntryPoint
-    │   └── response.sendError(401, "Unauthorized")
-    │
-    └── Client nhận:
-        { "status": 401, "error": "Unauthorized", "path": "/api/stores/1" }
-        (Spring Boot error format — không phải ApiResult)
+    └── Client nên:
+        1. Intercept 401
+        2. Gọi POST /api/auth/refresh với refresh token còn hạn
+        3. Lưu access token mới + refresh token mới
+        4. Retry request gốc
+        5. Nếu refresh cũng 401 → redirect về màn hình login
 ```
-
-**Client nên xử lý:** intercept mọi response `401` → xóa token cũ → redirect về màn hình login.
 
 ---
 
-## 7. Cấu hình
+## 9. Cấu hình
 
 | Property | Giá trị mặc định | Ý nghĩa |
 |:---|:---|:---|
 | `jwt.secret` | Base64-encoded string | HMAC-SHA256 signing key — phải đủ 256-bit sau decode |
-| `jwt.expiration` | `86400000` (ms) | TTL token = 24 giờ |
+| `jwt.expiration` | `86400000` (ms) | TTL access token = 24 giờ |
+| `jwt.refresh-token-expiration-days` | `30` | TTL refresh token = 30 ngày |
 
 > `jwt.secret` phải được thay bằng giá trị ngẫu nhiên mạnh trong production.
 > Không commit secret thật vào source code.

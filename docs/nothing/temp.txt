@@ -1,0 +1,346 @@
+Đúng, với code hiện tại thì **mọi Order khi tạo đều có công nợ (`debtAmount`) bằng toàn bộ giá trị đơn hàng**.
+
+Trong `create()`:
+
+```java
+order.setTotalAmount(totalAmount);
+order.setDebtAmount(totalAmount);  // Initially, full amount is debt
+order.setPaidAmount(BigDecimal.ZERO);
+```
+
+Nghĩa là:
+
+* Tổng đơn = `totalAmount`
+* Đã thanh toán = `0`
+* Công nợ = `totalAmount`
+
+Ví dụ:
+
+| Tổng đơn  | PaidAmount | DebtAmount |
+| --------- | ---------- | ---------- |
+| 1.000.000 | 0          | 1.000.000  |
+| 500.000   | 0          | 500.000    |
+
+---
+
+Tuy nhiên có một điểm cần lưu ý:
+
+Khi tạo đơn, công nợ chỉ nằm trong bảng `Order`.
+
+Đến lúc gọi `complete()` mới cộng vào nợ khách hàng:
+
+```java
+if (order.getCustomer() != null &&
+    order.getDebtAmount().compareTo(BigDecimal.ZERO) > 0) {
+
+    customer.setDebtBalance(
+        customer.getDebtBalance().add(order.getDebtAmount())
+    );
+
+    customerRepository.save(customer);
+}
+```
+
+Nên luồng hiện tại là:
+
+1. Tạo đơn (`PENDING`)
+
+   * debtAmount = totalAmount
+   * customer.debtBalance chưa tăng
+
+2. Hoàn thành đơn (`COMPLETED`)
+
+   * customer.debtBalance += order.debtAmount
+
+---
+
+Nếu hệ thống của bạn có khái niệm **bán chịu** và **thanh toán ngay**, thì code hiện tại chưa hỗ trợ thanh toán ngay vì:
+
+```java
+paidAmount = 0
+debtAmount = totalAmount
+```
+
+cho tất cả đơn hàng.
+
+Thông thường sẽ là:
+
+```java
+debtAmount = totalAmount - paidAmount;
+```
+
+Ví dụ:
+
+* Đơn 1.000.000
+* Khách trả trước 300.000
+
+=>
+
+```java
+paidAmount = 300000;
+debtAmount = 700000;
+```
+
+Hiện tại service này đang xử lý theo kiểu:
+
+> Mọi đơn hàng đều là đơn nợ 100% cho đến khi có cơ chế thanh toán riêng.
+Dựa trên `OrderService` và tài liệu vòng đời đơn hàng, hiện tại hệ thống của bạn có:
+
+# Đã có
+
+### 1. Quản lý trạng thái đơn hàng
+
+```
+PENDING
+ ├─> COMPLETED
+ └─> CANCELLED
+```
+
+* Không thể complete lại.
+* Không thể cancel lại.
+* Không thể chuyển từ COMPLETED sang trạng thái khác.
+* Không thể chuyển từ CANCELLED sang trạng thái khác.
+
+---
+
+### 2. Kiểm tra tồn kho khi tạo đơn
+
+Khi tạo đơn:
+
+* Tìm inventory theo sản phẩm + kho.
+* Kiểm tra đủ số lượng.
+* Không đủ => báo lỗi.
+* Đủ => trừ kho ngay.
+
+---
+
+### 3. Log xuất nhập kho
+
+Tạo đơn:
+
+```java
+type = OUT
+```
+
+Huỷ đơn:
+
+```java
+type = IN
+```
+
+=> Có lịch sử xuất nhập kho.
+
+---
+
+### 4. Hoàn kho khi huỷ đơn
+
+Cancel:
+
+```java
+inventory += quantity
+```
+
+và tạo transaction IN.
+
+---
+
+### 5. Tính tiền đơn hàng
+
+Có:
+
+* Discount theo từng item.
+* Discount toàn đơn.
+* FIXED.
+* PERCENT.
+* Tax.
+
+---
+
+### 6. Công nợ khách hàng
+
+Khi complete:
+
+```java
+customer.debtBalance += order.debtAmount
+```
+
+=> Khách hàng có tổng công nợ tích luỹ.
+
+---
+
+### 7. Hỗ trợ khách vãng lai
+
+```java
+customer = null
+```
+
+vẫn tạo đơn được.
+
+---
+
+### 8. Transaction
+
+Các luồng create / complete / cancel đều:
+
+```java
+@Transactional
+```
+
+=> Nếu lỗi giữa chừng sẽ rollback.
+
+---
+
+# Chưa có
+
+### 1. Thanh toán đơn hàng
+
+Hiện tại:
+
+```java
+paidAmount = 0
+debtAmount = totalAmount
+```
+
+cho mọi đơn.
+
+Chưa có API kiểu:
+
+```java
+POST /orders/{id}/payment
+```
+
+để thu tiền.
+
+---
+
+### 2. Thanh toán một phần
+
+Ví dụ:
+
+```
+Đơn 10 triệu
+Khách trả 3 triệu
+Nợ 7 triệu
+```
+
+Hiện tại chưa làm được.
+
+---
+
+### 3. Thanh toán hết nợ
+
+Ví dụ:
+
+```
+Khách nợ 20 triệu
+Trả 5 triệu
+Còn 15 triệu
+```
+
+Chưa có flow này.
+
+---
+
+### 4. Lịch sử công nợ
+
+Hiện chỉ có:
+
+```java
+customer.debtBalance
+```
+
+là một con số tổng.
+
+Chưa có bảng kiểu:
+
+```java
+DebtTransaction
+```
+
+hoặc
+
+```java
+CustomerPayment
+```
+
+để biết:
+
+* ngày nào phát sinh nợ
+* đơn nào phát sinh nợ
+* ngày nào khách trả tiền
+* ai thu tiền
+
+---
+
+### 5. Đơn thanh toán ngay
+
+Hiện tại:
+
+```java
+debtAmount = totalAmount
+```
+
+100% đơn đều là bán chịu.
+
+Chưa có:
+
+```java
+paidAmount = totalAmount
+debtAmount = 0
+```
+
+cho trường hợp khách trả ngay.
+
+---
+
+### 6. Complete sau khi đã thanh toán
+
+Ví dụ:
+
+```
+Tạo đơn
+Thu tiền
+Complete
+```
+
+Hiện chưa có vì chưa có flow payment.
+
+---
+
+### 7. Tránh cộng nợ sai khi complete
+
+Giả sử sau này thêm payment:
+
+```
+total = 10tr
+paid = 4tr
+debt = 6tr
+```
+
+thì khi complete phải cộng:
+
+```java
+customer.debtBalance += 6tr
+```
+
+Hiện code đang đúng với mô hình hiện tại vì:
+
+```java
+debtAmount = totalAmount
+```
+
+nhưng khi thêm payment cần quản lý kỹ việc cập nhật `debtAmount`.
+
+---
+
+# Tóm tắt ngắn gọn
+
+Hiện hệ thống đang là:
+
+> **Order + Inventory + Công nợ phát sinh**
+
+Nhưng chưa có:
+
+> **Payment + Thu nợ + Lịch sử công nợ**
+
+Nói cách khác, bạn đã làm được phần **"bán hàng ghi nợ"**, còn phần **"khách trả tiền và quản lý các lần trả tiền"** vẫn chưa có.

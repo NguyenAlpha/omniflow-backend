@@ -15,10 +15,10 @@ Application Start
 │   │
 │   ├── JwtService               — ký JWT sau khi đăng nhập / đăng ký
 │   ├── UserPrincipalConverter   — convert JWT đã validate → UserPrincipal trong SecurityContext
-│   ├── StoreAccessEvaluator     — kiểm tra store-scoped role (Redis + DB)
+│   ├── BusinessAccessEvaluator  — kiểm tra business-scoped role (Redis + DB, catalog endpoints)
+│   ├── StoreAccessEvaluator     — kiểm tra store-scoped role (Redis + DB, transactional endpoints)
 │   ├── UserDetailsService       — load User từ DB (chỉ dùng khi login)
-│   ├── AuthenticationProvider   — DaoAuthenticationProvider (BCrypt verify)
-│   ├── AuthenticationManager    — điều phối các AuthenticationProvider
+│   ├── AuthenticationManager    — Spring tự tạo DaoAuthenticationProvider nội bộ (BCrypt verify)
 │   ├── JwtDecoder               — NimbusJwtDecoder, validate chữ ký HMAC-SHA256 mỗi request
 │   ├── JwtEncoder               — NimbusJwtEncoder, ký token khi đăng nhập
 │   ├── Controllers / Services   — xử lý business logic
@@ -75,50 +75,36 @@ HTTP POST /api/auth/login  {"usernameOrEmail": "...", "password": "..."}
 │   │
 │   └── buildAuthResponse(user)
 │       │
-│       ├── findByUserIdAndDeletedAtIsNullWithStore(userId)    [DB query — StoreMember + Store]
-│       ├── findActiveStoreRolesWithDetails(userId)            [DB query — UserRole + Role + Store]
-│       └── findByUserIdAndStoreIsNullAndDeletedAtIsNull(userId) [DB query — global roles cho JWT]
+│       ├── findActiveBusinessRolesForUser(userId)                        [DB — UserRole + Business (OWNER entries)]
+│       ├── findActiveStoreRolesWithBusinessDetails(userId)               [DB — UserRole + Store + Business (MANAGER/STAFF)]
+│       └── findByUserIdAndBusinessIsNullAndStoreIsNullAndDeletedAtIsNull(userId) [DB — global roles]
 │           │
 │           └── jwtService.generateToken(user, {userId, roles})
 │               └── JWT payload: { sub, userId, roles: ["SUPER_ADMIN"?], iat, exp }
 │
-└── Response: AuthResponse { accessToken, tokenType, expiresIn, user, storeMemberships }
+└── Response: AuthResponse { accessToken, tokenType, expiresIn, user, memberships }
+
+    Lưu ý: memberships nhóm theo business — mỗi entry: { businessId, businessName, stores[] }.
+    OWNER: stores = tất cả stores trong business (role=OWNER, positionTitle=null).
+    MANAGER/STAFF: stores = chỉ stores mà user là member (kèm positionTitle).
+    Quyền truy cập catalog được check tại request time qua BusinessAccessEvaluator (không cần JWT).
 ```
 
 ---
 
-## 3. Luồng Request có JWT (`GET /api/stores/{storeId}`)
+## 3. Luồng Request có JWT
 
-> Đây là luồng chính của mọi request sau khi đăng nhập.
+### 3a. Transactional endpoint (`GET /api/stores/{storeId}`)
+
 > **BearerTokenAuthenticationFilter không gọi DB** — mọi thứ lấy từ JWT claims.
 
 ```
 HTTP GET /api/stores/1
 Authorization: Bearer eyJhbGci...
 │
-├── Tomcat nhận request
-│
-├── DelegatingFilterProxy → SecurityFilterChain
-│
-├── BearerTokenAuthenticationFilter                            [0 DB call]
-│   │
-│   ├── Đọc header "Authorization: Bearer <token>"
-│   │
-│   ├── NimbusJwtDecoder.decode(token)
-│   │   └── verify chữ ký HMAC-SHA256 + kiểm tra exp — không gọi DB
-│   │       └── ném JwtException nếu chữ ký sai hoặc token hết hạn → 401
-│   │
-│   ├── UserPrincipalConverter.convert(jwt)
-│   │   ├── username  ← jwt.getSubject()         (claim "sub")
-│   │   ├── userId    ← jwt.getClaim("userId")   (normalize Integer/Long → Long)
-│   │   ├── roles     ← jwt.getClaim("roles")    (VD: ["SUPER_ADMIN"])
-│   │   └── Build UserPrincipal(userId, username, roles)
-│   │       └── authorities: roles → [SimpleGrantedAuthority("SUPER_ADMIN"), ...]
-│   │
-│   └── SecurityContextHolder.set( Authentication{principal=UserPrincipal, credentials=jwt} )
-│
-├── AuthorizationFilter
-│   └── request đã authenticated → cho qua
+├── BearerTokenAuthenticationFilter                                        [0 DB call]
+│   ├── NimbusJwtDecoder.decode(token) — verify chữ ký + exp
+│   └── UserPrincipalConverter.convert(jwt) → UserPrincipal → SecurityContext
 │
 ├── DispatcherServlet → StoreController.getStore()
 │
@@ -126,36 +112,81 @@ Authorization: Bearer eyJhbGci...
 │   │
 │   └── StoreAccessEvaluator.isMember(storeId, authentication)
 │       │
-│       ├── SUPER_ADMIN? → true ngay (bypass cache + DB)
+│       ├── SUPER_ADMIN? → true ngay (từ JWT authorities)                  [0 DB, 0 Redis]
 │       │
-│       ├── Đọc Redis key "store:role:{userId}:{storeId}"
-│       │   ├── Cache HIT  → parse RoleName → kiểm tra trong [OWNER, MANAGER, STAFF]
-│       │   │                                                              [0 DB call]
-│       │   └── Cache MISS → findActiveStoreRole(userId, storeId)         [1 DB call]
-│       │                    └── Ghi Redis với TTL 300s
-│       │                    └── kiểm tra trong [OWNER, MANAGER, STAFF]
+│       ├── resolveBusinessId(storeId)
+│       │   ├── Redis HIT "store:business:{storeId}" → businessId          [0 DB, 1 Redis]
+│       │   └── Redis MISS → findBusinessIdByStoreId(storeId) → cache      [1 DB, 1 write]
 │       │
-│       └── false → 403 Forbidden (ExceptionTranslationFilter trả về)
+│       ├── isOwnerWithCache(userId, businessId)
+│       │   ├── Redis HIT "business:role:{userId}:{businessId}" → true     [0 DB, 1 Redis]
+│       │   └── Redis MISS → findActiveBusinessRole (DB) → cache if OWNER  [1 DB, 1 write]
+│       │       └── OWNER? → true ngay
+│       │
+│       ├── Redis HIT "store:role:{userId}:{storeId}" → MANAGER/STAFF?    [0 DB, 1 Redis]
+│       │   └── role trong [MANAGER, STAFF]? → true / false
+│       │
+│       └── Redis MISS → findActiveStoreRole(userId, storeId) → cache      [1 DB, 1 write]
+│                        └── role trong [MANAGER, STAFF]? → true / false
 │
-├── StoreService.getStore(storeId, currentUser)
-│   └── findById(storeId)  [1 DB call]
+├── StoreService.getStore(storeId)
+│   └── findById(storeId)                                                  [1 DB]
 │
-├── Response: StoreResponse { id, name, ... }
+└── Response: StoreResponse { id, name, ... }
+```
+
+### 3b. Catalog endpoint (`GET /api/businesses/{businessId}/products`)
+
+```
+HTTP GET /api/businesses/5/products
+Authorization: Bearer eyJhbGci...
 │
-└── SecurityContextHolder.clearContext()
-    └── xóa Authentication sau mỗi request — stateless, không giữ session
+├── BearerTokenAuthenticationFilter                                        [0 DB call]
+│   └── (giống trên — UserPrincipal → SecurityContext)
+│
+├── DispatcherServlet → ProductController.list()
+│
+├── @PreAuthorize("@businessAccess.isMember(#businessId, authentication)")
+│   │
+│   └── BusinessAccessEvaluator.isMember(businessId, authentication)
+│       │
+│       ├── SUPER_ADMIN? → true ngay                                       [0 DB]
+│       │
+│       ├── isOwnerWithCache(userId, businessId)
+│       │   ├── Redis HIT "business:role:{userId}:{businessId}" → true     [0 DB, 1 Redis]
+│       │   └── Redis MISS → findActiveBusinessRole (DB) → cache if OWNER  [1 DB, 1 write]
+│       │       └── OWNER? → true ngay
+│       │
+│       └── resolveBusinessMemberRoleWithCache(userId, businessId)
+│           ├── Redis HIT "business:member:{userId}:{businessId}" → role   [0 DB, 1 Redis]
+│           └── Redis MISS → findActiveStoreRolesInBusiness (DB) → cache   [1 DB, 1 write]
+│               └── có MANAGER hoặc STAFF trong business? → true / false
+│
+├── ProductService.list(businessId, ...)
+│   └── findAllByBusinessId(businessId)                                    [1 DB]
+│
+└── Response: List<ProductResponse>
 ```
 
 ---
 
 ## 4. So sánh DB calls
 
-| Luồng                                          | DB calls                           |
-|:-----------------------------------------------|:-----------------------------------|
-| Login / Register                               | ~3 queries (auth + build response) |
-| Request thông thường — auth                    | **0** (JWT claims)                 |
-| Request thông thường — store check, cache hit  | **0** (Redis)                      |
-| Request thông thường — store check, cache miss | **1** (DB → cache Redis)           |
+| Luồng                                                                  | DB calls                                        |
+|:-----------------------------------------------------------------------|:------------------------------------------------|
+| Login / Register                                                       | ~3 queries (auth + build response)              |
+| Request — JWT auth                                                     | **0** (JWT claims)                              |
+| Store check — SUPER_ADMIN                                              | **0** (JWT authorities)                         |
+| Store check — OWNER (store:business + business:role hit)               | **0** (cả hai Redis hit)                        |
+| Store check — OWNER (một trong hai cache miss)                         | **1** (1 DB cho cache miss)                     |
+| Store check — OWNER (cả hai cache miss)                                | **2** (findBusinessId + findActiveBusinessRole) |
+| Store check — MANAGER/STAFF, store:role hit                            | **1** (isOwnerWithCache → DB, không cache âm)  |
+| Store check — MANAGER/STAFF, store:role miss                           | **2** (isOwnerWithCache + findActiveStoreRole)  |
+| Business check — SUPER_ADMIN                                           | **0**                                           |
+| Business check — OWNER, Redis hit                                      | **0** (Redis cache)                             |
+| Business check — OWNER, Redis miss                                     | **1** (findActiveBusinessRole)                  |
+| Business check — MANAGER/STAFF, Redis hit                              | **0** (business:member cache)                   |
+| Business check — MANAGER/STAFF, Redis miss                             | **1** (findActiveStoreRolesInBusiness)          |
 
 ---
 
@@ -171,6 +202,7 @@ Authorization: Bearer eyJhbGci...
 │  ├── BearerTokenAuthenticationFilter     │
 │  ├── JwtService                          │
 │  ├── UserPrincipalConverter              │
+│  ├── BusinessAccessEvaluator             │
 │  ├── StoreAccessEvaluator                │
 │  └── Controllers / Services             │
 │                                          │
@@ -192,7 +224,9 @@ Authorization: Bearer eyJhbGci...
 │      ↓                                   │
 │  AuthorizationFilter                     │
 │      ↓                                   │
-│  @PreAuthorize → StoreAccessEvaluator    │
+│  @PreAuthorize                           │
+│      ├── @businessAccess (catalog)       │
+│      └── @storeAccess (transactional)    │
 │      ↓                                   │
 │  Controller → Service → DB               │
 │      ↓                                   │

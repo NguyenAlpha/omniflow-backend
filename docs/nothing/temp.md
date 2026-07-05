@@ -36,3 +36,20 @@
 ---
 
 Còn lại: **Product, Warehouse, Inventory, Order, PurchaseOrder, Payment**.
+
+---
+
+**Subscription — TODO**
+- Plan limits (maxStaff, maxProducts, maxWarehouses, maxOrdersPerMonth) hardcode trong `SubscriptionPlan` enum, copy vào `subscriptions` row lúc tạo/nâng cấp
+- Giá (monthlyPrice, yearlyPrice) hardcode trong enum — đổi giá cần redeploy, chấp nhận được ở giai đoạn này
+- Bảng `promotions` (code, discount_type PERCENTAGE/FIXED, discount_value, max_uses, expires_at) — chỉ dùng lúc checkout
+- Runtime check limit → chỉ đọc `subscriptions`, không đụng pricing/promotions
+
+
+@SuppressWarnings("unused")
+👉 @SuppressWarnings("unused") là một annotation trong Java dùng để tắt cảnh báo (warning) của compiler hoặc IDE.
+👉 Dùng khi:
+
+method dùng gián tiếp (reflection, framework, Spring proxy…)
+code đang phát triển dở
+tránh IDE spam warning

@@ -1,3 +1,4 @@
+không đọc file tạm này
 VAI TRÒ: Bạn là một Database Architect senior với 10+ năm kinh nghiệm thiết kế hệ thống production. Hãy đánh giá schema database dưới đây một cách nghiêm túc, khách quan.
 
 SCHEMA CẦN ĐÁNH GIÁ:

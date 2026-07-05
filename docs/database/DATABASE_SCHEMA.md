@@ -9,6 +9,18 @@
 > Các vấn đề đã giải tuyết: RBAC (Role-Based Access Control), multi-tenant
 > 
 > Tương lai nâng cấp: Feature Flag / Feature Toggle
+
+> **[REDESIGN]** Phân cấp entity:
+> ```
+> businesses   ← tenant cấp cao nhất, sở hữu subscription
+>   └── stores (chi nhánh)
+>         └── warehouses (kho hàng)
+> ```
+> `businesses` → `stores` (1:N) → `warehouses` (1:N)
+> Tất cả giao dịch (orders, purchase_orders, payments...) thuộc về `store` (chi nhánh).
+> Catalog (products, categories, customers, suppliers) thuộc về `business`.
+> Subscription tính theo `business`, không theo chi nhánh.
+
 ---
 
 ## 1. Người dùng & Phân quyền & Cửa hàng
@@ -39,20 +51,57 @@
 
 > Seeded sẵn khi migration: 5 role mặc định. Không xoá được vì được FK tham chiếu từ `user_roles`.
 
-### `stores` — Cửa hàng (tenant)
+### `businesses` — Doanh nghiệp (tenant cấp cao nhất)
 | Tên cột | Kiểu | Ràng buộc | Ý nghĩa |
 |---|---|---|---|
 | `id` | BIGSERIAL | PK | Khóa chính |
-| `name` | VARCHAR(200) | NOT NULL | Tên cửa hàng |
-| `address` | TEXT | | Địa chỉ |
+| `name` | VARCHAR(200) | NOT NULL | Tên doanh nghiệp (VD: Shop ABC) |
+| `address` | TEXT | | Địa chỉ chính |
 | `phone` | VARCHAR(20) | | Số điện thoại |
 | `email` | VARCHAR(100) | | Email liên hệ |
-| `is_active` | BOOLEAN | NOT NULL, DEFAULT true | Trạng thái hoạt động — false = tạm đóng |
+| `is_active` | BOOLEAN | NOT NULL, DEFAULT true | Trạng thái — false = tạm khoá toàn bộ |
 | `created_at` | TIMESTAMPTZ | NOT NULL | Thời điểm tạo |
 | `updated_at` | TIMESTAMPTZ | NOT NULL | Thời điểm cập nhật |
-| `deleted_at` | TIMESTAMPTZ | | Thời điểm xoá mềm — null = chưa xoá |
+| `deleted_at` | TIMESTAMPTZ | | Thời điểm xoá mềm |
 
-### `store_members` — Thành viên của cửa hàng (metadata)
+> Là đơn vị billing — subscription gắn vào đây, không gắn vào chi nhánh.
+> Một user (OWNER) sở hữu 1 business, business có nhiều chi nhánh (stores).
+
+### `stores` — Chi nhánh
+| Tên cột | Kiểu | Ràng buộc | Ý nghĩa |
+|---|---|---|---|
+| `id` | BIGSERIAL | PK | Khóa chính |
+| `business_id` | BIGINT | FK → businesses, NOT NULL | Doanh nghiệp sở hữu chi nhánh này |
+| `name` | VARCHAR(200) | NOT NULL | Tên chi nhánh (VD: Chi nhánh Quận 1) |
+| `address` | TEXT | | Địa chỉ chi nhánh |
+| `phone` | VARCHAR(20) | | Số điện thoại |
+| `email` | VARCHAR(100) | | Email liên hệ |
+| `is_active` | BOOLEAN | NOT NULL, DEFAULT true | Trạng thái — false = tạm đóng chi nhánh |
+| `created_at` | TIMESTAMPTZ | NOT NULL | Thời điểm tạo |
+| `updated_at` | TIMESTAMPTZ | NOT NULL | Thời điểm cập nhật |
+| `deleted_at` | TIMESTAMPTZ | | Thời điểm xoá mềm |
+
+### `business_members` — Thành viên của doanh nghiệp (metadata)
+| Tên cột | Kiểu | Ràng buộc | Ý nghĩa |
+|---|---|---|---|
+| `id` | BIGSERIAL | PK | Khóa chính |
+| `user_id` | BIGINT | FK → users, NOT NULL | Tài khoản liên kết |
+| `business_id` | BIGINT | FK → businesses, NOT NULL | Doanh nghiệp thuộc về |
+| `joined_date` | DATE | | Ngày gia nhập doanh nghiệp |
+| `is_active` | BOOLEAN | NOT NULL, DEFAULT true | Trạng thái trong doanh nghiệp này |
+| `public_id` | UUID | NOT NULL, UNIQUE | Khóa sync ổn định |
+| `sync_version` | BIGINT | NOT NULL, DEFAULT 0 | Version sync |
+| `last_modified_at` | TIMESTAMPTZ | NOT NULL | Lần sửa cuối |
+| `last_modified_by_user` | BIGINT | FK → users | Người sửa cuối |
+| `created_at` | TIMESTAMPTZ | NOT NULL | Thời điểm tạo |
+| `updated_at` | TIMESTAMPTZ | NOT NULL | Thời điểm cập nhật |
+| `deleted_at` | TIMESTAMPTZ | | Thời điểm xoá mềm |
+
+> **UNIQUE(user_id, business_id) WHERE deleted_at IS NULL** — 1 user chỉ có 1 membership trong 1 business.
+> Role (OWNER) được quản lý qua `user_roles`, không lưu ở đây.
+> Query "user này có quyền vào những business nào": join `business_members` thay vì scan `user_roles`.
+
+### `store_members` — Thành viên của chi nhánh (metadata)
 | Tên cột | Kiểu | Ràng buộc | Ý nghĩa |
 |---|---|---|---|
 | `id` | BIGSERIAL | PK | Khóa chính |
@@ -81,32 +130,42 @@
 | `id` | BIGSERIAL | PK | Khóa chính |
 | `user_id` | BIGINT | FK → users, NOT NULL | Tài khoản được gán vai trò |
 | `role_id` | BIGINT | FK → roles, NOT NULL | Vai trò được gán |
-| `store_id` | BIGINT | FK → stores | Cửa hàng phạm vi — **NULL = vai trò toàn hệ thống (Global)** |
+| `business_id` | BIGINT | FK → businesses | Phạm vi business — dùng cho OWNER |
+| `store_id` | BIGINT | FK → stores | Phạm vi chi nhánh — dùng cho MANAGER / STAFF |
 | `granted_by` | BIGINT | FK → users | Người gán quyền |
 | `is_active` | BOOLEAN | NOT NULL, DEFAULT true | Trạng thái phân quyền |
 | `created_at` | TIMESTAMPTZ | NOT NULL | Thời điểm tạo |
 | `updated_at` | TIMESTAMPTZ | NOT NULL | Thời điểm cập nhật |
-| `deleted_at` | TIMESTAMPTZ | | Thời điểm xoá mềm — null = chưa xoá |
+| `deleted_at` | TIMESTAMPTZ | | Thời điểm xoá mềm |
 
-> **`store_id IS NULL`** → vai trò áp dụng toàn hệ thống (VD: SUPER_ADMIN, SUPPORT).
-> **`store_id IS NOT NULL`** → vai trò chỉ có hiệu lực trong cửa hàng đó (VD: OWNER, MANAGER, STAFF).
+> **Phạm vi 3 cấp:**
+> | business_id | store_id | Ý nghĩa |
+> |---|---|---|
+> | NULL | NULL | Global (SUPER_ADMIN, SUPPORT) |
+> | NOT NULL | NULL | Business scope (OWNER — có quyền trên toàn bộ chi nhánh của business) |
+> | NULL | NOT NULL | Branch scope (MANAGER, STAFF — chỉ có quyền trong chi nhánh đó) |
 >
-> **UNIQUE(user_id, role_id, COALESCE(store_id, 0)) WHERE deleted_at IS NULL** — ngăn trùng lặp role (kể cả global role với store_id=NULL).
+> **UNIQUE(user_id, role_id, COALESCE(business_id, 0), COALESCE(store_id, 0)) WHERE deleted_at IS NULL**
 >
-> **Query lấy quyền của user trong store cụ thể:**
+> **Query lấy quyền của user trong một chi nhánh cụ thể:**
 > ```sql
 > SELECT r.name FROM user_roles ur
 > JOIN roles r ON r.id = ur.role_id
+> JOIN stores s ON s.id = :storeId
 > WHERE ur.user_id = :userId
->   AND (ur.store_id = :storeId OR ur.store_id IS NULL)
+>   AND (
+>     ur.store_id = :storeId                          -- role cấp chi nhánh
+>     OR ur.business_id = s.business_id               -- OWNER của business này
+>     OR (ur.business_id IS NULL AND ur.store_id IS NULL)  -- global role
+>   )
 >   AND ur.deleted_at IS NULL AND ur.is_active = true;
 > ```
 
-### `subscriptions` — Gói dịch vụ của cửa hàng
+### `subscriptions` — Gói dịch vụ của doanh nghiệp
 | Tên cột | Kiểu | Ràng buộc | Ý nghĩa |
 |---|---|---|---|
 | `id` | BIGSERIAL | PK | Khóa chính |
-| `store_id` | BIGINT | FK → stores, NOT NULL, UNIQUE | Cửa hàng sở hữu gói |
+| `business_id` | BIGINT | FK → businesses, NOT NULL, UNIQUE | Doanh nghiệp sở hữu gói |
 | `plan` | VARCHAR(20) | NOT NULL | Gói: `FREE` / `BASIC` / `PRO` |
 | `status` | VARCHAR(20) | NOT NULL | Trạng thái: `ACTIVE` / `EXPIRED` / `CANCELLED` |
 | `billing_cycle` | VARCHAR(20) | | Chu kỳ: `MONTHLY` / `YEARLY` — null nếu FREE |
@@ -134,7 +193,7 @@
 | Tên cột | Kiểu | Ràng buộc | Ý nghĩa |
 |---|---|---|---|
 | `id` | BIGSERIAL | PK | Khóa chính |
-| `store_id` | BIGINT | FK → stores, NOT NULL | Cửa hàng sở hữu |
+| `business_id` | BIGINT | FK → businesses, NOT NULL | Doanh nghiệp sở hữu — dùng chung toàn bộ chi nhánh |
 | `name` | VARCHAR(100) | NOT NULL | Tên danh mục (VD: Đồ uống, Thực phẩm) |
 | `description` | TEXT | | Mô tả thêm |
 | `public_id` | UUID | NOT NULL, UNIQUE | Khóa sync ổn định |
@@ -147,13 +206,13 @@
 | `updated_at` | TIMESTAMPTZ | NOT NULL | Thời điểm cập nhật |
 | `deleted_at` | TIMESTAMPTZ | | Thời điểm xoá mềm — null = chưa xoá |
 
-> **UNIQUE(store_id, name) WHERE deleted_at IS NULL**
+> **UNIQUE(business_id, name) WHERE deleted_at IS NULL**
 
 ### `units` — Đơn vị tính
 | Tên cột | Kiểu | Ràng buộc | Ý nghĩa |
 |---|---|---|---|
 | `id` | BIGSERIAL | PK | Khóa chính |
-| `store_id` | BIGINT | FK → stores | Cửa hàng sở hữu — **null = system unit** (dùng chung, không sửa/xoá được) |
+| `business_id` | BIGINT | FK → businesses | Doanh nghiệp sở hữu — **null = system unit** (dùng chung, không sửa/xoá được) |
 | `name` | VARCHAR(50) | NOT NULL | Tên đơn vị (VD: Cái, Kg, Thùng, Hộp) |
 | `abbreviation` | VARCHAR(10) | NOT NULL | Ký hiệu viết tắt (VD: kg, pcs, box) |
 | `public_id` | UUID | NOT NULL, UNIQUE | Khóa sync ổn định |
@@ -163,15 +222,15 @@
 | `last_modified_by_device` | UUID | | Thiết bị sửa cuối |
 | `deleted_at` | TIMESTAMPTZ | | Thời điểm xoá mềm — null = chưa xoá |
 
-> **UNIQUE(name, store_id) WHERE deleted_at IS NULL** — cho phép Store A và Store B đều có unit tên "Thùng" riêng; system units (store_id IS NULL) cũng unique theo name.
+> **UNIQUE(name, business_id) WHERE deleted_at IS NULL** — cho phép Business A và Business B đều có unit tên "Thùng" riêng; system units (business_id IS NULL) cũng unique theo name.
 >
 > **Quy tắc phân quyền:**
-> - `store_id IS NULL` (system unit): chỉ SUPER_ADMIN được tạo/sửa — seeded sẵn khi deploy (Cái, Kg, Lít, Hộp, Thùng, Gói, ...)
-> - `store_id IS NOT NULL` (store unit): OWNER/MANAGER của store đó được tạo/sửa/xoá mềm
+> - `business_id IS NULL` (system unit): chỉ SUPER_ADMIN được tạo/sửa — seeded sẵn khi deploy (Cái, Kg, Lít, Hộp, Thùng, Gói, ...)
+> - `business_id IS NOT NULL` (business unit): OWNER của business đó được tạo/sửa/xoá mềm
 >
-> **Khi query sản phẩm:** lấy cả system units lẫn units của store hiện tại:
+> **Khi query sản phẩm:** lấy cả system units lẫn units của business hiện tại:
 > ```sql
-> SELECT * FROM units WHERE (store_id = :storeId OR store_id IS NULL) AND deleted_at IS NULL;
+> SELECT * FROM units WHERE (business_id = :businessId OR business_id IS NULL) AND deleted_at IS NULL;
 > ```
 
 ---
@@ -182,7 +241,7 @@
 | Tên cột | Kiểu | Ràng buộc | Ý nghĩa |
 |---|---|---|---|
 | `id` | BIGSERIAL | PK | Khóa chính |
-| `store_id` | BIGINT | FK → stores, NOT NULL | Cửa hàng sở hữu |
+| `business_id` | BIGINT | FK → businesses, NOT NULL | Doanh nghiệp sở hữu — catalog dùng chung toàn bộ chi nhánh |
 | `sku` | VARCHAR(50) | NOT NULL | Mã sản phẩm |
 | `name` | VARCHAR(200) | NOT NULL | Tên sản phẩm |
 | `description` | TEXT | | Mô tả chi tiết |
@@ -202,13 +261,13 @@
 | `updated_at` | TIMESTAMPTZ | NOT NULL | Thời điểm cập nhật |
 | `deleted_at` | TIMESTAMPTZ | | Thời điểm xoá mềm — null = chưa xoá |
 
-> **UNIQUE(store_id, sku) WHERE deleted_at IS NULL**
+> **UNIQUE(business_id, sku) WHERE deleted_at IS NULL**
 
 ### `price_history` — Lịch sử thay đổi giá sản phẩm
 | Tên cột | Kiểu | Ràng buộc | Ý nghĩa |
 |---|---|---|---|
 | `id` | BIGSERIAL | PK | Khóa chính |
-| `store_id` | BIGINT | FK → stores, NOT NULL | Cửa hàng sở hữu — cho phép filter/index trực tiếp |
+| `business_id` | BIGINT | FK → businesses, NOT NULL | Doanh nghiệp sở hữu — cho phép filter/index trực tiếp |
 | `product_id` | BIGINT | FK → products, NOT NULL | Sản phẩm bị thay đổi giá |
 | `old_cost_price` | NUMERIC(15,2) | NOT NULL | Giá nhập cũ |
 | `new_cost_price` | NUMERIC(15,2) | NOT NULL | Giá nhập mới |
@@ -285,7 +344,7 @@
 | Tên cột | Kiểu | Ràng buộc | Ý nghĩa |
 |---|---|---|---|
 | `id` | BIGSERIAL | PK | Khóa chính |
-| `store_id` | BIGINT | FK → stores, NOT NULL | Cửa hàng sở hữu |
+| `business_id` | BIGINT | FK → businesses, NOT NULL | Doanh nghiệp sở hữu — khách hàng dùng chung toàn chi nhánh |
 | `code` | VARCHAR(20) | NOT NULL | Mã khách hàng (VD: KH-0001) |
 | `name` | VARCHAR(200) | NOT NULL | Tên khách hàng |
 | `phone` | VARCHAR(20) | | Số điện thoại |
@@ -303,13 +362,13 @@
 | `updated_at` | TIMESTAMPTZ | NOT NULL | Thời điểm cập nhật |
 | `deleted_at` | TIMESTAMPTZ | | Thời điểm xoá mềm — null = chưa xoá |
 
-> **UNIQUE(store_id, code) WHERE deleted_at IS NULL**
+> **UNIQUE(business_id, code) WHERE deleted_at IS NULL**
 
 ### `suppliers` — Nhà cung cấp
 | Tên cột | Kiểu | Ràng buộc | Ý nghĩa |
 |---|---|---|---|
 | `id` | BIGSERIAL | PK | Khóa chính |
-| `store_id` | BIGINT | FK → stores, NOT NULL | Cửa hàng sở hữu |
+| `business_id` | BIGINT | FK → businesses, NOT NULL | Doanh nghiệp sở hữu — nhà cung cấp dùng chung toàn chi nhánh |
 | `code` | VARCHAR(20) | NOT NULL | Mã nhà cung cấp (VD: NCC-0001) |
 | `name` | VARCHAR(200) | NOT NULL | Tên nhà cung cấp |
 | `phone` | VARCHAR(20) | | Số điện thoại |
@@ -326,7 +385,7 @@
 | `updated_at` | TIMESTAMPTZ | NOT NULL | Thời điểm cập nhật |
 | `deleted_at` | TIMESTAMPTZ | | Thời điểm xoá mềm — null = chưa xoá |
 
-> **UNIQUE(store_id, code) WHERE deleted_at IS NULL**
+> **UNIQUE(business_id, code) WHERE deleted_at IS NULL**
 
 ---
 
@@ -494,7 +553,8 @@
 | Tên cột | Kiểu | Ràng buộc | Ý nghĩa |
 |---|---|---|---|
 | `id` | BIGSERIAL | PK | Khóa chính |
-| `store_id` | BIGINT | FK → stores | Store liên quan — null nếu là hành động system-level |
+| `business_id` | BIGINT | FK → businesses | Doanh nghiệp liên quan — null nếu là hành động system-level |
+| `store_id` | BIGINT | FK → stores | Chi nhánh liên quan — null nếu hành động ở cấp business hoặc system |
 | `performed_by` | BIGINT | FK → users, NOT NULL | Người thực hiện |
 | `table_name` | VARCHAR(50) | NOT NULL | Bảng bị tác động (VD: `orders`, `products`) |
 | `record_id` | BIGINT | NOT NULL | ID của bản ghi bị tác động |
@@ -512,7 +572,7 @@
 | Tên cột | Kiểu | Ràng buộc | Ý nghĩa |
 |---|---|---|---|
 | `id` | BIGSERIAL | PK | Khóa chính |
-| `store_id` | BIGINT | FK → stores, NOT NULL | Cửa hàng thanh toán |
+| `business_id` | BIGINT | FK → businesses, NOT NULL | Doanh nghiệp thanh toán |
 | `plan` | VARCHAR(20) | NOT NULL | Gói tại thời điểm thanh toán: `FREE` / `BASIC` / `PRO` |
 | `billing_cycle` | VARCHAR(20) | NOT NULL | Chu kỳ: `MONTHLY` / `YEARLY` |
 | `amount` | NUMERIC(15,2) | NOT NULL | Số tiền thanh toán |
@@ -547,15 +607,18 @@
 ### FK columns — tránh full scan khi JOIN
 ```sql
 CREATE INDEX idx_admin_profiles_user_id       ON admin_profiles (user_id);
+CREATE INDEX idx_stores_business_id           ON stores (business_id) WHERE deleted_at IS NULL;
+CREATE INDEX idx_business_members_user_id     ON business_members (user_id);
+CREATE INDEX idx_business_members_business_id ON business_members (business_id);
 CREATE INDEX idx_store_members_user_id        ON store_members (user_id);
 CREATE INDEX idx_store_members_store_id       ON store_members (store_id);
-CREATE INDEX idx_categories_store_id          ON categories (store_id) WHERE deleted_at IS NULL;
-CREATE INDEX idx_products_store_id            ON products (store_id) WHERE deleted_at IS NULL;
+CREATE INDEX idx_categories_business_id       ON categories (business_id) WHERE deleted_at IS NULL;
+CREATE INDEX idx_products_business_id         ON products (business_id) WHERE deleted_at IS NULL;
 CREATE INDEX idx_products_category_id         ON products (category_id);
 CREATE INDEX idx_warehouses_store_id          ON warehouses (store_id) WHERE deleted_at IS NULL;
 CREATE INDEX idx_inventory_warehouse_id       ON inventory (warehouse_id);
-CREATE INDEX idx_customers_store_id           ON customers (store_id) WHERE deleted_at IS NULL;
-CREATE INDEX idx_suppliers_store_id           ON suppliers (store_id) WHERE deleted_at IS NULL;
+CREATE INDEX idx_customers_business_id        ON customers (business_id) WHERE deleted_at IS NULL;
+CREATE INDEX idx_suppliers_business_id        ON suppliers (business_id) WHERE deleted_at IS NULL;
 CREATE INDEX idx_orders_customer_id           ON orders (customer_id);
 CREATE INDEX idx_orders_warehouse_id          ON orders (warehouse_id);
 CREATE INDEX idx_order_items_order_id         ON order_items (order_id);
@@ -569,16 +632,16 @@ CREATE INDEX idx_inventory_tx_product_id      ON inventory_transactions (product
 
 ### Composite indexes — cho query nghiệp vụ phổ biến
 ```sql
--- Lọc đơn hàng theo store + trạng thái (dashboard chủ quán)
+-- Lọc đơn hàng theo chi nhánh + trạng thái (dashboard chi nhánh)
 CREATE INDEX idx_orders_store_status          ON orders (store_id, status);
 
--- Lọc đơn hàng theo store + thời gian (báo cáo doanh thu)
+-- Lọc đơn hàng theo chi nhánh + thời gian (báo cáo doanh thu chi nhánh)
 CREATE INDEX idx_orders_store_created         ON orders (store_id, created_at DESC);
 
--- Lịch sử kho theo store + thời gian
+-- Lịch sử kho theo chi nhánh + thời gian
 CREATE INDEX idx_inv_tx_store_created         ON inventory_transactions (store_id, created_at DESC);
 
--- Lọc đơn nhập theo store + trạng thái
+-- Lọc đơn nhập theo chi nhánh + trạng thái
 CREATE INDEX idx_po_store_status              ON purchase_orders (store_id, status);
 
 -- Tìm tồn kho theo product
@@ -592,16 +655,16 @@ CREATE INDEX idx_inv_tx_po_id                 ON inventory_transactions (purchas
 CREATE INDEX idx_inventory_product_qty        ON inventory (product_id, quantity);
 
 -- Công nợ khách hàng — filter nhanh khách có nợ
-CREATE INDEX idx_customers_store_debt
-  ON customers (store_id, debt_balance DESC) WHERE deleted_at IS NULL AND debt_balance > 0;
+CREATE INDEX idx_customers_business_debt
+  ON customers (business_id, debt_balance DESC) WHERE deleted_at IS NULL AND debt_balance > 0;
 
 -- Công nợ nhà cung cấp
-CREATE INDEX idx_suppliers_store_debt
-  ON suppliers (store_id, debt_balance DESC) WHERE deleted_at IS NULL AND debt_balance > 0;
+CREATE INDEX idx_suppliers_business_debt
+  ON suppliers (business_id, debt_balance DESC) WHERE deleted_at IS NULL AND debt_balance > 0;
 
 -- is_active + deleted_at composite
-CREATE INDEX idx_products_store_active
-  ON products (store_id, is_active) WHERE deleted_at IS NULL;
+CREATE INDEX idx_products_business_active
+  ON products (business_id, is_active) WHERE deleted_at IS NULL;
 CREATE INDEX idx_warehouses_store_active
   ON warehouses (store_id, is_active) WHERE deleted_at IS NULL;
 
@@ -612,20 +675,21 @@ CREATE INDEX idx_return_order_items_ro_id      ON return_order_items (return_ord
 CREATE INDEX idx_return_order_items_store_id   ON return_order_items (store_id);
 
 -- price_history
-CREATE INDEX idx_price_history_product_id     ON price_history (product_id, changed_at DESC);
-CREATE INDEX idx_price_history_store_created  ON price_history (store_id, changed_at DESC);
+CREATE INDEX idx_price_history_product_id        ON price_history (product_id, changed_at DESC);
+CREATE INDEX idx_price_history_business_created  ON price_history (business_id, changed_at DESC);
 
--- units per-store
-CREATE INDEX idx_units_store_id               ON units (store_id) WHERE store_id IS NOT NULL AND deleted_at IS NULL;
+-- units per-business
+CREATE INDEX idx_units_business_id               ON units (business_id) WHERE business_id IS NOT NULL AND deleted_at IS NULL;
 
 -- audit_logs — query theo bảng + record hoặc theo người thực hiện
-CREATE INDEX idx_audit_logs_store_id           ON audit_logs (store_id, created_at DESC);
+CREATE INDEX idx_audit_logs_business_id           ON audit_logs (business_id, created_at DESC);
+CREATE INDEX idx_audit_logs_store_id              ON audit_logs (store_id, created_at DESC);
 CREATE INDEX idx_audit_logs_table_record       ON audit_logs (table_name, record_id);
 CREATE INDEX idx_audit_logs_performed_by       ON audit_logs (performed_by, created_at DESC);
 
 -- subscription_invoices
-CREATE INDEX idx_sub_invoices_store_id         ON subscription_invoices (store_id, created_at DESC);
-CREATE INDEX idx_sub_invoices_status           ON subscription_invoices (store_id, status) WHERE status = 'PENDING';
+CREATE INDEX idx_sub_invoices_business_id      ON subscription_invoices (business_id, created_at DESC);
+CREATE INDEX idx_sub_invoices_status           ON subscription_invoices (business_id, status) WHERE status = 'PENDING';
 
 -- full-text search
 CREATE INDEX idx_products_search_vector  ON products  USING GIN (search_vector);
@@ -698,26 +762,29 @@ ALTER TABLE order_items  ADD CONSTRAINT chk_order_items_discount_type
 > Dùng cho các báo cáo tổng hợp — tránh full scan mỗi lần chủ quán xem dashboard.
 > Refresh định kỳ hoặc sau mỗi sự kiện quan trọng (order completed, payment recorded).
 
-### `mv_monthly_revenue` — Doanh thu theo tháng
+### `mv_monthly_revenue` — Doanh thu theo tháng (theo chi nhánh)
 ```sql
 CREATE MATERIALIZED VIEW mv_monthly_revenue AS
-SELECT store_id,
-       DATE_TRUNC('month', created_at)::DATE AS month,
-       SUM(total_amount)                     AS revenue,
-       SUM(paid_amount)                      AS collected,
-       SUM(debt_amount)                      AS uncollected,
-       COUNT(*)                              AS order_count
-FROM orders
-WHERE status = 'COMPLETED'
-GROUP BY store_id, DATE_TRUNC('month', created_at);
+SELECT s.business_id,
+       o.store_id,
+       DATE_TRUNC('month', o.created_at)::DATE AS month,
+       SUM(o.total_amount)                     AS revenue,
+       SUM(o.paid_amount)                      AS collected,
+       SUM(o.debt_amount)                      AS uncollected,
+       COUNT(*)                                AS order_count
+FROM orders o
+JOIN stores s ON s.id = o.store_id
+WHERE o.status = 'COMPLETED'
+GROUP BY s.business_id, o.store_id, DATE_TRUNC('month', o.created_at);
 
 CREATE UNIQUE INDEX ON mv_monthly_revenue (store_id, month);
+CREATE INDEX ON mv_monthly_revenue (business_id, month); -- aggregate toàn business
 ```
 
 ### `mv_inventory_summary` — Tổng tồn kho theo sản phẩm
 ```sql
 CREATE MATERIALIZED VIEW mv_inventory_summary AS
-SELECT p.store_id,
+SELECT p.business_id,
        p.id          AS product_id,
        p.name        AS product_name,
        p.sku,
@@ -727,10 +794,10 @@ SELECT p.store_id,
 FROM products p
 JOIN inventory i ON i.product_id = p.id
 WHERE p.deleted_at IS NULL
-GROUP BY p.store_id, p.id, p.name, p.sku, p.min_stock_level;
+GROUP BY p.business_id, p.id, p.name, p.sku, p.min_stock_level;
 
-CREATE UNIQUE INDEX ON mv_inventory_summary (store_id, product_id);
-CREATE INDEX ON mv_inventory_summary (store_id, is_low_stock) WHERE is_low_stock = true;
+CREATE UNIQUE INDEX ON mv_inventory_summary (business_id, product_id);
+CREATE INDEX ON mv_inventory_summary (business_id, is_low_stock) WHERE is_low_stock = true;
 ```
 
 ### Refresh strategy
@@ -764,6 +831,7 @@ REFRESH MATERIALIZED VIEW CONCURRENTLY mv_inventory_summary;
 
 ```sql
 -- Kiểm tra drift của customers.debt_balance
+-- customers giờ là business-level; orders vẫn ở store (branch) level — join bình thường
 -- Kết quả phải rỗng — bất kỳ row nào trả về là có bug
 SELECT c.id,
        c.name,

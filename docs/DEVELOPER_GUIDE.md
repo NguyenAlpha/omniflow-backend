@@ -63,6 +63,20 @@ userRoleRepository.findActiveStoreRolesWithDetails(userId)             // JOIN F
 
 Sau đó join in-memory qua `storeId` — không gọi thêm query nào.
 
+### Optimistic Locking với @Version
+
+Entity có field `syncVersion` phải có `@Version` để Hibernate đánh optimistic lock tự động:
+
+```java
+@Version
+@Builder.Default
+@Column(nullable = false)
+private Long syncVersion = 0L;
+```
+
+Entity đang áp dụng: `Order`, `OrderItem`, `Product`, `Inventory`.
+Hibernate tự tăng `syncVersion` khi save — không set thủ công.
+
 ---
 
 ## 2. Transaction Conventions
@@ -162,13 +176,58 @@ List<Product> findByStoreId(Long storeId);
 □ Mutation: cập nhật debt_balance nếu liên quan customer/supplier
 □ Mutation: ghi sync_change_log trong cùng transaction
 □ Mutation: evictStoreRoleCache nếu thay đổi UserRole
-□ Throw đúng exception type (xem ERROR_LIFECYCLE.md)
+□ Throw đúng exception type (xem ERROR_LIFECYCLE.md) — dùng ResourceNotFoundException, không dùng IllegalStateException
 □ Immutable table không có DELETE/UPDATE nội dung — chỉ UPDATE status
+□ Pagination: controller size param có @Max(100) @Min(1) và class có @Validated
+□ String column có tập giá trị cố định → dùng enum với @Enumerated(EnumType.STRING)
+□ Entity có syncVersion → phải có @Version annotation
 ```
 
 ---
 
-## 5. Naming Conventions
+## 5. Thêm Audit Log cho Service Method Mới
+
+Mỗi write operation quan trọng được audit qua annotation `@Auditable`:
+
+```java
+// Thêm annotation trước @Transactional trên method của service
+@Auditable(action = "CREATE_WAREHOUSE", entityType = "WAREHOUSE")
+@Transactional
+public WarehouseResponse create(Long storeId, WarehouseRequest request, UserPrincipal currentUser) {
+    ...
+}
+```
+
+`AuditAspect` tự động capture:
+- `user_id` — từ `SecurityContext`
+- `store_id` / `business_id` — từ param tên `storeId` / `businessId`
+- `new_value` — JSON của DTO đầu tiên trong args (không phải Long/UUID/UserPrincipal)
+- `ip` — từ `X-Forwarded-For` hoặc `remoteAddr`
+- Log được ghi **async** trong transaction riêng — lỗi audit không ảnh hưởng business transaction
+
+`old_value` hiện tại luôn null. Nếu cần capture giá trị trước khi thay đổi (cho UPDATE/DELETE), gọi thủ công `auditService.log(...)` trong service thay vì dùng annotation.
+
+---
+
+## 7. Gửi Email Async
+
+`EmailService` dùng `@Async` — mỗi method chạy trong thread pool riêng, không block transaction gọi nó.
+
+```java
+// Đúng — fetch entity data TRONG transaction, sau đó gọi async với primitive values
+String email = invoice.getBusiness().getEmail();
+String name  = invoice.getBusiness().getName();
+emailService.sendInvoiceConfirmed(email, name, plan, amount, expiresAt); // ← @Async
+
+// Sai — truyền entity vào async method
+emailService.sendInvoiceConfirmed(invoice.getBusiness(), ...); // ← entity có thể bị detach
+```
+
+`JavaMailSender` là optional — nếu `spring.mail.host` chưa cấu hình thì bean không tồn tại và `EmailService` tự skip (không throw). Set biến môi trường `MAIL_HOST`, `MAIL_USERNAME`, `MAIL_PASSWORD` để bật.
+
+---
+
+## 6. Naming Conventions
 
 ### Repository methods
 
@@ -190,7 +249,7 @@ List<Product> findByStoreId(Long storeId);
 ### Exception
 
 ```java
-// Entity không tìm thấy
+// Entity không tìm thấy — ResourceNotFoundException, không dùng IllegalStateException
 throw new ResourceNotFoundException(ErrorCode.PRODUCT_NOT_FOUND, "Product not found");
 
 // Không đủ quyền (business rule, không phải Spring Security)

@@ -42,10 +42,12 @@ và khả năng sync offline (sync chưa triển khai ngay).
 | File                                     | Nội dung                                         |
 |:-----------------------------------------|:-------------------------------------------------|
 | [ARCHITECTURE.md](ARCHITECTURE.md)       | Cấu trúc package, layer design, dependencies     |
-| [ENTITY_MODEL.md](ENTITY_MODEL.md)       | 26 entities theo domain, DB conventions          |
 | [SECURITY.md](SECURITY.md)               | Hybrid JWT + Redis RBAC, cách dùng @PreAuthorize |
-| [API.md](API.md)                         | Tất cả endpoints, access level                   |
+| [API](api)                               | Tất cả endpoints, access level                   |
+| [SUBSCRIPTION.md](api/SUBSCRIPTION.md)  | Luồng nâng cấp gói, invoice, xác nhận CK        |
 | [DEVELOPER_GUIDE.md](DEVELOPER_GUIDE.md) | Conventions: JPA, query pattern, naming          |
+| [REDIS_CACHE.md](REDIS_CACHE.md)     | Giải thích cơ chế cache Redis          |
+
 
 ### Lifecycle & Flow
 | File                                                   | Nội dung                                      |
@@ -54,3 +56,8 @@ và khả năng sync offline (sync chưa triển khai ngay).
 | [TOKEN_LIFECYCLE.md](TOKEN_LIFECYCLE.md)               | JWT token — issue, validate, expire, giới hạn |
 | [ERROR_LIFECYCLE.md](ERROR_LIFECYCLE.md)               | Exception → HTTP response, mapping table      |
 | [STORE_MEMBER_LIFECYCLE.md](STORE_MEMBER_LIFECYCLE.md) | Vòng đời member: add, update role, remove     |
+| [ORDER_LIFECYCLE.md](ORDER_LIFECYCLE.md)               | Vòng đời order: add, update role, remove      |
+### Tính năng
+| File                                                   | Nội dung                                      |
+|:-------------------------------------------------------|:----------------------------------------------|
+| [FEATURES.md](FEATURES.md)               | liệt kê các chức năng                            |
