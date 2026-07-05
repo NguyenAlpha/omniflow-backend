@@ -1,17 +1,19 @@
 package com.quiktech.backend.entity;
 
-import lombok.*;
 import jakarta.persistence.*;
+import lombok.*;
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
-import com.fasterxml.jackson.databind.JsonNode;
+
 import java.time.Instant;
 
 @Entity
 @Table(name = "audit_logs", indexes = {
-    @Index(name = "idx_audit_logs_store_id", columnList = "store_id"),
-    @Index(name = "idx_audit_logs_performed_by", columnList = "performed_by"),
-    @Index(name = "idx_audit_logs_table_record", columnList = "table_name")
+        @Index(name = "idx_audit_logs_user_id",     columnList = "user_id"),
+        @Index(name = "idx_audit_logs_store_id",    columnList = "store_id"),
+        @Index(name = "idx_audit_logs_business_id", columnList = "business_id"),
+        @Index(name = "idx_audit_logs_entity",      columnList = "entity_type, entity_id"),
+        @Index(name = "idx_audit_logs_created_at",  columnList = "created_at")
 })
 @Getter
 @Setter
@@ -24,38 +26,36 @@ public class AuditLog {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @ManyToOne
-    @JoinColumn(name = "store_id")
-    private Store store; // null if system-level action
+    @Column(name = "user_id")
+    private Long userId;
 
-    @ManyToOne(optional = false)
-    @JoinColumn(name = "performed_by", nullable = false)
-    private User performedBy;
+    @Column(name = "business_id")
+    private Long businessId;
+
+    @Column(name = "store_id")
+    private Long storeId;
 
     @Column(nullable = false, length = 50)
-    private String tableName;
+    private String action;
 
-    @Column(nullable = false)
-    private Long recordId;
+    @Column(nullable = false, length = 50, name = "entity_type")
+    private String entityType;
 
-    @Column(nullable = false, length = 10)
-    private String action; // CREATE, UPDATE, DELETE
+    @Column(name = "entity_id")
+    private Long entityId;
 
-    @Column(columnDefinition = "JSONB")
     @JdbcTypeCode(SqlTypes.JSON)
-    private JsonNode oldData; // null if action = CREATE
+    @Column(columnDefinition = "jsonb", name = "old_value")
+    private String oldValue;
 
-    @Column(columnDefinition = "JSONB")
     @JdbcTypeCode(SqlTypes.JSON)
-    private JsonNode newData; // null if action = DELETE
+    @Column(columnDefinition = "jsonb", name = "new_value")
+    private String newValue;
 
     @Column(length = 45)
-    private String ipAddress;
+    private String ip;
 
+    @Builder.Default
     @Column(nullable = false, columnDefinition = "TIMESTAMPTZ")
     private Instant createdAt = Instant.now();
-
-    @Column(nullable = false, columnDefinition = "TIMESTAMPTZ")
-    private Instant updatedAt = Instant.now();
 }
-
