@@ -21,11 +21,14 @@ import com.quiktech.backend.repository.StoreMemberRepository;
 import com.quiktech.backend.repository.StoreRepository;
 import com.quiktech.backend.repository.UserRepository;
 import com.quiktech.backend.repository.UserRoleRepository;
+import com.quiktech.backend.security.BusinessAccessEvaluator;
 import com.quiktech.backend.security.StoreAccessEvaluator;
 import com.quiktech.backend.security.UserPrincipal;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.time.Instant;
 import java.time.LocalDate;
@@ -46,6 +49,7 @@ public class StoreService {
     private final UserRoleRepository userRoleRepository;
     private final RoleRepository roleRepository;
     private final StoreAccessEvaluator storeAccessEvaluator;
+    private final BusinessAccessEvaluator businessAccessEvaluator;
     private final SubscriptionLimitService subscriptionLimitService;
 
     @Transactional
@@ -159,14 +163,14 @@ public class StoreService {
         userRoleRepository.save(userRole);
 
         // Xóa cache cũ nếu user đã từng có role trong store này
-        storeAccessEvaluator.evictStoreRoleCache(request.userId(), storeId);
+        evictMemberCachesAfterCommit(request.userId(), storeId, store.getBusiness().getId());
 
         return toMemberResponse(member, userRole);
     }
 
     @Transactional
     public StoreMemberResponse updateMember(Long storeId, Long memberId, UpdateMemberRequest request, UserPrincipal currentUser) {
-        findStoreOrThrow(storeId);
+        Store store = findStoreOrThrow(storeId);
 
         StoreMember member = storeMemberRepository.findById(memberId)
                 .orElseThrow(() -> new ResourceNotFoundException(ErrorCode.STORE_MEMBER_NOT_FOUND, "Member not found"));
@@ -183,14 +187,14 @@ public class StoreService {
         member.setIsActive(request.isActive());
         storeMemberRepository.save(member);
 
-        storeAccessEvaluator.evictStoreRoleCache(member.getUser().getId(), storeId);
+        evictMemberCachesAfterCommit(member.getUser().getId(), storeId, store.getBusiness().getId());
 
         return toMemberResponse(member, userRole);
     }
 
     @Transactional
     public void removeMember(Long storeId, Long memberId) {
-        findStoreOrThrow(storeId);
+        Store store = findStoreOrThrow(storeId);
 
         StoreMember member = storeMemberRepository.findById(memberId)
                 .orElseThrow(() -> new ResourceNotFoundException(ErrorCode.STORE_MEMBER_NOT_FOUND, "Member not found"));
@@ -208,7 +212,29 @@ public class StoreService {
             userRoleRepository.save(userRole);
         }
 
-        storeAccessEvaluator.evictStoreRoleCache(member.getUser().getId(), storeId);
+        evictMemberCachesAfterCommit(member.getUser().getId(), storeId, store.getBusiness().getId());
+    }
+
+    /**
+     * Đăng ký evict cache phân quyền SAU KHI transaction commit.
+     *
+     * <p>Phải after-commit vì nếu evict ngay giữa transaction: request khác chen vào
+     * (sau evict, trước commit) sẽ cache-miss → đọc DB thấy role CŨ (chưa commit)
+     * → ghi lại role cũ vào cache với TTL đầy đủ — quyền vừa gỡ "hồi sinh" tới 5 phút.
+     * (Xem Javadoc {@code StoreAccessEvaluator.evictStoreRoleCache}.)
+     *
+     * <p>Evict cả 2 tầng: {@code store:role} (StoreAccessEvaluator — quyền theo store)
+     * và {@code business:member} (BusinessAccessEvaluator — quyền catalog cấp business,
+     * suy ra từ store membership nên phải invalidate cùng lúc).
+     */
+    private void evictMemberCachesAfterCommit(Long userId, Long storeId, Long businessId) {
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCommit() {
+                storeAccessEvaluator.evictStoreRoleCache(userId, storeId);
+                businessAccessEvaluator.evictBusinessMemberCache(userId, businessId);
+            }
+        });
     }
 
     private Store findStoreOrThrow(Long storeId) {

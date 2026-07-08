@@ -128,8 +128,13 @@ resolveBusinessMemberRoleWithCache(userId, businessId)?
 - Business store membership: `business:member:{userId}:{businessId}` — TTL 300s, lưu role cao nhất (`ROLE_MANAGER` hoặc `ROLE_STAFF`)
 
 **Cache invalidation:**
-- `BusinessAccessEvaluator.evictBusinessRoleCache(userId, businessId)` — sau khi thay đổi OWNER role
-- `BusinessAccessEvaluator.evictBusinessMemberCache(userId, businessId)` — sau khi thay đổi store membership
+- `BusinessAccessEvaluator.evictBusinessRoleCache(userId, businessId)` — sau khi thay đổi OWNER role.
+  Hiện chưa có code path nào thu hồi OWNER role nên chưa có điểm gọi; cache chỉ lưu kết quả positive
+  nên việc *cấp* OWNER mới có hiệu lực ngay (cache miss → DB), không cần evict.
+- `BusinessAccessEvaluator.evictBusinessMemberCache(userId, businessId)` — sau khi thay đổi store membership.
+  `StoreService` gọi tại add/update/removeMember, đăng ký chạy **sau khi transaction commit**
+  (`TransactionSynchronizationManager.registerSynchronization`) — nếu evict giữa transaction,
+  request khác chen vào sẽ cache lại role cũ chưa commit với TTL đầy đủ.
 
 ---
 
@@ -175,8 +180,9 @@ isOwnerWithCache(userId, businessId)?    → true / false
 - Store → businessId: `store:business:{storeId}` — TTL 300s (businessId không bao giờ thay đổi sau khi set)
 - Business OWNER role: `business:role:{userId}:{businessId}` — TTL 300s (shared key với `BusinessAccessEvaluator`, chỉ cache OWNER)
 
-**Cache invalidation:** Gọi `StoreAccessEvaluator.evictStoreRoleCache(userId, storeId)` sau khi add/update/remove member của store.
-Gọi `BusinessAccessEvaluator.evictBusinessRoleCache(userId, businessId)` sau khi thay đổi OWNER role của business.
+**Cache invalidation:** Gọi `StoreAccessEvaluator.evictStoreRoleCache(userId, storeId)` sau khi add/update/remove member của store —
+`StoreService` evict đồng thời cả `business:member` cache, đăng ký chạy sau khi transaction commit (xem mục 5).
+Gọi `BusinessAccessEvaluator.evictBusinessRoleCache(userId, businessId)` sau khi thay đổi OWNER role của business (hiện chưa có code path thu hồi OWNER).
 
 ---
 
