@@ -14,8 +14,8 @@ CREATE TABLE audit_logs (
     created_at  TIMESTAMPTZ  NOT NULL DEFAULT NOW()
 );
 
-CREATE INDEX idx_audit_logs_user_id     ON audit_logs(user_id);
-CREATE INDEX idx_audit_logs_store_id    ON audit_logs(store_id);
-CREATE INDEX idx_audit_logs_business_id ON audit_logs(business_id);
+CREATE INDEX idx_audit_logs_user_id     ON audit_logs(user_id, created_at DESC);
+CREATE INDEX idx_audit_logs_store_id    ON audit_logs(store_id, created_at DESC);
+CREATE INDEX idx_audit_logs_business_id ON audit_logs(business_id, created_at DESC);
 CREATE INDEX idx_audit_logs_entity      ON audit_logs(entity_type, entity_id);
 CREATE INDEX idx_audit_logs_created_at  ON audit_logs(created_at DESC);

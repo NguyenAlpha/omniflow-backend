@@ -259,8 +259,7 @@ CREATE TABLE inventory (
     CONSTRAINT fk_inventory_product FOREIGN KEY (product_id) REFERENCES products(id),
     CONSTRAINT fk_inventory_warehouse FOREIGN KEY (warehouse_id) REFERENCES warehouses(id),
     CONSTRAINT fk_inventory_store FOREIGN KEY (store_id) REFERENCES stores(id),
-    CONSTRAINT fk_inventory_modified_by FOREIGN KEY (last_modified_by_user) REFERENCES users(id),
-    CONSTRAINT ux_inventory_product_warehouse UNIQUE (product_id, warehouse_id)
+    CONSTRAINT fk_inventory_modified_by FOREIGN KEY (last_modified_by_user) REFERENCES users(id)
 );
 
 CREATE TABLE inventory_transactions (
@@ -618,8 +617,16 @@ CREATE INDEX idx_audit_logs_table_record ON audit_logs(table_name, record_id);
 CREATE INDEX idx_audit_logs_performed_by ON audit_logs(performed_by, created_at DESC);
 CREATE INDEX idx_sub_invoices_business_id ON subscription_invoices(business_id, created_at DESC);
 CREATE INDEX idx_sub_invoices_status ON subscription_invoices(business_id, status) WHERE status = 'PENDING';
+CREATE INDEX idx_sync_log_store_version ON sync_change_log(store_id, sync_version);
+CREATE INDEX idx_payments_store_created ON payments(store_id, created_at DESC);
+CREATE INDEX idx_order_items_store_id ON order_items(store_id);
+CREATE INDEX idx_inventory_tx_warehouse_id ON inventory_transactions(warehouse_id);
+CREATE INDEX idx_purchase_orders_warehouse_id ON purchase_orders(warehouse_id);
+CREATE INDEX idx_return_order_items_product_id ON return_order_items(product_id);
+CREATE INDEX idx_inventory_store_id ON inventory(store_id);
 
 -- Partial UNIQUE indexes for soft-delete semantics
+CREATE UNIQUE INDEX ux_inventory_product_warehouse ON inventory(product_id, warehouse_id) WHERE deleted_at IS NULL;
 CREATE UNIQUE INDEX ux_business_members_user_business ON business_members(user_id, business_id) WHERE deleted_at IS NULL;
 CREATE UNIQUE INDEX ux_store_members_user_store ON store_members(user_id, store_id) WHERE deleted_at IS NULL;
 -- COALESCE: treat NULL as 0 so global/business/branch roles are each unique per (user, role, scope)
@@ -670,7 +677,7 @@ ALTER TABLE purchase_orders ADD CONSTRAINT chk_po_status CHECK (status IN ('PEND
 ALTER TABLE purchase_order_items ADD CONSTRAINT chk_poi_quantity CHECK (quantity > 0);
 
 ALTER TABLE payments ADD CONSTRAINT chk_payments_amount CHECK (amount > 0);
-ALTER TABLE payments ADD CONSTRAINT chk_payments_method CHECK (payment_method IN ('CASH', 'BANK_TRANSFER'));
+ALTER TABLE payments ADD CONSTRAINT chk_payments_method CHECK (payment_method IN ('CASH', 'BANK_TRANSFER', 'CREDIT_CARD', 'DEBIT_CARD', 'MOBILE_PAYMENT', 'OTHER'));
 ALTER TABLE payments ADD CONSTRAINT chk_payments_reference CHECK (customer_id IS NULL OR supplier_id IS NULL);
 
 ALTER TABLE inventory ADD CONSTRAINT chk_inventory_qty CHECK (quantity >= 0);
