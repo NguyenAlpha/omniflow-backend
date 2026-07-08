@@ -27,6 +27,7 @@ public class UserService {
 
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
+    private final RefreshTokenService refreshTokenService;
 
     @Transactional(readOnly = true)
     public UserSummaryResponse getProfile(UserPrincipal currentUser) {
@@ -55,6 +56,10 @@ public class UserService {
         user.setPasswordHash(passwordEncoder.encode(request.newPassword()));
         user.setUpdatedAt(Instant.now());
         userRepository.save(user);
+        // Đổi mật khẩu = thu hồi toàn bộ refresh token: nếu kẻ tấn công đang giữ
+        // refresh token cũ (lý do khiến user đổi mật khẩu) thì phiên đó bị cắt ngay,
+        // không thể tự gia hạn tiếp. Access token cũ vẫn sống tối đa jwt.expiration.
+        refreshTokenService.revokeAll(user.getId());
     }
 
     // === Admin ===
@@ -85,6 +90,11 @@ public class UserService {
         User user = findOrThrow(userId);
         user.setIsActive(request.isActive());
         user.setUpdatedAt(Instant.now());
+        if (!request.isActive()) {
+            // Khóa tài khoản phải thu hồi refresh token ngay — nếu không, user bị khóa
+            // vẫn giữ được phiên vô thời hạn qua vòng lặp refresh (CRITICAL #2).
+            refreshTokenService.revokeAll(userId);
+        }
         return toAdminResponse(userRepository.save(user));
     }
 
@@ -98,6 +108,9 @@ public class UserService {
         user.setIsActive(false);
         user.setUpdatedAt(Instant.now());
         userRepository.save(user);
+        // Xóa mềm cũng phải thu hồi toàn bộ refresh token (như khóa tài khoản):
+        // chặn user đã offboard tiếp tục gia hạn phiên (CRITICAL #2).
+        refreshTokenService.revokeAll(userId);
     }
 
     private void checkUsernameAndEmailUnique(String username, String email, Long excludeId) {

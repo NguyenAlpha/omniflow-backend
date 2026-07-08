@@ -6,9 +6,11 @@ import com.quiktech.backend.dto.response.auth.AuthResponse;
 import com.quiktech.backend.dto.response.auth.BusinessMembershipResponse;
 import com.quiktech.backend.dto.response.auth.StoreInfo;
 import com.quiktech.backend.dto.response.auth.UserSummaryResponse;
+import com.quiktech.backend.dto.response.common.ErrorCode;
 import com.quiktech.backend.entity.StoreMember;
 import com.quiktech.backend.entity.User;
 import com.quiktech.backend.entity.UserRole;
+import com.quiktech.backend.exception.InvalidTokenException;
 import com.quiktech.backend.repository.StoreMemberRepository;
 import com.quiktech.backend.repository.StoreRepository;
 import com.quiktech.backend.repository.UserRepository;
@@ -81,10 +83,23 @@ public class AuthService {
         return buildAuthResponse(user);
     }
 
-    @Transactional
+    /**
+     * noRollbackFor bắt buộc (xem Javadoc RefreshTokenService.rotate): transaction này
+     * bao cả rotate() (propagation REQUIRED) — nếu InvalidTokenException gây rollback
+     * ở tầng này thì các UPDATE revoke trong rotate()/nhánh user-disabled đều bị hủy.
+     */
+    @Transactional(noRollbackFor = InvalidTokenException.class)
     public AuthResponse refresh(String refreshToken) {
         RefreshTokenService.RotateResult result = refreshTokenService.rotate(refreshToken);
-        User user = userRepository.findById(result.userId()).orElseThrow();
+        // User bị xóa mềm sẽ không tìm thấy do @SQLRestriction("deleted_at IS NULL");
+        // user bị khóa thì isEnabled() = false. Cả 2 trường hợp: thu hồi toàn bộ refresh
+        // token để chặn user offboarded tự gia hạn phiên vô thời hạn (CRITICAL #2).
+        User user = userRepository.findById(result.userId()).orElse(null);
+        if (user == null || !user.isEnabled()) {
+            refreshTokenService.revokeAll(result.userId());
+            log.warn("Refresh blocked for disabled/deleted userId={} — all tokens revoked", result.userId());
+            throw new InvalidTokenException(ErrorCode.REFRESH_TOKEN_INVALID, "User account is disabled");
+        }
         return buildBundle(user, result.newToken());
     }
 

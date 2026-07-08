@@ -113,28 +113,44 @@ BearerTokenAuthenticationFilter nhận "Authorization: Bearer <token>"
 ```
 POST /api/auth/refresh { "refreshToken": "<64-char opaque token>" }
     │
-    └── RefreshTokenService.rotate(tokenValue)
+    └── AuthService.refresh(tokenValue)
         │
-        ├── SELECT refresh_tokens WHERE token = ?
-        │   └── Không tìm thấy → InvalidTokenException (REFRESH_TOKEN_INVALID) → 401
+        ├── RefreshTokenService.rotate(tokenValue)
+        │   │
+        │   ├── SELECT refresh_tokens WHERE token = ?
+        │   │   └── Không tìm thấy → InvalidTokenException (REFRESH_TOKEN_INVALID) → 401
+        │   │
+        │   ├── Revoke atomic: UPDATE ... SET revoked_at = now
+        │   │                  WHERE token = ? AND revoked_at IS NULL
+        │   │   │
+        │   │   ├── affected = 0 → token đã bị revoke trước đó
+        │   │   │   └── Reuse detected — có thể bị đánh cắp
+        │   │   │       → revokeAllByUserId (vô hiệu toàn bộ token của user)
+        │   │   │       → InvalidTokenException (REFRESH_TOKEN_INVALID) → 401
+        │   │   │
+        │   │   └── affected = 1 → request này "thắng" (2 request song song
+        │   │       cùng 1 token được DB serialize — request thua rơi vào nhánh reuse)
+        │   │
+        │   ├── Token đã hết hạn (expiresAt < now)?
+        │   │   └── (đã bị đánh dấu revoke bởi UPDATE atomic ở trên)
+        │   │       → InvalidTokenException (REFRESH_TOKEN_EXPIRED) → 401
+        │   │
+        │   └── INSERT new refresh_token (30 ngày) → trả về (newToken, userId)
         │
-        ├── Token đã bị revoke (revokedAt IS NOT NULL)?
-        │   └── Reuse detected — có thể bị đánh cắp
-        │       → revokeAllByUserId (vô hiệu toàn bộ token của user)
-        │       → InvalidTokenException (REFRESH_TOKEN_INVALID) → 401
+        ├── Check user status: user bị soft-delete hoặc isActive = false?
+        │   └── revokeAll(userId) → InvalidTokenException (REFRESH_TOKEN_INVALID) → 401
+        │       (chặn user offboarded tự gia hạn phiên vô thời hạn)
         │
-        ├── Token đã hết hạn (expiresAt < now)?
-        │   └── SET revokedAt = now
-        │       → InvalidTokenException (REFRESH_TOKEN_EXPIRED) → 401
-        │
-        └── Token hợp lệ:
-            ├── SET old_token.revokedAt = now  ← revoke cái cũ
-            ├── INSERT new refresh_token       ← issue cái mới (30 ngày)
-            └── Trả về AuthResponse mới (access token 24h + refresh token mới)
+        └── Trả về AuthResponse mới (access token 24h + refresh token mới)
 ```
 
 **Rotation:** Mỗi lần refresh, refresh token cũ bị revoke, token mới được cấp.
 Client phải lưu token mới sau mỗi lần refresh.
+
+**Transaction:** `rotate()` và `AuthService.refresh()` đều khai báo
+`@Transactional(noRollbackFor = InvalidTokenException.class)` — bắt buộc, vì các nhánh
+lỗi vừa GHI DB (revoke-all khi phát hiện reuse / user bị khóa) vừa ném exception.
+Nếu để rollback mặc định thì các UPDATE revoke bị hủy và theft-detection vô hiệu.
 
 ---
 
@@ -166,8 +182,9 @@ Các trường hợp cụ thể:
 
 | Sự kiện | Hành vi hiện tại |
 |:---|:---|
-| User bị deactivate (`isActive = false`) | Token vẫn pass filter. Chỉ bị chặn ở `DaoAuthProvider` nếu login lại |
-| User bị soft-delete | Tương tự — access token cũ vẫn hoạt động trong 24h |
+| User bị deactivate (`isActive = false`) | Toàn bộ refresh token bị revoke ngay. Access token cũ vẫn pass filter đến khi hết hạn (tối đa 24h), nhưng không thể refresh — cả rotate lẫn check user status trong `AuthService.refresh` đều chặn |
+| User bị soft-delete | Tương tự deactivate — refresh token bị revoke ngay, access token cũ chỉ sống nốt tối đa 24h |
+| User đổi mật khẩu | Toàn bộ refresh token bị revoke — phiên của kẻ đang giữ token cũ bị cắt ngay |
 | Global role bị thu hồi | Role cũ vẫn còn trong token — có hiệu lực đến khi hết hạn |
 
 > Giải pháp nếu cần revoke access token ngay: dùng Redis blacklist lưu `jti` của token bị thu hồi.

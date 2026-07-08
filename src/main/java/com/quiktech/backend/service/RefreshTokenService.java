@@ -37,14 +37,25 @@ public class RefreshTokenService {
     /**
      * Validates and rotates a refresh token (issues a new one, revokes the old).
      * If the token is already revoked, all user tokens are revoked (reuse / theft detection).
+     * <p>
+     * Lưu ý transaction: method này và caller ({@code AuthService.refresh}) đều khai báo
+     * {@code noRollbackFor = InvalidTokenException} — bắt buộc, vì các nhánh lỗi bên dưới
+     * vừa GHI DB (revoke-all khi phát hiện reuse, đánh dấu revoke khi hết hạn) vừa ném
+     * exception. Nếu để rollback mặc định của RuntimeException thì các UPDATE đó bị hủy
+     * và cơ chế theft-detection vô hiệu hoàn toàn (bug CRITICAL trong review 02_auth_security).
      */
-    @Transactional
+    @Transactional(noRollbackFor = InvalidTokenException.class)
     public RotateResult rotate(String tokenValue) {
         RefreshToken existing = refreshTokenRepository.findByToken(tokenValue)
                 .orElseThrow(() -> new InvalidTokenException(
                         ErrorCode.REFRESH_TOKEN_INVALID, "Invalid refresh token"));
 
-        if (existing.getRevokedAt() != null) {
+        // Revoke atomic (UPDATE ... WHERE revoked_at IS NULL): chống race khi 2 request
+        // refresh song song cùng 1 token — chỉ 1 request nhận affected = 1 và đi tiếp,
+        // request kia nhận 0 và bị xử lý như reuse ở nhánh dưới.
+        int revoked = refreshTokenRepository.revokeIfActive(tokenValue, Instant.now());
+
+        if (revoked == 0) {
             // Reuse detected — potential token theft; invalidate the entire token family
             refreshTokenRepository.revokeAllByUserId(existing.getUser().getId(), Instant.now());
             throw new InvalidTokenException(
@@ -52,16 +63,12 @@ public class RefreshTokenService {
         }
 
         if (existing.getExpiresAt().isBefore(Instant.now())) {
-            existing.setRevokedAt(Instant.now());
-            refreshTokenRepository.save(existing);
+            // Token đã bị đánh dấu revoke bởi UPDATE atomic ở trên — chỉ cần báo lỗi
             throw new InvalidTokenException(
                     ErrorCode.REFRESH_TOKEN_EXPIRED, "Refresh token expired");
         }
 
         Long userId = existing.getUser().getId();
-
-        existing.setRevokedAt(Instant.now());
-        refreshTokenRepository.save(existing);
 
         String newTokenValue = generateToken();
         RefreshToken newToken = RefreshToken.builder()
