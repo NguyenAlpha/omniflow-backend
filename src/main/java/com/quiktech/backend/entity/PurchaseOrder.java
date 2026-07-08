@@ -98,6 +98,11 @@ public class PurchaseOrder {
 
     // === Relationships ===
     @BatchSize(size = 20)
-    @OneToMany(mappedBy = "purchaseOrder", fetch = FetchType.LAZY, cascade = CascadeType.ALL, orphanRemoval = true)
+    @OneToMany(mappedBy = "purchaseOrder", fetch = FetchType.LAZY, cascade = CascadeType.ALL)
     private List<PurchaseOrderItem> purchaseOrderItems;
+
+    @PreUpdate
+    void onUpdate() {
+        updatedAt = Instant.now();
+    }
 }

@@ -67,4 +67,9 @@ public class InventoryTransaction {
     @Builder.Default
     @Column(nullable = false, columnDefinition = "TIMESTAMPTZ")
     private Instant updatedAt = Instant.now();
+
+    @PreUpdate
+    void onUpdate() {
+        updatedAt = Instant.now();
+    }
 }

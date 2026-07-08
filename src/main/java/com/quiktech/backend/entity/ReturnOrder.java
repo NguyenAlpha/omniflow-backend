@@ -91,6 +91,11 @@ public class ReturnOrder {
     private Instant updatedAt = Instant.now();
 
     // === Relationships ===
-    @OneToMany(mappedBy = "returnOrder", fetch = FetchType.LAZY, cascade = CascadeType.ALL, orphanRemoval = true)
+    @OneToMany(mappedBy = "returnOrder", fetch = FetchType.LAZY, cascade = CascadeType.ALL)
     private List<ReturnOrderItem> returnOrderItems;
+
+    @PreUpdate
+    void onUpdate() {
+        updatedAt = Instant.now();
+    }
 }

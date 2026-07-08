@@ -2,6 +2,7 @@ package com.quiktech.backend.entity;
 
 import lombok.*;
 import jakarta.persistence.*;
+import org.hibernate.annotations.SQLRestriction;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.userdetails.UserDetails;
 import java.time.Instant;
@@ -14,6 +15,7 @@ import java.util.List;
     @Index(name = "idx_users_username", columnList = "username", unique = true),
     @Index(name = "idx_users_email", columnList = "email", unique = true)
 })
+@SQLRestriction("deleted_at IS NULL")
 @Getter
 @Setter
 @NoArgsConstructor
@@ -87,5 +89,10 @@ public class User implements UserDetails {
     @Override
     public boolean isEnabled() {
         return Boolean.TRUE.equals(isActive) && deletedAt == null;
+    }
+
+    @PreUpdate
+    void onUpdate() {
+        updatedAt = Instant.now();
     }
 }

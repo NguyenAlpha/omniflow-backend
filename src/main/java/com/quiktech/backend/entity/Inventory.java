@@ -67,4 +67,9 @@ public class Inventory {
 
     @Column(columnDefinition = "TIMESTAMPTZ")
     private Instant deletedAt;
+
+    @PreUpdate
+    void onUpdate() {
+        updatedAt = Instant.now();
+    }
 }

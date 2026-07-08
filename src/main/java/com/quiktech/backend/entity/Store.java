@@ -2,6 +2,7 @@ package com.quiktech.backend.entity;
 
 import lombok.*;
 import jakarta.persistence.*;
+import org.hibernate.annotations.SQLRestriction;
 import java.time.Instant;
 
 @Entity
@@ -10,6 +11,7 @@ import java.time.Instant;
     @Index(name = "idx_stores_name", columnList = "name"),
     @Index(name = "idx_stores_deleted_at", columnList = "deleted_at")
 })
+@SQLRestriction("deleted_at IS NULL")
 @Getter
 @Setter
 @NoArgsConstructor

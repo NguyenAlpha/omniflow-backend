@@ -2,6 +2,7 @@ package com.quiktech.backend.entity;
 
 import lombok.*;
 import jakarta.persistence.*;
+import org.hibernate.annotations.SQLRestriction;
 import java.time.Instant;
 
 @Entity
@@ -11,6 +12,7 @@ import java.time.Instant;
     @Index(name = "idx_user_roles_business_id", columnList = "business_id"),
     @Index(name = "idx_user_roles_store_id", columnList = "store_id")
 })
+@SQLRestriction("deleted_at IS NULL")
 @Getter
 @Setter
 @NoArgsConstructor
@@ -57,4 +59,9 @@ public class UserRole {
 
     @Column(columnDefinition = "TIMESTAMPTZ")
     private Instant deletedAt;
+
+    @PreUpdate
+    void onUpdate() {
+        updatedAt = Instant.now();
+    }
 }

@@ -2,10 +2,12 @@ package com.quiktech.backend.entity;
 
 import lombok.*;
 import jakarta.persistence.*;
+import org.hibernate.annotations.SQLRestriction;
 import java.time.Instant;
 
 @Entity
 @Table(name = "businesses")
+@SQLRestriction("deleted_at IS NULL")
 @Getter
 @Setter
 @NoArgsConstructor

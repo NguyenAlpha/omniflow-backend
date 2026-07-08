@@ -54,6 +54,7 @@ public class Customer {
     @Column(nullable = false, unique = true, columnDefinition = "UUID")
     private UUID publicId;
 
+    @Version
     @Builder.Default
     @Column(nullable = false)
     private Long syncVersion = 0L;
@@ -84,4 +85,9 @@ public class Customer {
 
     @Column(columnDefinition = "TIMESTAMPTZ")
     private Instant deletedAt;
+
+    @PreUpdate
+    void onUpdate() {
+        updatedAt = Instant.now();
+    }
 }
