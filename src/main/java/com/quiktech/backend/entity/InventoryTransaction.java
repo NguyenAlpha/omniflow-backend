@@ -1,5 +1,6 @@
 package com.quiktech.backend.entity;
 
+import com.quiktech.backend.entity.enums.InventoryTransactionType;
 import lombok.*;
 import jakarta.persistence.*;
 import java.math.BigDecimal;
@@ -34,8 +35,9 @@ public class InventoryTransaction {
     @JoinColumn(name = "warehouse_id", nullable = false)
     private Warehouse warehouse;
 
+    @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
-    private String type; // IN, OUT, TRANSFER, ADJUSTMENT
+    private InventoryTransactionType type; // IN, OUT, TRANSFER, ADJUSTMENT
 
     @Column(nullable = false, precision = 15, scale = 2)
     private BigDecimal quantity;

@@ -1,5 +1,7 @@
 package com.quiktech.backend.entity;
 
+import com.quiktech.backend.entity.enums.RefundMethod;
+import com.quiktech.backend.entity.enums.ReturnOrderStatus;
 import lombok.*;
 import jakarta.persistence.*;
 import java.math.BigDecimal;
@@ -38,8 +40,9 @@ public class ReturnOrder {
     @JoinColumn(name = "warehouse_id", nullable = false)
     private Warehouse warehouse;
 
+    @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
-    private String status; // PENDING, COMPLETED, CANCELLED
+    private ReturnOrderStatus status; // PENDING, COMPLETED, CANCELLED
 
     @Column(nullable = false, columnDefinition = "TEXT")
     private String reason;
@@ -47,8 +50,9 @@ public class ReturnOrder {
     @Column(nullable = false, precision = 15, scale = 2)
     private BigDecimal totalRefund;
 
+    @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
-    private String refundMethod; // CASH, BANK_TRANSFER, STORE_CREDIT
+    private RefundMethod refundMethod; // CASH, BANK_TRANSFER, STORE_CREDIT
 
     @Column(columnDefinition = "TEXT")
     private String note;

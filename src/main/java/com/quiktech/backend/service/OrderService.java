@@ -8,6 +8,7 @@ import com.quiktech.backend.dto.response.order.OrderItemResponse;
 import com.quiktech.backend.dto.response.order.OrderResponse;
 import com.quiktech.backend.entity.*;
 import com.quiktech.backend.entity.enums.DiscountType;
+import com.quiktech.backend.entity.enums.InventoryTransactionType;
 import com.quiktech.backend.entity.enums.OrderStatus;
 import com.quiktech.backend.exception.ResourceNotFoundException;
 import com.quiktech.backend.annotation.Auditable;
@@ -247,7 +248,7 @@ public class OrderService {
                 .store(store)
                 .product(product)
                 .warehouse(warehouse)
-                .type("OUT")
+                .type(InventoryTransactionType.OUT)
                 .quantity(quantity)
                 .previousQuantity(previousQuantity)
                 .order(order)
@@ -273,7 +274,7 @@ public class OrderService {
 
         inventoryTransactionRepository.save(InventoryTransaction.builder()
                 .store(store).product(product).warehouse(warehouse)
-                .type("IN").quantity(quantity).previousQuantity(previousQuantity).order(order)
+                .type(InventoryTransactionType.IN).quantity(quantity).previousQuantity(previousQuantity).order(order)
                 .note("Cancel order: " + order.getOrderCode()).createdBy(userRef)
                 .build());
     }

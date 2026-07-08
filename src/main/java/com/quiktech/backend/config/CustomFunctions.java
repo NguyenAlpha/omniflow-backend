@@ -10,7 +10,7 @@ public class CustomFunctions implements FunctionContributor {
     public void contributeFunctions(FunctionContributions fc) {
         fc.getFunctionRegistry().registerPattern(
             "fts_match",
-            "(?1 @@ plainto_tsquery('simple', ?2))",
+            "(?1 @@ plainto_tsquery('simple', unaccent(?2)))",
             fc.getTypeConfiguration().getBasicTypeRegistry().resolve(StandardBasicTypes.BOOLEAN)
         );
     }

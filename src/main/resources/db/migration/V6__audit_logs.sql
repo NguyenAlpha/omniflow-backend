@@ -12,6 +12,8 @@ CREATE TABLE audit_logs (
     new_value   JSONB,
     ip          VARCHAR(45),
     created_at  TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+    -- Không có CHECK trên action: action là free-form theo @Auditable
+    -- (CREATE_ORDER, ADJUST_INVENTORY, RECEIVE_PURCHASE_ORDER, ...)
 );
 
 CREATE INDEX idx_audit_logs_user_id     ON audit_logs(user_id, created_at DESC);

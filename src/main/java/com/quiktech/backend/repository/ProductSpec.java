@@ -17,7 +17,7 @@ import java.util.UUID;
  * nên mỗi combination params tạo ra một query riêng biệt — PostgreSQL plan được tối ưu.
  *
  * <p>{@code fts_match} là custom Hibernate function được đăng ký trong {@code CustomFunctions},
- * render thành {@code search_vector @@ plainto_tsquery('simple', ?)} — dùng GIN index.
+ * render thành {@code search_vector @@ plainto_tsquery('simple', unaccent(?))} — dùng GIN index.
  */
 public class ProductSpec {
 
@@ -45,7 +45,7 @@ public class ProductSpec {
                 predicates.add(cb.equal(root.get("category").get("publicId"), categoryPublicId));
             }
 
-            // fts_match render thành: search_vector @@ plainto_tsquery('simple', ?) → hit GIN index
+            // fts_match render thành: search_vector @@ plainto_tsquery('simple', unaccent(?)) → hit GIN index
             if (searchTerm != null) {
                 predicates.add(cb.isTrue(
                     cb.function("fts_match", Boolean.class, root.get("searchVector"), cb.literal(searchTerm))

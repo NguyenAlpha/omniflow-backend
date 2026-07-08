@@ -6,6 +6,7 @@ import com.quiktech.backend.dto.response.common.ErrorCode;
 import com.quiktech.backend.dto.response.inventory.InventoryResponse;
 import com.quiktech.backend.dto.response.inventory.InventoryTransactionResponse;
 import com.quiktech.backend.entity.*;
+import com.quiktech.backend.entity.enums.InventoryTransactionType;
 import com.quiktech.backend.exception.ResourceNotFoundException;
 import com.quiktech.backend.annotation.Auditable;
 import com.quiktech.backend.repository.*;
@@ -89,7 +90,7 @@ public class InventoryService {
                 .store(store)
                 .product(product)
                 .warehouse(warehouse)
-                .type("ADJUSTMENT")
+                .type(InventoryTransactionType.ADJUSTMENT)
                 .quantity(request.quantity())
                 .previousQuantity(previousQuantity)
                 .note(request.note())
@@ -157,12 +158,12 @@ public class InventoryService {
         String note = request.note();
         InventoryTransaction outTx = InventoryTransaction.builder()
                 .store(store).product(product).warehouse(fromWarehouse)
-                .type("TRANSFER").quantity(request.quantity().negate()).previousQuantity(fromPrev)
+                .type(InventoryTransactionType.TRANSFER).quantity(request.quantity().negate()).previousQuantity(fromPrev)
                 .note(note).createdBy(userRef).build();
 
         InventoryTransaction inTx = InventoryTransaction.builder()
                 .store(store).product(product).warehouse(toWarehouse)
-                .type("TRANSFER").quantity(request.quantity()).previousQuantity(toPrev)
+                .type(InventoryTransactionType.TRANSFER).quantity(request.quantity()).previousQuantity(toPrev)
                 .note(note).createdBy(userRef).build();
 
         inventoryTransactionRepository.save(outTx);
@@ -191,7 +192,7 @@ public class InventoryService {
                 tx.getId(), tx.getStore().getId(),
                 tx.getProduct().getPublicId(), tx.getProduct().getName(),
                 tx.getWarehouse().getPublicId(), tx.getWarehouse().getName(),
-                tx.getType(), tx.getQuantity(), tx.getPreviousQuantity(),
+                tx.getType().name(), tx.getQuantity(), tx.getPreviousQuantity(),
                 tx.getOrder() != null ? tx.getOrder().getPublicId() : null,
                 tx.getPurchaseOrder() != null ? tx.getPurchaseOrder().getPublicId() : null,
                 tx.getNote(), tx.getCreatedBy().getUsername(),

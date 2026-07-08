@@ -9,6 +9,7 @@ import com.quiktech.backend.dto.response.purchase.PurchaseOrderItemResponse;
 import com.quiktech.backend.dto.response.purchase.PurchaseOrderResponse;
 import com.quiktech.backend.entity.*;
 import com.quiktech.backend.entity.enums.PurchaseOrderStatus;
+import com.quiktech.backend.entity.enums.InventoryTransactionType;
 import com.quiktech.backend.exception.ResourceNotFoundException;
 import com.quiktech.backend.annotation.Auditable;
 import com.quiktech.backend.repository.*;
@@ -104,6 +105,8 @@ public class PurchaseOrderService {
                     .quantity(itemReq.quantity())
                     .unitPrice(itemReq.unitPrice())
                     .totalPrice(lineTotal)
+                    .publicId(UUID.randomUUID())
+                    .lastModifiedByUser(userRef)
                     .build();
 
             items.add(item);
@@ -260,7 +263,7 @@ public class PurchaseOrderService {
 
         inventoryTransactionRepository.save(InventoryTransaction.builder()
                 .store(store).product(product).warehouse(warehouse)
-                .type("IN").quantity(quantity).previousQuantity(previousQuantity).purchaseOrder(po)
+                .type(InventoryTransactionType.IN).quantity(quantity).previousQuantity(previousQuantity).purchaseOrder(po)
                 .note("Receive PO: " + po.getOrderCode()).createdBy(userRef)
                 .build());
     }

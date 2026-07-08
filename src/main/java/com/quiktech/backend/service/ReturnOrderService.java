@@ -6,6 +6,9 @@ import com.quiktech.backend.dto.response.common.ErrorCode;
 import com.quiktech.backend.dto.response.order.ReturnOrderItemResponse;
 import com.quiktech.backend.dto.response.order.ReturnOrderResponse;
 import com.quiktech.backend.entity.*;
+import com.quiktech.backend.entity.enums.InventoryTransactionType;
+import com.quiktech.backend.entity.enums.RefundMethod;
+import com.quiktech.backend.entity.enums.ReturnOrderStatus;
 import com.quiktech.backend.exception.ResourceNotFoundException;
 import com.quiktech.backend.repository.*;
 import com.quiktech.backend.security.UserPrincipal;
@@ -70,10 +73,10 @@ public class ReturnOrderService {
                 .returnCode(request.returnCode())
                 .originalOrder(originalOrder)
                 .warehouse(warehouse)
-                .status("PENDING")
+                .status(ReturnOrderStatus.PENDING)
                 .reason(request.reason())
                 .totalRefund(BigDecimal.ZERO)
-                .refundMethod(request.refundMethod())
+                .refundMethod(RefundMethod.valueOf(request.refundMethod()))
                 .note(request.note())
                 .publicId(UUID.randomUUID())
                 .lastModifiedByUser(userRef)
@@ -96,6 +99,8 @@ public class ReturnOrderService {
                     .quantity(itemReq.quantity())
                     .unitPrice(itemReq.unitPrice())
                     .totalRefund(itemRefund)
+                    .publicId(UUID.randomUUID())
+                    .lastModifiedByUser(userRef)
                     .build();
 
             items.add(item);
@@ -115,7 +120,7 @@ public class ReturnOrderService {
         ReturnOrder returnOrder = returnOrderRepository.findByPublicIdWithItems(publicId)
                 .orElseThrow(() -> new ResourceNotFoundException(ErrorCode.RETURN_ORDER_NOT_FOUND, "Return order not found"));
 
-        if (!"PENDING".equals(returnOrder.getStatus())) {
+        if (returnOrder.getStatus() != ReturnOrderStatus.PENDING) {
             throw new IllegalArgumentException("Return order is not in PENDING status");
         }
 
@@ -149,7 +154,7 @@ public class ReturnOrderService {
             }
         }
 
-        returnOrder.setStatus("COMPLETED");
+        returnOrder.setStatus(ReturnOrderStatus.COMPLETED);
         returnOrder.setLastModifiedByUser(userRef);
         returnOrder.setLastModifiedAt(Instant.now());
         returnOrder.setUpdatedAt(Instant.now());
@@ -163,12 +168,12 @@ public class ReturnOrderService {
         ReturnOrder returnOrder = returnOrderRepository.findByPublicId(publicId)
                 .orElseThrow(() -> new ResourceNotFoundException(ErrorCode.RETURN_ORDER_NOT_FOUND, "Return order not found"));
 
-        if (!"PENDING".equals(returnOrder.getStatus())) {
+        if (returnOrder.getStatus() != ReturnOrderStatus.PENDING) {
             throw new IllegalArgumentException("Return order is not in PENDING status");
         }
 
         User userRef = userRepository.getReferenceById(currentUser.userId());
-        returnOrder.setStatus("CANCELLED");
+        returnOrder.setStatus(ReturnOrderStatus.CANCELLED);
         returnOrder.setLastModifiedByUser(userRef);
         returnOrder.setLastModifiedAt(Instant.now());
         returnOrder.setUpdatedAt(Instant.now());
@@ -193,7 +198,7 @@ public class ReturnOrderService {
 
         inventoryTransactionRepository.save(InventoryTransaction.builder()
                 .store(store).product(product).warehouse(warehouse)
-                .type("IN").quantity(quantity).previousQuantity(previousQuantity)
+                .type(InventoryTransactionType.IN).quantity(quantity).previousQuantity(previousQuantity)
                 .note("Return: " + returnCode).createdBy(userRef)
                 .build());
     }
@@ -208,7 +213,7 @@ public class ReturnOrderService {
                 r.getId(), r.getPublicId(), r.getStore().getId(),
                 r.getReturnCode(), r.getOriginalOrder().getPublicId(),
                 r.getWarehouse().getPublicId(),
-                r.getStatus(), r.getReason(), r.getTotalRefund(), r.getRefundMethod(),
+                r.getStatus().name(), r.getReason(), r.getTotalRefund(), r.getRefundMethod().name(),
                 r.getNote(), r.getSyncVersion(), r.getLastModifiedAt(),
                 r.getCreatedAt(), r.getUpdatedAt(),
                 items.stream().map(this::toItemResponse).toList()

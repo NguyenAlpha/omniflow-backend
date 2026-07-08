@@ -1,5 +1,6 @@
 package com.quiktech.backend.entity;
 
+import com.quiktech.backend.entity.enums.SyncOperation;
 import lombok.*;
 import jakarta.persistence.*;
 import java.time.Instant;
@@ -31,8 +32,9 @@ public class SyncChangeLog {
     @Column(nullable = false, columnDefinition = "UUID")
     private UUID recordPublicId;
 
+    @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 10)
-    private String operation; // INSERT, UPDATE, DELETE
+    private SyncOperation operation; // INSERT, UPDATE, DELETE
 
     @Column(nullable = false)
     private Long syncVersion;

@@ -4,6 +4,9 @@
 -- Catalog (products, categories, customers, suppliers) thuộc business.
 -- Giao dịch (orders, purchase_orders, payments...) thuộc store (chi nhánh).
 
+-- Bỏ dấu tiếng Việt cho full-text search (dùng trong trigger tsvector + query)
+CREATE EXTENSION IF NOT EXISTS unaccent;
+
 -- ============================================================================
 -- Section 1: Users & Permissions & Business & Stores
 -- ============================================================================
@@ -425,9 +428,16 @@ CREATE TABLE return_order_items (
     quantity NUMERIC(15,2) NOT NULL,
     unit_price NUMERIC(15,2) NOT NULL,
     total_refund NUMERIC(15,2) NOT NULL,
+    public_id UUID NOT NULL UNIQUE,
+    sync_version BIGINT NOT NULL DEFAULT 0,
+    last_modified_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    last_modified_by_user BIGINT,
+    last_modified_by_device UUID,
+    deleted_at TIMESTAMPTZ,
     CONSTRAINT fk_return_order_items_ro FOREIGN KEY (return_order_id) REFERENCES return_orders(id),
     CONSTRAINT fk_return_order_items_product FOREIGN KEY (product_id) REFERENCES products(id),
-    CONSTRAINT fk_return_order_items_store FOREIGN KEY (store_id) REFERENCES stores(id)
+    CONSTRAINT fk_return_order_items_store FOREIGN KEY (store_id) REFERENCES stores(id),
+    CONSTRAINT fk_return_order_items_modified_by FOREIGN KEY (last_modified_by_user) REFERENCES users(id)
 );
 
 -- ============================================================================
@@ -470,10 +480,16 @@ CREATE TABLE purchase_order_items (
     quantity NUMERIC(15,2) NOT NULL,
     unit_price NUMERIC(15,2) NOT NULL,
     total_price NUMERIC(15,2) NOT NULL,
+    public_id UUID NOT NULL UNIQUE,
+    sync_version BIGINT NOT NULL DEFAULT 0,
+    last_modified_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    last_modified_by_user BIGINT,
+    last_modified_by_device UUID,
     deleted_at TIMESTAMPTZ,
     CONSTRAINT fk_poi_po FOREIGN KEY (purchase_order_id) REFERENCES purchase_orders(id),
     CONSTRAINT fk_poi_product FOREIGN KEY (product_id) REFERENCES products(id),
-    CONSTRAINT fk_poi_store FOREIGN KEY (store_id) REFERENCES stores(id)
+    CONSTRAINT fk_poi_store FOREIGN KEY (store_id) REFERENCES stores(id),
+    CONSTRAINT fk_poi_modified_by FOREIGN KEY (last_modified_by_user) REFERENCES users(id)
 );
 
 -- ============================================================================
@@ -735,11 +751,11 @@ CREATE INDEX ON mv_inventory_summary(business_id, is_low_stock) WHERE is_low_sto
 
 CREATE FUNCTION products_tsvector_trigger() RETURNS trigger AS $$
 BEGIN
-  new.search_vector := to_tsvector('simple',
+  new.search_vector := to_tsvector('simple', unaccent(
     COALESCE(new.name, '') || ' ' ||
     COALESCE(new.sku, '') || ' ' ||
     COALESCE(new.description, '')
-  );
+  ));
   RETURN new;
 END
 $$ LANGUAGE plpgsql;
@@ -749,12 +765,12 @@ FOR EACH ROW EXECUTE FUNCTION products_tsvector_trigger();
 
 CREATE FUNCTION customers_tsvector_trigger() RETURNS trigger AS $$
 BEGIN
-  new.search_vector := to_tsvector('simple',
+  new.search_vector := to_tsvector('simple', unaccent(
     COALESCE(new.name, '') || ' ' ||
     COALESCE(new.code, '') || ' ' ||
     COALESCE(new.phone, '') || ' ' ||
     COALESCE(new.email, '')
-  );
+  ));
   RETURN new;
 END
 $$ LANGUAGE plpgsql;

@@ -1,6 +1,7 @@
 package com.quiktech.backend.repository;
 
 import com.quiktech.backend.entity.SyncChangeLog;
+import com.quiktech.backend.entity.enums.SyncOperation;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -57,7 +58,7 @@ public interface SyncChangeLogRepository extends JpaRepository<SyncChangeLog, Lo
     );
 
     // Count changes by operation
-    long countByStoreIdAndOperation(Long storeId, String operation);
+    long countByStoreIdAndOperation(Long storeId, SyncOperation operation);
 
     // Get changes by device
     List<SyncChangeLog> findByStoreIdAndChangedByDeviceOrderBySyncVersionAsc(

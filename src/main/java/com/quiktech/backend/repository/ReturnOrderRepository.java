@@ -1,6 +1,7 @@
 package com.quiktech.backend.repository;
 
 import com.quiktech.backend.entity.ReturnOrder;
+import com.quiktech.backend.entity.enums.ReturnOrderStatus;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -32,9 +33,9 @@ public interface ReturnOrderRepository extends JpaRepository<ReturnOrder, Long> 
         @Param("returnOrderId") Long returnOrderId
     );
 
-    Page<ReturnOrder> findByStoreIdAndStatus(Long storeId, String status, Pageable pageable);
+    Page<ReturnOrder> findByStoreIdAndStatus(Long storeId, ReturnOrderStatus status, Pageable pageable);
 
-    long countByStoreIdAndStatus(Long storeId, String status);
+    long countByStoreIdAndStatus(Long storeId, ReturnOrderStatus status);
 
     List<ReturnOrder> findByStoreIdOrderByCreatedAtDesc(Long storeId);
 

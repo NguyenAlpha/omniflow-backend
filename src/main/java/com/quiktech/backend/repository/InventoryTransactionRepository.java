@@ -1,6 +1,7 @@
 package com.quiktech.backend.repository;
 
 import com.quiktech.backend.entity.InventoryTransaction;
+import com.quiktech.backend.entity.enums.InventoryTransactionType;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -19,7 +20,7 @@ public interface InventoryTransactionRepository extends JpaRepository<InventoryT
 
     List<InventoryTransaction> findByWarehouseIdOrderByCreatedAtDesc(Long warehouseId);
 
-    List<InventoryTransaction> findByTypeOrderByCreatedAtDesc(String type);
+    List<InventoryTransaction> findByTypeOrderByCreatedAtDesc(InventoryTransactionType type);
 
     List<InventoryTransaction> findByOrderIdOrderByCreatedAtDesc(Long orderId);
 
