@@ -8,8 +8,7 @@ import java.util.UUID;
 
 @Entity
 @Table(name = "sync_change_log", indexes = {
-    @Index(name = "idx_sync_log_store_id", columnList = "store_id"),
-    @Index(name = "idx_sync_log_version", columnList = "sync_version")
+    @Index(name = "idx_sync_log_store_version", columnList = "store_id, sync_version")
 })
 @Getter
 @Setter

@@ -8,7 +8,7 @@ import java.util.UUID;
 
 @Entity
 @Table(name = "payments", indexes = {
-    @Index(name = "idx_payments_store_id", columnList = "store_id"),
+    @Index(name = "idx_payments_store_created", columnList = "store_id, created_at"),
     @Index(name = "idx_payments_customer_id", columnList = "customer_id"),
     @Index(name = "idx_payments_supplier_id", columnList = "supplier_id")
 })

@@ -7,9 +7,7 @@ import java.time.Instant;
 
 @Entity
 @Table(name = "stores", indexes = {
-    @Index(name = "idx_stores_business_id", columnList = "business_id"),
-    @Index(name = "idx_stores_name", columnList = "name"),
-    @Index(name = "idx_stores_deleted_at", columnList = "deleted_at")
+    @Index(name = "idx_stores_business_id", columnList = "business_id")
 })
 @SQLRestriction("deleted_at IS NULL")
 @Getter

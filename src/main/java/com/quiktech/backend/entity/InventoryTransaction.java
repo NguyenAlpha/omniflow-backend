@@ -10,7 +10,7 @@ import java.time.Instant;
 @Table(name = "inventory_transactions", indexes = {
     @Index(name = "idx_inventory_tx_product_id", columnList = "product_id"),
     @Index(name = "idx_inventory_tx_warehouse_id", columnList = "warehouse_id"),
-    @Index(name = "idx_inventory_tx_store_id", columnList = "store_id")
+    @Index(name = "idx_inv_tx_store_created", columnList = "store_id, created_at")
 })
 @Getter
 @Setter

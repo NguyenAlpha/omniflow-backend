@@ -8,7 +8,7 @@ import java.time.Instant;
 @Entity
 @Table(name = "price_history", indexes = {
     @Index(name = "idx_price_history_product_id", columnList = "product_id"),
-    @Index(name = "idx_price_history_business_id", columnList = "business_id")
+    @Index(name = "idx_price_history_business_created", columnList = "business_id, created_at")
 })
 @Getter
 @Setter

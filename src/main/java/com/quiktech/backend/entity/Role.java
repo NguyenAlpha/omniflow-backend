@@ -22,7 +22,7 @@ public class Role {
     @Enumerated(EnumType.STRING)
     private RoleName name;
 
-    @Column
+    @Column(columnDefinition = "TEXT")
     private String description;
 
     @Builder.Default

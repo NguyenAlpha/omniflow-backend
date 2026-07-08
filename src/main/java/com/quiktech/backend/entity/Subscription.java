@@ -8,9 +8,7 @@ import jakarta.persistence.*;
 import java.time.Instant;
 
 @Entity
-@Table(name = "subscriptions", indexes = {
-    @Index(name = "idx_subscriptions_business_id", columnList = "business_id")
-})
+@Table(name = "subscriptions")
 @Getter
 @Setter
 @NoArgsConstructor

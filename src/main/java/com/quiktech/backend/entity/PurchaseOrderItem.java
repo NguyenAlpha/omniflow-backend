@@ -9,8 +9,7 @@ import java.util.UUID;
 
 @Entity
 @Table(name = "purchase_order_items", indexes = {
-    @Index(name = "idx_purchase_order_items_po_id", columnList = "purchase_order_id"),
-    @Index(name = "idx_purchase_order_items_product_id", columnList = "product_id")
+    @Index(name = "idx_purchase_order_items_po_id", columnList = "purchase_order_id")
 })
 @SQLRestriction("deleted_at IS NULL")
 @Getter
