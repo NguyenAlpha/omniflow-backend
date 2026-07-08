@@ -699,7 +699,9 @@ ALTER TABLE payments ADD CONSTRAINT chk_payments_reference CHECK (customer_id IS
 ALTER TABLE inventory ADD CONSTRAINT chk_inventory_qty CHECK (quantity >= 0);
 
 ALTER TABLE inventory_transactions ADD CONSTRAINT chk_inv_tx_type CHECK (type IN ('IN', 'OUT', 'TRANSFER', 'ADJUSTMENT'));
-ALTER TABLE inventory_transactions ADD CONSTRAINT chk_inv_tx_qty CHECK (quantity > 0);
+-- quantity <> 0 (không phải > 0): TRANSFER/ADJUSTMENT ghi delta có dấu
+-- (chân xuất của transfer và điều chỉnh giảm là số âm); IN/OUT ghi số dương.
+ALTER TABLE inventory_transactions ADD CONSTRAINT chk_inv_tx_qty CHECK (quantity <> 0);
 
 ALTER TABLE audit_logs ADD CONSTRAINT chk_audit_logs_action CHECK (action IN ('CREATE', 'UPDATE', 'DELETE'));
 
