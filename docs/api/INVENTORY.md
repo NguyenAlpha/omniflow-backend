@@ -50,7 +50,7 @@ Một giao dịch tồn kho (mỗi thay đổi tồn kho đều tạo ra một t
   "productName": "Cà phê sữa",
   "warehousePublicId": "c3d4e5f6-...",
   "warehouseName": "Kho chính",
-  "type": "MANUAL_ADJUST",
+  "type": "ADJUSTMENT",
   "quantity": 10.00,
   "previousQuantity": 40.00,
   "orderPublicId": null,
@@ -63,14 +63,14 @@ Một giao dịch tồn kho (mỗi thay đổi tồn kho đều tạo ra một t
 
 ### Các giá trị `type`
 
-| Giá trị | Mô tả |
-|:--------|:------|
-| `ORDER_CREATE` | Trừ tồn kho khi tạo đơn bán |
-| `ORDER_CANCEL` | Cộng lại tồn kho khi hủy đơn bán |
-| `PURCHASE_RECEIVE` | Cộng tồn kho khi nhận hàng nhập |
-| `PURCHASE_CANCEL` | Trừ lại tồn kho khi hủy đơn nhập đã nhận |
-| `RETURN_COMPLETE` | Cộng tồn kho khi hoàn tất đơn trả hàng |
-| `MANUAL_ADJUST` | Điều chỉnh thủ công (tăng hoặc giảm) |
+| Giá trị | Quy ước dấu `quantity` | Mô tả |
+|:--------|:------|:------|
+| `IN` | Luôn dương | Nhập kho — nhận hàng nhập, hủy đơn bán, hoàn tất đơn trả hàng |
+| `OUT` | Luôn dương (hướng trừ kho suy từ type) | Xuất kho — tạo đơn bán |
+| `TRANSFER` | Delta có dấu — chân xuất âm, chân nhập dương (2 bản ghi/lần chuyển) | Chuyển kho giữa 2 warehouse |
+| `ADJUSTMENT` | Delta có dấu — tăng dương, giảm âm | Điều chỉnh thủ công |
+
+> Khi tổng hợp báo cáo, **không** SUM `quantity` trộn lẫn các type — quy ước dấu khác nhau.
 
 ---
 
@@ -146,8 +146,8 @@ Lấy lịch sử tất cả giao dịch tồn kho của store. Yêu cầu user 
       "productName": "Cà phê sữa",
       "warehousePublicId": "c3d4e5f6-...",
       "warehouseName": "Kho chính",
-      "type": "ORDER_CREATE",
-      "quantity": -2.00,
+      "type": "OUT",
+      "quantity": 2.00,
       "previousQuantity": 52.00,
       "orderPublicId": "d4e5f6a7-...",
       "purchaseOrderPublicId": null,
@@ -160,7 +160,7 @@ Lấy lịch sử tất cả giao dịch tồn kho của store. Yêu cầu user 
 }
 ```
 
-> `quantity` âm = xuất kho, dương = nhập kho.
+> Dấu của `quantity` tùy theo `type` — xem bảng "Các giá trị `type`" ở trên.
 
 ### Lỗi
 
@@ -175,7 +175,7 @@ Lấy lịch sử tất cả giao dịch tồn kho của store. Yêu cầu user 
 
 Điều chỉnh tồn kho thủ công. Yêu cầu user là **OWNER** hoặc **MANAGER** của store.
 
-Tạo ra một `InventoryTransaction` với `type = MANUAL_ADJUST`. Lượng thay đổi được ghi nhận theo dấu của `quantity`.
+Tạo ra một `InventoryTransaction` với `type = ADJUSTMENT`. Lượng thay đổi được ghi nhận theo dấu của `quantity`.
 
 ### Path parameters
 
@@ -198,7 +198,7 @@ Tạo ra một `InventoryTransaction` với `type = MANUAL_ADJUST`. Lượng tha
 |:------|:-----|:--------:|:----------|
 | `productPublicId` | UUID | ✅ | Public ID của sản phẩm |
 | `warehousePublicId` | UUID | ✅ | Public ID của kho hàng |
-| `quantity` | number | ✅ | Số lượng thay đổi — dương = nhập thêm, âm = xuất bớt |
+| `quantity` | number | ✅ | Số lượng thay đổi — dương = nhập thêm, âm = xuất bớt (khác 0, DB có CHECK `quantity <> 0`) |
 | `note` | string | ❌ | Ghi chú lý do điều chỉnh |
 
 ### Response `200 OK`
@@ -215,7 +215,7 @@ Trả về `InventoryTransactionResponse` của giao dịch vừa tạo.
     "productName": "Cà phê sữa",
     "warehousePublicId": "c3d4e5f6-...",
     "warehouseName": "Kho chính",
-    "type": "MANUAL_ADJUST",
+    "type": "ADJUSTMENT",
     "quantity": 10.00,
     "previousQuantity": 40.00,
     "orderPublicId": null,

@@ -315,7 +315,7 @@
 | `updated_at` | TIMESTAMPTZ | NOT NULL | Thời điểm cập nhật gần nhất |
 | `deleted_at` | TIMESTAMPTZ | | Thời điểm xoá mềm — null = chưa xoá |
 
-> **UNIQUE(product_id, warehouse_id)**
+> **UNIQUE(product_id, warehouse_id) WHERE deleted_at IS NULL** (`ux_inventory_product_warehouse`)
 
 ### `inventory_transactions` — Lịch sử giao dịch kho
 | Tên cột | Kiểu | Ràng buộc | Ý nghĩa |
@@ -325,16 +325,18 @@
 | `product_id` | BIGINT | FK → products, NOT NULL | Sản phẩm |
 | `warehouse_id` | BIGINT | FK → warehouses, NOT NULL | Kho thực hiện |
 | `type` | VARCHAR(20) | NOT NULL | Loại giao dịch: `IN` / `OUT` / `TRANSFER` / `ADJUSTMENT` |
-| `quantity` | NUMERIC(15,2) | NOT NULL | Số lượng thay đổi (luôn dương, chiều do `type` quyết định) |
-| `order_id` | BIGINT | FK → orders | Đơn hàng nguồn — null nếu từ purchase_order hoặc MANUAL |
-| `purchase_order_id` | BIGINT | FK → purchase_orders | Đơn nhập nguồn — null nếu từ order hoặc MANUAL |
+| `quantity` | NUMERIC(15,2) | NOT NULL, CHECK <> 0 | Số lượng thay đổi — `IN`/`OUT`: luôn dương (chiều do `type` quyết định); `TRANSFER`/`ADJUSTMENT`: delta có dấu (chân xuất transfer và điều chỉnh giảm là số âm) |
+| `order_id` | BIGINT | FK → orders | Đơn hàng nguồn — null nếu từ purchase_order hoặc ADJUSTMENT/TRANSFER |
+| `purchase_order_id` | BIGINT | FK → purchase_orders | Đơn nhập nguồn — null nếu từ order hoặc ADJUSTMENT/TRANSFER |
 | `note` | TEXT | | Ghi chú thêm |
 | `created_by` | BIGINT | FK → users, NOT NULL | Người thực hiện |
 | `created_at` | TIMESTAMPTZ | NOT NULL | Thời điểm giao dịch |
 | `updated_at` | TIMESTAMPTZ | NOT NULL | Thời điểm cập nhật |
 
 > Không cho phép xoá — dữ liệu lịch sử kho.
-> `order_id` và `purchase_order_id` đều nullable — cả 2 null khi type = `MANUAL` (kiểm kê tay).
+> `order_id` và `purchase_order_id` đều nullable — cả 2 null khi giao dịch không gắn với đơn nào (`ADJUSTMENT` kiểm kê tay, `TRANSFER` giữa 2 kho).
+> `TRANSFER` ghi 2 bản ghi: chân xuất quantity âm, chân nhập quantity dương.
+> **Khi aggregate báo cáo: KHÔNG SUM(quantity) trộn lẫn các type** — quy ước dấu khác nhau.
 
 ---
 
@@ -478,6 +480,12 @@
 | `quantity` | NUMERIC(15,2) | NOT NULL | Số lượng hoàn trả |
 | `unit_price` | NUMERIC(15,2) | NOT NULL | Đơn giá hoàn (snapshot từ đơn gốc) |
 | `total_refund` | NUMERIC(15,2) | NOT NULL | Thành tiền hoàn = quantity × unit_price |
+| `public_id` | UUID | NOT NULL, UNIQUE | Khóa sync ổn định |
+| `sync_version` | BIGINT | NOT NULL, DEFAULT 0 | Version sync |
+| `last_modified_at` | TIMESTAMPTZ | NOT NULL | Lần sửa cuối |
+| `last_modified_by_user` | BIGINT | FK → users | Người sửa cuối |
+| `last_modified_by_device` | UUID | | Thiết bị sửa cuối |
+| `deleted_at` | TIMESTAMPTZ | | Thời điểm xoá mềm — null = chưa xoá |
 
 ---
 
@@ -517,6 +525,11 @@
 | `quantity` | NUMERIC(15,2) | NOT NULL | Số lượng nhập |
 | `unit_price` | NUMERIC(15,2) | NOT NULL | Đơn giá nhập |
 | `total_price` | NUMERIC(15,2) | NOT NULL | Thành tiền = quantity × unit_price |
+| `public_id` | UUID | NOT NULL, UNIQUE | Khóa sync ổn định |
+| `sync_version` | BIGINT | NOT NULL, DEFAULT 0 | Version sync |
+| `last_modified_at` | TIMESTAMPTZ | NOT NULL | Lần sửa cuối |
+| `last_modified_by_user` | BIGINT | FK → users | Người sửa cuối |
+| `last_modified_by_device` | UUID | | Thiết bị sửa cuối |
 | `deleted_at` | TIMESTAMPTZ | | Thời điểm xoá mềm — null = chưa xoá |
 
 ---
@@ -531,7 +544,7 @@
 | `customer_id` | BIGINT | FK → customers | Khách hàng thanh toán — null nếu là thanh toán NCC |
 | `supplier_id` | BIGINT | FK → suppliers | Nhà cung cấp thanh toán — null nếu là thu tiền KH |
 | `amount` | NUMERIC(15,2) | NOT NULL, CHECK > 0 | Số tiền thanh toán |
-| `payment_method` | VARCHAR(20) | NOT NULL | Hình thức: `CASH` / `BANK_TRANSFER` |
+| `payment_method` | VARCHAR(20) | NOT NULL | Hình thức: `CASH` / `BANK_TRANSFER` / `CREDIT_CARD` / `DEBIT_CARD` / `MOBILE_PAYMENT` / `OTHER` |
 | `note` | TEXT | | Ghi chú |
 | `public_id` | UUID | NOT NULL, UNIQUE | Khóa sync ổn định |
 | `sync_version` | BIGINT | NOT NULL, DEFAULT 0 | Version sync |
@@ -549,23 +562,22 @@
 
 ## 9. Audit & Subscription
 
-### `audit_logs` — Nhật ký thao tác hệ thống
+### `audit_logs` — Nhật ký thao tác hệ thống (V6 tạo lại bảng)
 | Tên cột | Kiểu | Ràng buộc | Ý nghĩa |
 |---|---|---|---|
 | `id` | BIGSERIAL | PK | Khóa chính |
+| `user_id` | BIGINT | FK → users | Người thực hiện |
 | `business_id` | BIGINT | FK → businesses | Doanh nghiệp liên quan — null nếu là hành động system-level |
 | `store_id` | BIGINT | FK → stores | Chi nhánh liên quan — null nếu hành động ở cấp business hoặc system |
-| `performed_by` | BIGINT | FK → users, NOT NULL | Người thực hiện |
-| `table_name` | VARCHAR(50) | NOT NULL | Bảng bị tác động (VD: `orders`, `products`) |
-| `record_id` | BIGINT | NOT NULL | ID của bản ghi bị tác động |
-| `action` | VARCHAR(10) | NOT NULL | Hành động: `CREATE` / `UPDATE` / `DELETE` |
-| `old_data` | JSONB | | Dữ liệu trước khi thay đổi — null nếu action = CREATE |
-| `new_data` | JSONB | | Dữ liệu sau khi thay đổi — null nếu action = DELETE |
-| `ip_address` | VARCHAR(45) | | IP của người thực hiện |
+| `action` | VARCHAR(50) | NOT NULL | Hành động free-form theo `@Auditable` (VD: `CREATE_ORDER`, `ADJUST_INVENTORY`, `RECEIVE_PURCHASE_ORDER`) — **không có CHECK** |
+| `entity_type` | VARCHAR(50) | NOT NULL | Loại entity bị tác động (VD: `Order`, `Product`) |
+| `entity_id` | BIGINT | | ID của bản ghi bị tác động |
+| `old_value` | JSONB | | Dữ liệu trước khi thay đổi |
+| `new_value` | JSONB | | Dữ liệu sau khi thay đổi |
+| `ip` | VARCHAR(45) | | IP của người thực hiện |
 | `created_at` | TIMESTAMPTZ | NOT NULL | Thời điểm thực hiện |
-| `updated_at` | TIMESTAMPTZ | NOT NULL | Thời điểm cập nhật |
 
-> Không cho phép xoá hay sửa — đây là bằng chứng audit.
+> Không cho phép xoá hay sửa — đây là bằng chứng audit. Bảng append-only, không có `updated_at`.
 > Chỉ ghi log cho các hành động nhạy cảm: sửa giá, huỷ đơn, xoá khách hàng, thay đổi role, thay đổi subscription.
 
 ### `subscription_invoices` — Lịch sử thanh toán subscription
@@ -597,6 +609,9 @@
 | `sync_version` | BIGINT | NOT NULL | Version tăng dần theo store |
 | `changed_at` | TIMESTAMPTZ | NOT NULL | Thời điểm thay đổi |
 | `changed_by_device` | UUID | | Thiết bị gây thay đổi |
+
+> **CHECK:** `chk_sync_log_operation` — operation IN (`INSERT`, `UPDATE`, `DELETE`).
+> Index: `idx_sync_log_store_version (store_id, sync_version)` — pull delta theo store.
 
 ---
 
@@ -644,8 +659,8 @@ CREATE INDEX idx_inv_tx_store_created         ON inventory_transactions (store_i
 -- Lọc đơn nhập theo chi nhánh + trạng thái
 CREATE INDEX idx_po_store_status              ON purchase_orders (store_id, status);
 
--- Tìm tồn kho theo product
-CREATE INDEX idx_inventory_product_warehouse  ON inventory (product_id, warehouse_id);
+-- Tồn kho: unique partial theo soft delete (thay cho UNIQUE thường)
+CREATE UNIQUE INDEX ux_inventory_product_warehouse ON inventory (product_id, warehouse_id) WHERE deleted_at IS NULL;
 
 -- inventory_transactions: FK mới sau khi bỏ polymorphic
 CREATE INDEX idx_inv_tx_order_id              ON inventory_transactions (order_id);
@@ -681,15 +696,25 @@ CREATE INDEX idx_price_history_business_created  ON price_history (business_id, 
 -- units per-business
 CREATE INDEX idx_units_business_id               ON units (business_id) WHERE business_id IS NOT NULL AND deleted_at IS NULL;
 
--- audit_logs — query theo bảng + record hoặc theo người thực hiện
-CREATE INDEX idx_audit_logs_business_id           ON audit_logs (business_id, created_at DESC);
-CREATE INDEX idx_audit_logs_store_id              ON audit_logs (store_id, created_at DESC);
-CREATE INDEX idx_audit_logs_table_record       ON audit_logs (table_name, record_id);
-CREATE INDEX idx_audit_logs_performed_by       ON audit_logs (performed_by, created_at DESC);
+-- audit_logs (V6) — query theo entity hoặc theo người thực hiện
+CREATE INDEX idx_audit_logs_business_id        ON audit_logs (business_id, created_at DESC);
+CREATE INDEX idx_audit_logs_store_id           ON audit_logs (store_id, created_at DESC);
+CREATE INDEX idx_audit_logs_entity             ON audit_logs (entity_type, entity_id);
+CREATE INDEX idx_audit_logs_user_id            ON audit_logs (user_id, created_at DESC);
+CREATE INDEX idx_audit_logs_created_at         ON audit_logs (created_at DESC);
 
 -- subscription_invoices
 CREATE INDEX idx_sub_invoices_business_id      ON subscription_invoices (business_id, created_at DESC);
 CREATE INDEX idx_sub_invoices_status           ON subscription_invoices (business_id, status) WHERE status = 'PENDING';
+
+-- sync & FK bổ sung (đã có trong V1)
+CREATE INDEX idx_sync_log_store_version         ON sync_change_log (store_id, sync_version);
+CREATE INDEX idx_payments_store_created         ON payments (store_id, created_at DESC);
+CREATE INDEX idx_order_items_store_id           ON order_items (store_id);
+CREATE INDEX idx_inventory_tx_warehouse_id      ON inventory_transactions (warehouse_id);
+CREATE INDEX idx_purchase_orders_warehouse_id   ON purchase_orders (warehouse_id);
+CREATE INDEX idx_return_order_items_product_id  ON return_order_items (product_id);
+CREATE INDEX idx_inventory_store_id             ON inventory (store_id);
 
 -- full-text search
 CREATE INDEX idx_products_search_vector  ON products  USING GIN (search_vector);
@@ -719,7 +744,7 @@ ALTER TABLE orders           ADD CONSTRAINT chk_orders_status
 ALTER TABLE purchase_orders  ADD CONSTRAINT chk_po_status
   CHECK (status IN ('PENDING', 'RECEIVED', 'CANCELLED'));
 ALTER TABLE payments         ADD CONSTRAINT chk_payments_method
-  CHECK (payment_method IN ('CASH', 'BANK_TRANSFER'));
+  CHECK (payment_method IN ('CASH', 'BANK_TRANSFER', 'CREDIT_CARD', 'DEBIT_CARD', 'MOBILE_PAYMENT', 'OTHER'));
 ALTER TABLE subscriptions    ADD CONSTRAINT chk_subscriptions_plan
   CHECK (plan IN ('FREE', 'BASIC', 'PRO'));
 ALTER TABLE subscriptions    ADD CONSTRAINT chk_subscriptions_status
@@ -737,9 +762,19 @@ ALTER TABLE return_orders    ADD CONSTRAINT chk_return_orders_refund
 ALTER TABLE return_orders    ADD CONSTRAINT chk_return_orders_method
   CHECK (refund_method IN ('CASH', 'BANK_TRANSFER', 'STORE_CREDIT'));
 
--- audit_logs
-ALTER TABLE audit_logs       ADD CONSTRAINT chk_audit_logs_action
-  CHECK (action IN ('CREATE', 'UPDATE', 'DELETE'));
+-- inventory_transactions
+ALTER TABLE inventory_transactions ADD CONSTRAINT chk_inv_tx_type
+  CHECK (type IN ('IN', 'OUT', 'TRANSFER', 'ADJUSTMENT'));
+-- quantity <> 0 (không phải > 0): TRANSFER/ADJUSTMENT ghi delta có dấu
+ALTER TABLE inventory_transactions ADD CONSTRAINT chk_inv_tx_qty
+  CHECK (quantity <> 0);
+
+-- sync_change_log
+ALTER TABLE sync_change_log  ADD CONSTRAINT chk_sync_log_operation
+  CHECK (operation IN ('INSERT', 'UPDATE', 'DELETE'));
+
+-- audit_logs: KHÔNG có CHECK trên action — action là free-form theo @Auditable
+-- (bảng được V6 tạo lại, CHECK cũ CREATE/UPDATE/DELETE đã bỏ)
 
 -- subscription_invoices
 ALTER TABLE subscription_invoices ADD CONSTRAINT chk_sub_invoices_status

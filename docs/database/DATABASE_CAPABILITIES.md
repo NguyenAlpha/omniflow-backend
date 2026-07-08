@@ -13,15 +13,16 @@
 **Trigger:** `tsvector_update_products` (BEFORE INSERT OR UPDATE)
 
 ```sql
-new.search_vector := to_tsvector('simple',
+new.search_vector := to_tsvector('simple', unaccent(
     COALESCE(new.name, '') || ' ' ||
     COALESCE(new.sku, '') || ' ' ||
     COALESCE(new.description, '')
-);
+));
 ```
 
 - **Service không cần:** set `search_vector` thủ công khi tạo / sửa product.
-- **Dùng đúng cách:** query bằng `search_vector @@ plainto_tsquery('simple', ?)` — không dùng `ILIKE` cho full-text.
+- **Dùng đúng cách:** query bằng `search_vector @@ plainto_tsquery('simple', unaccent(?))` — không dùng `ILIKE` cho full-text. Phía JPA dùng function `fts_match` (đăng ký trong `CustomFunctions`) đã bao gồm `unaccent`.
+- **unaccent:** extension `unaccent` được bật trong V1 — index và query đều bỏ dấu tiếng Việt, nên "sua chua" khớp "sữa chua".
 - Trường `description` đã được index vào `search_vector` — không cần concat thêm ở tầng Java.
 
 ---
@@ -31,12 +32,12 @@ new.search_vector := to_tsvector('simple',
 **Trigger:** `tsvector_update_customers` (BEFORE INSERT OR UPDATE)
 
 ```sql
-new.search_vector := to_tsvector('simple',
+new.search_vector := to_tsvector('simple', unaccent(
     COALESCE(new.name, '') || ' ' ||
     COALESCE(new.code, '') || ' ' ||
     COALESCE(new.phone, '') || ' ' ||
     COALESCE(new.email, '')
-);
+));
 ```
 
 - **Service không cần:** set `search_vector` thủ công khi tạo / sửa customer.
@@ -99,7 +100,7 @@ GROUP BY s.business_id, o.store_id, month;
 | `idx_price_history_business_created` | `price_history` | `(business_id, changed_at DESC)` | Lịch sử giá toàn business |
 | `idx_audit_logs_business_id` | `audit_logs` | `(business_id, created_at DESC)` | Log theo business, mới nhất trước |
 | `idx_audit_logs_store_id` | `audit_logs` | `(store_id, created_at DESC)` | Log theo store, mới nhất trước |
-| `idx_audit_logs_table_record` | `audit_logs` | `(table_name, record_id)` | Lịch sử thay đổi của 1 record cụ thể |
+| `idx_audit_logs_entity` | `audit_logs` | `(entity_type, entity_id)` | Lịch sử thay đổi của 1 record cụ thể |
 
 ---
 
@@ -122,12 +123,13 @@ Các bảng sau có partial index, query **phải có** `deleted_at IS NULL` đ�
 
 | Index | Cột | Cách dùng |
 |---|---|---|
-| `idx_products_search_vector` | `products.search_vector` | `WHERE search_vector @@ plainto_tsquery('simple', :term)` |
-| `idx_customers_search_vector` | `customers.search_vector` | `WHERE search_vector @@ plainto_tsquery('simple', :term)` |
+| `idx_products_search_vector` | `products.search_vector` | `WHERE search_vector @@ plainto_tsquery('simple', unaccent(:term))` |
+| `idx_customers_search_vector` | `customers.search_vector` | `WHERE search_vector @@ plainto_tsquery('simple', unaccent(:term))` |
 
 **Lưu ý quan trọng:**
 - `ILIKE '%keyword%'` **không dùng** GIN index — luôn full scan.
 - `plainto_tsquery` tự tách từ và xử lý khoảng trắng — không cần preprocess ở Java.
+- Query phải wrap term bằng `unaccent(...)` (vì vector đã unaccent khi index) — dùng function `fts_match` phía JPA là đủ.
 - Tìm kiếm nguyên ký tự (exact substring như mã SKU ngắn) nên kết hợp `ILIKE` với filter `store_id` trước để giảm phạm vi, hoặc dùng `search_vector` nếu SKU đã được index vào đó.
 
 ---
