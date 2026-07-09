@@ -282,6 +282,10 @@ Chỉ bật khi cần seed lần đầu — tắt ngay sau đó.
 | `admin.seed.password` | `ADMIN_SEED_PASSWORD` | Mật khẩu seed SUPER_ADMIN |
 
 Các property trên có fallback default trong file (dùng cho local dev). **Production phải set env var** — không commit credentials vào repo.
+(`application.properties` nằm trong `.gitignore` — file cấu hình local không được track.)
+
+**Validate lúc khởi động:** `ApplicationConfig` fail-fast nếu `jwt.secret` rỗng hoặc key sau
+Base64 decode < 32 bytes (yêu cầu tối thiểu của HMAC-SHA256) — app không boot với key yếu/thiếu.
 
 ### Actuator endpoints
 

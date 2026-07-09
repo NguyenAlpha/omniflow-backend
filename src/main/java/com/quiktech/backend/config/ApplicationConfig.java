@@ -148,9 +148,27 @@ public class ApplicationConfig {
      */
     @Bean
     public JwtDecoder jwtDecoder(@Value("${jwt.secret}") String secret) {
-        byte[] keyBytes = Base64.getDecoder().decode(secret);
+        byte[] keyBytes = decodeAndValidateJwtSecret(secret);
         SecretKeySpec key = new SecretKeySpec(keyBytes, "HmacSHA256");
         return NimbusJwtDecoder.withSecretKey(key).macAlgorithm(MacAlgorithm.HS256).build();
+    }
+
+    /**
+     * Validate jwt.secret ngay lúc khởi động — fail-fast với thông điệp rõ ràng thay vì
+     * chạy được rồi ký/verify JWT bằng key rỗng hoặc yếu. Key <32 bytes phá vỡ độ an toàn
+     * HS256 — ai đoán/brute-force được key sẽ tự ký JWT với roles=["ROLE_SUPER_ADMIN"].
+     */
+    private static byte[] decodeAndValidateJwtSecret(String secret) {
+        if (secret == null || secret.isBlank()) {
+            throw new IllegalStateException(
+                    "jwt.secret chưa được cấu hình — set biến môi trường JWT_SECRET (Base64, >=32 bytes sau decode)");
+        }
+        byte[] keyBytes = Base64.getDecoder().decode(secret);
+        if (keyBytes.length < 32) {
+            throw new IllegalStateException(
+                    "jwt.secret quá ngắn: " + keyBytes.length + " bytes sau Base64 decode — HMAC-SHA256 yêu cầu >=32 bytes");
+        }
+        return keyBytes;
     }
 
     /**
@@ -162,7 +180,7 @@ public class ApplicationConfig {
      */
     @Bean
     public JwtEncoder jwtEncoder(@Value("${jwt.secret}") String secret) {
-        byte[] keyBytes = Base64.getDecoder().decode(secret);
+        byte[] keyBytes = decodeAndValidateJwtSecret(secret);
         OctetSequenceKey jwk = new OctetSequenceKey.Builder(keyBytes).algorithm(JWSAlgorithm.HS256).build();
         return new NimbusJwtEncoder(new ImmutableJWKSet<>(new JWKSet(jwk)));
     }
