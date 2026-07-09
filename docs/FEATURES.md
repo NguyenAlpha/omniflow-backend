@@ -68,7 +68,9 @@
 - Reject → invoice `FAILED`, subscription không thay đổi, owner có thể tạo yêu cầu mới
 
 **Invoice lifecycle:**
-- 1 business chỉ có tối đa 1 invoice `PENDING` tại 1 thời điểm
+- 1 business chỉ có tối đa 1 invoice `PENDING` tại 1 thời điểm (backstop DB: unique index V9)
+- Invoice `PENDING` quá hạn thanh toán (mặc định 7 ngày) bị scheduler tự chuyển sang `FAILED`
+- Kỳ sử dụng tính lại từ thời điểm admin confirm — không dùng kỳ chốt lúc tạo request
 - Lịch sử toàn bộ invoice được lưu (`subscription_invoices`) — immutable
 - Chu kỳ: `MONTHLY` (30 ngày) hoặc `YEARLY` (365 ngày)
 

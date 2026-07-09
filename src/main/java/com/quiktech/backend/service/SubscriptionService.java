@@ -121,6 +121,9 @@ public class SubscriptionService {
             throw new IllegalArgumentException("New plan must be higher than current plan");
         }
 
+        // Check-then-act — 2 request song song vẫn có thể cùng qua check này;
+        // backstop DB: ux_subscription_invoices_pending (V9) chặn business có 2 invoice
+        // PENDING cùng lúc (request thứ hai fail khi INSERT)
         List<SubscriptionInvoice> pending = invoiceRepository.findPendingByBusinessId(businessId, InvoiceStatus.PENDING);
         if (!pending.isEmpty()) {
             throw new IllegalArgumentException("A pending invoice already exists for this business");
@@ -259,6 +262,16 @@ public class SubscriptionService {
         }
 
         Instant now = Instant.now();
+
+        // Kỳ sử dụng tính lại từ thời điểm admin CONFIRM, không dùng periodStart/periodEnd
+        // đã chốt lúc user tạo request — nếu admin confirm trễ N ngày mà vẫn dùng
+        // periodEnd cũ, user mất N ngày sử dụng đã trả tiền.
+        Instant periodEnd = invoice.getBillingCycle() == BillingCycle.YEARLY
+                ? now.plus(365, ChronoUnit.DAYS)
+                : now.plus(30, ChronoUnit.DAYS);
+        invoice.setPeriodStart(now);
+        invoice.setPeriodEnd(periodEnd);
+
         invoice.setStatus(InvoiceStatus.PAID);
         invoice.setPaymentMethod("BANK_TRANSFER");
         invoice.setPaidAt(now);

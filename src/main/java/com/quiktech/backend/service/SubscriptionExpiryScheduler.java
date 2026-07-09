@@ -1,12 +1,15 @@
 package com.quiktech.backend.service;
 
 import com.quiktech.backend.entity.Subscription;
+import com.quiktech.backend.entity.enums.InvoiceStatus;
 import com.quiktech.backend.entity.enums.PlanLimits;
 import com.quiktech.backend.entity.enums.SubscriptionPlan;
 import com.quiktech.backend.entity.enums.SubscriptionStatus;
+import com.quiktech.backend.repository.SubscriptionInvoiceRepository;
 import com.quiktech.backend.repository.SubscriptionRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
@@ -21,12 +24,19 @@ import java.util.List;
 public class SubscriptionExpiryScheduler {
 
     private final SubscriptionRepository subscriptionRepository;
+    private final SubscriptionInvoiceRepository invoiceRepository;
     private final EmailService emailService;
+
+    // Số ngày invoice PENDING được phép tồn tại trước khi bị auto-huỷ
+    @Value("${subscription.invoice.pending-ttl-days:7}")
+    private int pendingInvoiceTtlDays;
 
     /**
      * Chạy hàng ngày lúc 01:00 AM (cấu hình qua subscription.expiry.cron).
      * 1. Áp dụng pending downgrade cho các sub đã hết hạn (FREE → ACTIVE, paid → EXPIRED).
      * 2. Bulk-expire các sub ACTIVE đã qua expiresAt còn lại.
+     * 3. Gửi email cảnh báo sắp hết hạn.
+     * 4. Auto-huỷ invoice PENDING quá hạn thanh toán.
      */
     @Scheduled(cron = "${subscription.expiry.cron:0 0 1 * * *}")
     @Transactional
@@ -96,6 +106,19 @@ public class SubscriptionExpiryScheduler {
 
         if (!expiringSoon.isEmpty()) {
             log.info("Sent expiry warning emails for {} subscription(s)", expiringSoon.size());
+        }
+
+        // 4. Auto-huỷ invoice PENDING quá hạn — giá plan có thể đã đổi, không cho
+        // confirm invoice tạo từ quá lâu (owner phải tạo yêu cầu nâng cấp mới)
+        Instant invoiceCutoff = now.minus(pendingInvoiceTtlDays, ChronoUnit.DAYS);
+        int cancelled = invoiceRepository.failStalePending(
+                InvoiceStatus.FAILED,
+                InvoiceStatus.PENDING,
+                invoiceCutoff,
+                "Auto-cancelled: pending invoice not paid within " + pendingInvoiceTtlDays + " days");
+
+        if (cancelled > 0) {
+            log.info("Auto-cancelled {} stale PENDING invoice(s)", cancelled);
         }
     }
 }

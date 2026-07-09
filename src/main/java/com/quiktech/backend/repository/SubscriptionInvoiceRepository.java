@@ -5,6 +5,7 @@ import com.quiktech.backend.entity.enums.InvoiceStatus;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
@@ -36,6 +37,22 @@ public interface SubscriptionInvoiceRepository extends JpaRepository<Subscriptio
 
     // Invoice mới nhất của business
     Optional<SubscriptionInvoice> findFirstByBusinessIdOrderByCreatedAtDesc(Long businessId);
+
+    // Auto-huỷ các invoice PENDING quá hạn thanh toán (scheduler gọi hàng ngày) —
+    // invoice PENDING không có TTL thì invoice tạo từ nhiều tháng trước (giá cũ)
+    // vẫn confirm được. Chuyển sang FAILED thay vì DELETE để giữ lịch sử invoice.
+    @Modifying(clearAutomatically = true)
+    @Query("""
+        UPDATE SubscriptionInvoice si
+        SET si.status = :failed, si.adminNote = :note
+        WHERE si.status = :pending
+        AND si.createdAt < :cutoff
+    """)
+    int failStalePending(
+            @Param("failed") InvoiceStatus failed,
+            @Param("pending") InvoiceStatus pending,
+            @Param("cutoff") Instant cutoff,
+            @Param("note") String note);
 
     long countByStatus(InvoiceStatus status);
 

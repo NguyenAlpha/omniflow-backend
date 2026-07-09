@@ -40,6 +40,13 @@ Trạng thái Invoice:
 | `PAID` | Admin đã xác nhận — subscription đã được nâng cấp |
 | `FAILED` | Admin từ chối — subscription không thay đổi |
 
+Lưu ý:
+- Mỗi business chỉ có tối đa 1 invoice `PENDING` tại 1 thời điểm — backstop DB:
+  unique index `ux_subscription_invoices_pending` (V9).
+- Invoice `PENDING` quá hạn thanh toán (mặc định 7 ngày, cấu hình
+  `subscription.invoice.pending-ttl-days`) bị scheduler tự động chuyển sang `FAILED`
+  kèm `adminNote` — chặn kích hoạt plan bằng invoice giá cũ; owner tạo yêu cầu mới.
+
 ---
 
 ## Đối tượng `SubscriptionInvoiceResponse`
@@ -549,8 +556,11 @@ Danh sách tất cả invoice đang ở trạng thái `PENDING` của toàn hệ
 ## POST `/api/admin/subscriptions/invoices/{invoiceId}/confirm`
 
 Admin xác nhận thanh toán chuyển khoản thành công. Hệ thống:
-1. Cập nhật invoice: `status = PAID`, ghi `paidAt`, `confirmedAt`, `confirmedBy`, `adminNote`
-2. Cập nhật subscription: chuyển sang plan mới, `status = ACTIVE`, set `expiresAt`
+1. Tính lại kỳ sử dụng **từ thời điểm confirm**: `periodStart = confirmedAt`,
+   `periodEnd = confirmedAt + 30/365 ngày` (không dùng kỳ đã chốt lúc owner tạo request —
+   admin confirm trễ N ngày thì user không bị mất N ngày sử dụng)
+2. Cập nhật invoice: `status = PAID`, ghi `paidAt`, `confirmedAt`, `confirmedBy`, `adminNote`
+3. Cập nhật subscription: chuyển sang plan mới, `status = ACTIVE`, `expiresAt = periodEnd` mới
 
 ### Path parameters
 

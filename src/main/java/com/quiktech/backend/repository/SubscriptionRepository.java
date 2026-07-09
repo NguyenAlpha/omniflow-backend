@@ -3,7 +3,9 @@ package com.quiktech.backend.repository;
 import com.quiktech.backend.entity.Subscription;
 import com.quiktech.backend.entity.enums.SubscriptionPlan;
 import com.quiktech.backend.entity.enums.SubscriptionStatus;
+import jakarta.persistence.LockModeType;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -18,6 +20,17 @@ import java.util.Optional;
 public interface SubscriptionRepository extends JpaRepository<Subscription, Long> {
 
     Optional<Subscription> findByBusinessId(Long businessId);
+
+    /**
+     * Khóa row subscription (SELECT ... FOR UPDATE) — dùng cho check plan limit.
+     * Mẫu check-then-insert (COUNT >= max → throw, rồi INSERT) không tự an toàn:
+     * 2 request song song cùng đếm được N < max rồi cùng insert → vượt limit gói.
+     * Mọi luồng tạo resource cùng business phải serialize qua lock này; lock giữ
+     * tới khi transaction của caller commit.
+     */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT s FROM Subscription s WHERE s.business.id = :businessId")
+    Optional<Subscription> findByBusinessIdForUpdate(@Param("businessId") Long businessId);
 
     long countByPlanAndStatus(SubscriptionPlan plan, SubscriptionStatus status);
 

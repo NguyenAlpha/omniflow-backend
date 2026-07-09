@@ -12,6 +12,7 @@ import com.quiktech.backend.repository.SubscriptionRepository;
 import com.quiktech.backend.repository.WarehouseRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
@@ -29,9 +30,17 @@ public class SubscriptionLimitService {
     private final WarehouseRepository warehouseRepository;
     private final OrderRepository orderRepository;
 
-    @Transactional(readOnly = true)
+    // ── Check limit tạo resource ──────────────────────────────────────────────
+    // 4 check dưới đây khóa row subscription (SELECT ... FOR UPDATE qua
+    // getSubscriptionForUpdate) để serialize mẫu check-then-insert: 2 request tạo
+    // resource song song cùng business sẽ xếp hàng qua lock thay vì cùng đếm được
+    // N < max rồi cùng insert vượt limit gói. Lock chỉ có tác dụng khi giữ tới lúc
+    // caller commit → bắt buộc chạy trong transaction ghi của caller
+    // (propagation = MANDATORY — fail sớm nếu bị gọi ngoài transaction).
+
+    @Transactional(propagation = Propagation.MANDATORY)
     public void checkStoreLimit(Long businessId) {
-        Subscription sub = getSubscription(businessId);
+        Subscription sub = getSubscriptionForUpdate(businessId);
         if (sub.getMaxStores() == null) return;
         long count = storeRepository.countByBusinessIdAndDeletedAtIsNull(businessId);
         if (count >= sub.getMaxStores()) {
@@ -39,9 +48,9 @@ public class SubscriptionLimitService {
         }
     }
 
-    @Transactional(readOnly = true)
+    @Transactional(propagation = Propagation.MANDATORY)
     public void checkProductLimit(Long businessId) {
-        Subscription sub = getSubscription(businessId);
+        Subscription sub = getSubscriptionForUpdate(businessId);
         if (sub.getMaxProducts() == null) return;
         long count = productRepository.countByBusinessIdAndDeletedAtIsNull(businessId);
         if (count >= sub.getMaxProducts()) {
@@ -49,9 +58,9 @@ public class SubscriptionLimitService {
         }
     }
 
-    @Transactional(readOnly = true)
+    @Transactional(propagation = Propagation.MANDATORY)
     public void checkStaffLimit(Long businessId) {
-        Subscription sub = getSubscription(businessId);
+        Subscription sub = getSubscriptionForUpdate(businessId);
         if (sub.getMaxStaff() == null) return;
         long count = storeMemberRepository.countByBusinessId(businessId);
         if (count >= sub.getMaxStaff()) {
@@ -59,9 +68,9 @@ public class SubscriptionLimitService {
         }
     }
 
-    @Transactional(readOnly = true)
+    @Transactional(propagation = Propagation.MANDATORY)
     public void checkWarehouseLimit(Long businessId) {
-        Subscription sub = getSubscription(businessId);
+        Subscription sub = getSubscriptionForUpdate(businessId);
         if (sub.getMaxWarehouses() == null) return;
         long count = warehouseRepository.countByBusinessId(businessId);
         if (count >= sub.getMaxWarehouses()) {
@@ -69,6 +78,10 @@ public class SubscriptionLimitService {
         }
     }
 
+    // checkOrderLimit KHÔNG dùng lock: nằm trên hot path tạo order (tần suất cao nhất
+    // hệ thống) — khóa row subscription ở đây sẽ serialize toàn bộ order của business.
+    // maxOrdersPerMonth hiện chưa từng được gán (luôn null, check return sớm) nên
+    // chưa cần độ chính xác tuyệt đối như 4 limit trên.
     @Transactional(readOnly = true)
     public void checkOrderLimit(Long storeId) {
         Long businessId = storeRepository.findBusinessIdByStoreId(storeId)
@@ -86,6 +99,12 @@ public class SubscriptionLimitService {
 
     private Subscription getSubscription(Long businessId) {
         return subscriptionRepository.findByBusinessId(businessId)
+                .orElseThrow(() -> new ResourceNotFoundException(ErrorCode.SUBSCRIPTION_NOT_FOUND, "Subscription not found"));
+    }
+
+    // SELECT ... FOR UPDATE — xem comment ở đầu nhóm check limit
+    private Subscription getSubscriptionForUpdate(Long businessId) {
+        return subscriptionRepository.findByBusinessIdForUpdate(businessId)
                 .orElseThrow(() -> new ResourceNotFoundException(ErrorCode.SUBSCRIPTION_NOT_FOUND, "Subscription not found"));
     }
 }
