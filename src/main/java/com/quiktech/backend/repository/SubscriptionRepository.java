@@ -74,7 +74,9 @@ public interface SubscriptionRepository extends JpaRepository<Subscription, Long
             @Param("maxProducts") Integer maxProducts,
             @Param("maxWarehouses") Integer maxWarehouses);
 
-    // Lấy các subscription ACTIVE sắp hết hạn trong khoảng (now, deadline] — JOIN FETCH để tránh N+1 khi đọc business.email
+    // Lấy các subscription ACTIVE sắp hết hạn trong khoảng (now, deadline] — JOIN FETCH để tránh N+1 khi đọc business.email.
+    // Chỉ lấy sub CHƯA gửi email cảnh báo cho chu kỳ hiện tại (expiryWarningSentAt IS NULL)
+    // — scheduler chạy hàng ngày, không có filter này mỗi sub nhận 7 email lặp trong 7 ngày cuối.
     @Query("""
         SELECT s FROM Subscription s
         JOIN FETCH s.business
@@ -82,6 +84,7 @@ public interface SubscriptionRepository extends JpaRepository<Subscription, Long
         AND s.expiresAt IS NOT NULL
         AND s.expiresAt > :now
         AND s.expiresAt <= :deadline
+        AND s.expiryWarningSentAt IS NULL
     """)
     List<Subscription> findExpiringSoon(
             @Param("active") SubscriptionStatus active,

@@ -59,6 +59,8 @@
 - 3 gói: `FREE`, `BASIC`, `PRO` — giới hạn số store, staff, product, warehouse theo gói
 - Tạo business tự động kích hoạt gói FREE (không giới hạn thời gian)
 - Kiểm tra giới hạn gói trước khi tạo resource mới (store, staff, product, warehouse)
+- Staff limit đếm cả member `isActive = false` (member tạm khóa vẫn chiếm quota) —
+  chỉ member bị xóa (soft delete) mới trả lại quota
 
 **Luồng nâng cấp gói (chuyển khoản ngân hàng thủ công):**
 - Business owner tạo yêu cầu nâng cấp → hệ thống tạo invoice PENDING + cung cấp thông tin TK ngân hàng

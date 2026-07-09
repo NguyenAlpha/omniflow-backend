@@ -65,6 +65,12 @@ public class Subscription {
     @Column(name = "pending_billing_cycle", length = 20)
     private BillingCycle pendingBillingCycle;
 
+    // Thời điểm đã gửi email cảnh báo sắp hết hạn cho chu kỳ hiện tại — chống spam
+    // (scheduler chạy hàng ngày, không có cờ này sẽ gửi lặp 7 email trong 7 ngày cuối).
+    // Reset về null khi kích hoạt chu kỳ mới (confirmInvoice / changePlan).
+    @Column(name = "expiry_warning_sent_at", columnDefinition = "TIMESTAMPTZ")
+    private Instant expiryWarningSentAt;
+
     @Builder.Default
     @Column(nullable = false, columnDefinition = "TIMESTAMPTZ")
     private Instant createdAt = Instant.now();

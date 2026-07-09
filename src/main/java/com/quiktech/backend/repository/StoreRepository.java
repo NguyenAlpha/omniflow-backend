@@ -13,6 +13,8 @@ public interface StoreRepository extends JpaRepository<Store, Long> {
 
     List<Store> findByBusinessIdAndDeletedAtIsNull(Long businessId);
 
+    Optional<Store> findByIdAndDeletedAtIsNull(Long id);
+
     long countByBusinessIdAndDeletedAtIsNull(Long businessId);
 
     // Scalar query — tránh lazy load khi chỉ cần businessId (dùng trong StoreAccessEvaluator)

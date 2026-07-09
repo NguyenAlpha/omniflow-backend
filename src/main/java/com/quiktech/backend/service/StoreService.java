@@ -261,7 +261,10 @@ public class StoreService {
     }
 
     private Store findStoreOrThrow(Long storeId) {
-        return storeRepository.findById(storeId)
+        // Filter deletedAt để nhất quán với các query list (findByBusinessIdAndDeletedAtIsNull) —
+        // hiện chưa có API xóa store, nhưng nếu sau này set deletedAt thì mọi endpoint
+        // theo storeId không được truy cập store đã xóa
+        return storeRepository.findByIdAndDeletedAtIsNull(storeId)
                 .orElseThrow(() -> new ResourceNotFoundException(ErrorCode.STORE_NOT_FOUND, "Store not found"));
     }
 

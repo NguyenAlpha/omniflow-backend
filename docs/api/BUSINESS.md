@@ -59,6 +59,10 @@ Tạo business mặc định kèm store và warehouse đầu tiên — dùng tro
 
 > Không nhận body.
 
+**Idempotent:** nếu user đã là OWNER của ít nhất 1 business (VD: client retry do mất mạng,
+double-tap), endpoint trả về business hiện có cùng store/warehouse đầu tiên của nó
+(có thể `null` nếu business chưa có store/warehouse) thay vì tạo bộ mới trùng lặp.
+
 ### Response `201 Created`
 
 ```json

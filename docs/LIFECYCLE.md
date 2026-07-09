@@ -1,4 +1,4 @@
-# Vòng đời hệ thống OmniFlow
+# Vòng đời hệ thống QuikTech
 
 ---
 

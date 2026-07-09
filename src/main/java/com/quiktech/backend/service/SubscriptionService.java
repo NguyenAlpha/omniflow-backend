@@ -74,6 +74,10 @@ public class SubscriptionService {
             throw new IllegalArgumentException("Target plan must be lower than current plan");
         }
 
+        // Chỉ cần pendingPlan, không set pendingBillingCycle: downgrade về gói trả phí
+        // thấp hơn hiện chuyển sub sang EXPIRED tại cuối chu kỳ (user re-subscribe và
+        // chọn chu kỳ ở luồng upgrade), còn FREE không có chu kỳ — field này chỉ dùng
+        // khi nào có luồng downgrade giữ ACTIVE kèm thanh toán.
         sub.setPendingPlan(newPlan);
         return toResponse(subscriptionRepository.save(sub));
     }
@@ -237,6 +241,8 @@ public class SubscriptionService {
         // nếu không clear, scheduler sẽ áp pendingPlan cũ đè lên plan admin vừa set
         sub.setPendingPlan(null);
         sub.setPendingBillingCycle(null);
+        // Chu kỳ mới bắt đầu — cho phép gửi lại email cảnh báo khi chu kỳ này sắp hết hạn
+        sub.setExpiryWarningSentAt(null);
 
         return toResponse(subscriptionRepository.save(sub));
     }
@@ -292,6 +298,8 @@ public class SubscriptionService {
         sub.setMaxWarehouses(limits.maxWarehouses);
         sub.setStartedAt(now);
         sub.setExpiresAt(invoice.getPeriodEnd());
+        // Chu kỳ mới bắt đầu — cho phép gửi lại email cảnh báo khi chu kỳ này sắp hết hạn
+        sub.setExpiryWarningSentAt(null);
         subscriptionRepository.save(sub);
 
         emailService.sendInvoiceConfirmed(

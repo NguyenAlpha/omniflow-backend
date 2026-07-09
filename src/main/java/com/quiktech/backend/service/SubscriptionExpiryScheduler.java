@@ -93,6 +93,7 @@ public class SubscriptionExpiryScheduler {
         }
 
         // 3. Gửi email cảnh báo các subscription ACTIVE sắp hết hạn trong 7 ngày tới
+        // (findExpiringSoon chỉ trả sub chưa gửi — expiryWarningSentAt IS NULL)
         Instant warningDeadline = now.plus(7, ChronoUnit.DAYS);
         List<Subscription> expiringSoon = subscriptionRepository.findExpiringSoon(
                 SubscriptionStatus.ACTIVE, now, warningDeadline);
@@ -102,9 +103,12 @@ public class SubscriptionExpiryScheduler {
                     sub.getBusiness().getEmail(),
                     sub.getBusiness().getName(),
                     sub.getExpiresAt());
+            // Đánh dấu đã gửi cho chu kỳ hiện tại — mỗi chu kỳ chỉ cảnh báo 1 lần
+            sub.setExpiryWarningSentAt(now);
         }
 
         if (!expiringSoon.isEmpty()) {
+            subscriptionRepository.saveAll(expiringSoon);
             log.info("Sent expiry warning emails for {} subscription(s)", expiringSoon.size());
         }
 

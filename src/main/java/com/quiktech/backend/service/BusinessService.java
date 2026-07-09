@@ -15,6 +15,7 @@ import com.quiktech.backend.entity.Subscription;
 import com.quiktech.backend.entity.User;
 import com.quiktech.backend.entity.UserRole;
 import com.quiktech.backend.entity.Warehouse;
+import com.quiktech.backend.entity.enums.PlanLimits;
 import com.quiktech.backend.entity.enums.RoleName;
 import com.quiktech.backend.entity.enums.SubscriptionPlan;
 import com.quiktech.backend.entity.enums.SubscriptionStatus;
@@ -90,6 +91,23 @@ public class BusinessService {
      */
     @Transactional
     public BusinessDefaultResponse createDefaultBusiness(UserPrincipal currentUser) {
+        // Idempotent: endpoint thuộc luồng đăng ký, client có thể retry (mất mạng,
+        // double-tap) — nếu user đã là OWNER của business nào đó thì trả về business
+        // hiện có thay vì tạo thêm bộ business/store/warehouse/subscription trùng lặp
+        List<UserRole> ownerRoles = userRoleRepository.findActiveBusinessRolesForUser(currentUser.userId());
+        if (!ownerRoles.isEmpty()) {
+            Business existing = ownerRoles.get(0).getBusiness();
+            Store existingStore = storeRepository.findByBusinessIdAndDeletedAtIsNull(existing.getId())
+                    .stream().findFirst().orElse(null);
+            Warehouse existingWarehouse = existingStore == null ? null
+                    : warehouseRepository.findByStoreIdAndDeletedAtIsNull(existingStore.getId())
+                            .stream().findFirst().orElse(null);
+            return new BusinessDefaultResponse(
+                    toBusinessResponse(existing),
+                    existingStore == null ? null : toStoreResponse(existingStore),
+                    existingWarehouse == null ? null : toWarehouseResponse(existingWarehouse));
+        }
+
         Business business = Business.builder()
                 .name("Doanh nghiệp của tôi")
                 .isActive(true)
@@ -201,14 +219,17 @@ public class BusinessService {
     }
 
     private Subscription buildFreeSubscription(Business business) {
+        // Đọc limit từ PlanLimits.FREE (single source of truth) — trước đây hardcode
+        // 1,0,50,1 tạo 2 nguồn chân lý, sửa PlanLimits sẽ không có tác dụng ở đây
+        PlanLimits free = PlanLimits.FREE;
         return Subscription.builder()
                 .business(business)
                 .plan(SubscriptionPlan.FREE)
                 .status(SubscriptionStatus.ACTIVE)
-                .maxStores(1)
-                .maxStaff(0)
-                .maxProducts(50)
-                .maxWarehouses(1)
+                .maxStores(free.maxStores)
+                .maxStaff(free.maxStaff)
+                .maxProducts(free.maxProducts)
+                .maxWarehouses(free.maxWarehouses)
                 .startedAt(Instant.now())
                 .build();
     }
