@@ -123,7 +123,10 @@ public class StoreService {
         Map<Long, UserRole> roleByUserId = userRoleRepository
                 .findByStoreIdAndIsActiveTrueAndDeletedAtIsNull(storeId)
                 .stream()
-                .collect(Collectors.toMap(ur -> ur.getUser().getId(), ur -> ur));
+                // merge (a, b) -> a: nếu dữ liệu bẩn có 2 role active cùng user trong store
+                // (đã bị chặn bởi ux_user_roles_user_store nhưng vẫn phòng thủ),
+                // toMap không có merge function sẽ ném IllegalStateException → API sập
+                .collect(Collectors.toMap(ur -> ur.getUser().getId(), ur -> ur, (a, b) -> a));
 
         return members.stream()
                 .map(m -> toMemberResponse(m, roleByUserId.get(m.getUser().getId())))
@@ -133,8 +136,12 @@ public class StoreService {
     @Transactional
     public StoreMemberResponse addMember(Long storeId, AddMemberRequest request) {
         findStoreOrThrow(storeId);
+        validateStoreMemberRole(request.role());
 
-        if (userRoleRepository.findActiveStoreRole(request.userId(), storeId).isPresent()) {
+        // Check duplicate qua StoreMember (chỉ filter deletedAt) — check cũ bằng
+        // findActiveStoreRole bị bypass khi member tồn tại với isActive=false
+        // (query đó filter isActive=true) → tạo được cặp StoreMember/UserRole trùng
+        if (storeMemberRepository.findActiveStoreMember(storeId, request.userId()).isPresent()) {
             throw new IllegalArgumentException("User is already a member of this store");
         }
 
@@ -171,8 +178,10 @@ public class StoreService {
     @Transactional
     public StoreMemberResponse updateMember(Long storeId, Long memberId, UpdateMemberRequest request, UserPrincipal currentUser) {
         Store store = findStoreOrThrow(storeId);
+        validateStoreMemberRole(request.role());
 
-        StoreMember member = storeMemberRepository.findById(memberId)
+        // Scoped theo storeId — chống IDOR xuyên tenant (xem Javadoc repository method)
+        StoreMember member = storeMemberRepository.findByIdAndStoreIdAndDeletedAtIsNull(memberId, storeId)
                 .orElseThrow(() -> new ResourceNotFoundException(ErrorCode.STORE_MEMBER_NOT_FOUND, "Member not found"));
 
         UserRole userRole = userRoleRepository
@@ -196,7 +205,8 @@ public class StoreService {
     public void removeMember(Long storeId, Long memberId) {
         Store store = findStoreOrThrow(storeId);
 
-        StoreMember member = storeMemberRepository.findById(memberId)
+        // Scoped theo storeId — chống IDOR xuyên tenant (xem Javadoc repository method)
+        StoreMember member = storeMemberRepository.findByIdAndStoreIdAndDeletedAtIsNull(memberId, storeId)
                 .orElseThrow(() -> new ResourceNotFoundException(ErrorCode.STORE_MEMBER_NOT_FOUND, "Member not found"));
 
         UserRole userRole = userRoleRepository
@@ -235,6 +245,19 @@ public class StoreService {
                 businessAccessEvaluator.evictBusinessMemberCache(userId, businessId);
             }
         });
+    }
+
+    /**
+     * Store-scoped role chỉ được phép MANAGER/STAFF — request cho phép mọi RoleName nên
+     * OWNER có thể gửi ROLE_OWNER/ROLE_SUPER_ADMIN. Không leo thang quyền được (authorities
+     * chỉ lấy từ role global, business OWNER yêu cầu store IS NULL) nhưng tạo bản ghi
+     * user_roles sai ngữ nghĩa: hasAccess chỉ nhận MANAGER/STAFF nên user thực tế mất
+     * sạch quyền trong store — chặn từ đầu để không có trạng thái rác.
+     */
+    private void validateStoreMemberRole(RoleName role) {
+        if (role != RoleName.ROLE_MANAGER && role != RoleName.ROLE_STAFF) {
+            throw new IllegalArgumentException("Store member role must be ROLE_MANAGER or ROLE_STAFF");
+        }
     }
 
     private Store findStoreOrThrow(Long storeId) {

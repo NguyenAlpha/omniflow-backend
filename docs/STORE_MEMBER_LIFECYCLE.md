@@ -73,8 +73,13 @@ Lưu ý:
 ```
 StoreService.addMember(storeId, request, currentUser)    [yêu cầu: currentUser là OWNER]
     │
-    ├── Kiểm tra: findActiveStoreRole(request.userId, storeId).isPresent() ?
+    ├── Validate: request.role ∈ {ROLE_MANAGER, ROLE_STAFF}
+    │   └── sai → throw IllegalArgumentException (store-scoped chỉ có 2 role này)
+    │
+    ├── Kiểm tra: findActiveStoreMember(storeId, request.userId).isPresent() ?
     │   └── true → throw IllegalArgumentException("User is already a member")
+    │   └── check qua StoreMember (chỉ filter deleted_at) — KHÔNG phụ thuộc isActive,
+    │       member đang inactive vẫn tính là "đã là member"
     │
     ├── [TX BEGIN]
     │
@@ -86,9 +91,10 @@ StoreService.addMember(storeId, request, currentUser)    [yêu cầu: currentUse
     │
     ├── [TX COMMIT]
     │
-    ├── evictStoreRoleCache(request.userId, storeId)
+    ├── (afterCommit) evictStoreRoleCache(request.userId, storeId)
     │   └── xóa Redis key "store:role:{userId}:{storeId}" nếu có entry cũ
     │       (VD: user đã từng là member, bị xóa, nay được thêm lại với role khác)
+    ├── (afterCommit) evictBusinessMemberCache(request.userId, businessId)
     │
     └── return StoreMemberResponse
 ```
@@ -98,7 +104,11 @@ StoreService.addMember(storeId, request, currentUser)    [yêu cầu: currentUse
 ```
 StoreService.updateMember(storeId, memberId, request, currentUser)    [yêu cầu: OWNER]
     │
-    ├── findById(memberId) → StoreMember
+    ├── Validate: request.role ∈ {ROLE_MANAGER, ROLE_STAFF}
+    │
+    ├── findByIdAndStoreIdAndDeletedAtIsNull(memberId, storeId) → StoreMember
+    │   └── scoped theo storeId — chống IDOR: memberId thuộc store/business khác → 404
+    │       (@PreAuthorize chỉ xác nhận caller là OWNER của store TRONG URL)
     ├── findActiveStoreRole(member.userId, storeId) → UserRole
     │
     ├── [TX BEGIN]
@@ -108,10 +118,10 @@ StoreService.updateMember(storeId, memberId, request, currentUser)    [yêu cầ
     │
     ├── [TX COMMIT]
     │
-    ├── evictStoreRoleCache(member.userId, storeId)
+    ├── (afterCommit) evictStoreRoleCache(member.userId, storeId)
     │   └── bắt buộc — role đã thay đổi, cache cũ không còn đúng
     │
-    ├── evictBusinessMemberCache(member.userId, businessId)
+    ├── (afterCommit) evictBusinessMemberCache(member.userId, businessId)
     │   └── bắt buộc — role cao nhất trong business có thể thay đổi (VD: MANAGER → STAFF)
     │
     └── return StoreMemberResponse
@@ -125,7 +135,8 @@ không thể tìm thấy qua findById(memberId), nên không thể bị updateMe
 ```
 StoreService.removeMember(storeId, memberId, currentUser)    [yêu cầu: OWNER]
     │
-    ├── findById(memberId) → StoreMember
+    ├── findByIdAndStoreIdAndDeletedAtIsNull(memberId, storeId) → StoreMember
+    │   └── scoped theo storeId — chống IDOR: memberId thuộc store/business khác → 404
     ├── findActiveStoreRole(member.userId, storeId) → UserRole (nullable)
     │
     ├── [TX BEGIN]
@@ -135,10 +146,10 @@ StoreService.removeMember(storeId, memberId, currentUser)    [yêu cầu: OWNER]
     │
     ├── [TX COMMIT]
     │
-    ├── evictStoreRoleCache(member.userId, storeId)
+    ├── (afterCommit) evictStoreRoleCache(member.userId, storeId)
     │   └── bắt buộc — user không còn là member, cache phải xóa ngay
     │
-    ├── evictBusinessMemberCache(member.userId, businessId)
+    ├── (afterCommit) evictBusinessMemberCache(member.userId, businessId)
     │   └── bắt buộc — user có thể mất quyền truy cập catalog của business
     │
     └── (void)
@@ -157,9 +168,11 @@ không thể tìm thấy qua findById(memberId), nên không thể bị removeMe
 | Ràng buộc | Được kiểm tra ở đâu |
 |:---|:---|
 | Chỉ OWNER mới được thêm / sửa / xóa member | `@PreAuthorize("@storeAccess.isOwner(#storeId, authentication)")` |
-| Không thêm user đã là member | `StoreService.addMember` — check `findActiveStoreRole` |
+| Member phải thuộc đúng store trong URL (chống IDOR) | `findByIdAndStoreIdAndDeletedAtIsNull(memberId, storeId)` → 404 nếu lệch |
+| Không thêm user đã là member (kể cả inactive) | `StoreService.addMember` — check `findActiveStoreMember`; backstop DB: `ux_store_members_user_store` |
+| Store-scoped role chỉ có MANAGER / STAFF | `StoreService.validateStoreMemberRole` (add/update); backstop DB: `ux_user_roles_user_store` (V8) chặn 2 role cùng store |
 | OWNER không thể bị removeMember / updateMember | Tự nhiên — OWNER không có `store_members` record |
-| Business luôn có OWNER | Quản lý ở business level — xem `BUSINESS_MEMBER_LIFECYCLE.md` |
+| Business luôn có OWNER | Quản lý ở business level (`user_roles.business_id SET, store_id NULL`) |
 
 ---
 
@@ -181,8 +194,14 @@ getMembers     Không        Không             Read-only
 ```
 
 > **Thứ tự bắt buộc:** evict phải gọi **sau** `@Transactional` commit.
-> Nếu gọi trước, request tiếp theo sẽ cache miss → đọc DB → thấy data cũ chưa commit.
-> Trong Spring, `@Transactional` commit khi method return — evict ở cuối method là đúng thứ tự.
+> Nếu gọi trước, request khác chen vào giữa (sau evict, trước commit) sẽ cache miss
+> → đọc DB thấy role CŨ chưa commit → ghi lại vào Redis với TTL đầy đủ — quyền vừa gỡ
+> "hồi sinh" tới 5 phút.
+>
+> Lưu ý: `@Transactional` commit **sau khi method return** (proxy bọc ngoài) — gọi evict
+> ở cuối thân method vẫn là TRƯỚC commit. Vì vậy `StoreService` đăng ký evict qua
+> `TransactionSynchronizationManager.registerSynchronization(afterCommit)` — xem
+> `evictMemberCachesAfterCommit`.
 
 ---
 

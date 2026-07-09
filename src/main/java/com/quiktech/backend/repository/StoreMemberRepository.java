@@ -26,6 +26,14 @@ public interface StoreMemberRepository extends JpaRepository<StoreMember, Long> 
 
     Optional<StoreMember> findByPublicId(UUID publicId);
 
+    /**
+     * Load member scoped theo storeId — chống IDOR: memberId là số tự tăng đoán được,
+     * nếu chỉ findById(memberId) thì OWNER của business A có thể sửa/xóa member của
+     * business B qua URL /api/stores/{storeIdCủaA}/members/{memberIdCủaB}
+     * (@PreAuthorize chỉ xác nhận quyền trên store trong URL, không liên quan store của member).
+     */
+    Optional<StoreMember> findByIdAndStoreIdAndDeletedAtIsNull(Long id, Long storeId);
+
     @Query("""
         SELECT sm FROM StoreMember sm
         WHERE sm.store.id = :storeId
