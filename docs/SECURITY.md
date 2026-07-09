@@ -48,13 +48,13 @@ Order, Inventory... gắn với từng chi nhánh cụ thể.
 
 ## 3. Phân loại Role
 
-| Role          | Scope           | Lưu ở đâu khi check                             |
-|:--------------|:----------------|:------------------------------------------------|
-| `SUPER_ADMIN` | Global          | JWT claim `roles` → SecurityContext authorities |
-| `SUPPORT`     | Global          | JWT claim `roles` → SecurityContext authorities |
-| `OWNER`       | Business-scoped | DB (`user_roles.business_id`) — không vào JWT   |
-| `MANAGER`     | Store-scoped    | Redis / DB — không vào JWT                      |
-| `STAFF`       | Store-scoped    | Redis / DB — không vào JWT                      |
+| Role (enum `RoleName`) | Scope           | Lưu ở đâu khi check                             |
+|:-----------------------|:----------------|:------------------------------------------------|
+| `ROLE_SUPER_ADMIN`     | Global          | JWT claim `roles` → SecurityContext authorities |
+| `ROLE_SUPPORT`         | Global          | JWT claim `roles` → SecurityContext authorities |
+| `ROLE_OWNER`           | Business-scoped | DB (`user_roles.business_id`) — không vào JWT   |
+| `ROLE_MANAGER`         | Store-scoped    | Redis / DB — không vào JWT                      |
+| `ROLE_STAFF`           | Store-scoped    | Redis / DB — không vào JWT                      |
 
 **DB schema của user_roles:**
 ```
@@ -79,7 +79,7 @@ sẽ làm token phình to và không revoke được khi role thay đổi.
 JWT claims
   sub     → username
   userId  → Long
-  roles   → List<String> (VD: ["SUPER_ADMIN"])   ← chỉ global roles
+  roles   → List<String> (VD: ["ROLE_SUPER_ADMIN"])   ← chỉ global roles, giá trị enum đầy đủ có prefix ROLE_
 ```
 
 Luồng xử lý mỗi request:
@@ -89,8 +89,8 @@ Luồng xử lý mỗi request:
 3. `UserPrincipalConverter.convert(jwt)` build `Authentication` với:
    - **Principal**: `UserPrincipal(userId, username, roles)` — không phải `User` entity.
      Controllers inject bằng `@AuthenticationPrincipal UserPrincipal currentUser`, dùng để truy cập `userId`, `username`, check global role.
-   - **Authorities**: `List<SimpleGrantedAuthority>` map từ claim `roles` (VD: `"SUPER_ADMIN"` → `SimpleGrantedAuthority("SUPER_ADMIN")`).
-     Dùng trong `@PreAuthorize("hasRole('SUPER_ADMIN')")` hoặc check thủ công trong code.
+   - **Authorities**: `List<SimpleGrantedAuthority>` map nguyên văn từ claim `roles` (VD: `"ROLE_SUPER_ADMIN"` → `SimpleGrantedAuthority("ROLE_SUPER_ADMIN")`).
+     Dùng trong `@PreAuthorize("hasRole('SUPER_ADMIN')")` (hasRole tự thêm prefix `ROLE_` khi so khớp) hoặc `hasAuthority('ROLE_SUPER_ADMIN')`.
    - **Credentials**: đối tượng `Jwt` gốc — có thể lấy thêm claim nếu cần.
 4. `SecurityContextHolder.set(authentication)` — các filter/handler phía sau đọc principal từ đây.
 

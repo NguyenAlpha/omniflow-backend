@@ -76,8 +76,12 @@ public class AuthService {
                 new UsernamePasswordAuthenticationToken(request.usernameOrEmail(), request.password())
         );
 
+        // authenticate() ở trên đã thành công nên user chắc chắn tồn tại — nếu vẫn
+        // không tìm thấy (race hiếm: user bị xóa giữa 2 câu query) thì fail với message
+        // rõ ràng thay vì NoSuchElementException không có context
         User user = userRepository.findByUsernameOrEmail(request.usernameOrEmail(), request.usernameOrEmail())
-                .orElseThrow();
+                .orElseThrow(() -> new IllegalStateException(
+                        "User not found after successful authentication: " + request.usernameOrEmail()));
 
         log.info("User logged in: username={}", user.getUsername());
         return buildAuthResponse(user);

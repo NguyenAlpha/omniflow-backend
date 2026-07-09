@@ -41,7 +41,7 @@ Login / Register
 {
   "sub":    "nguyen.van.a",
   "userId": 42,
-  "roles":  ["SUPER_ADMIN"],
+  "roles":  ["ROLE_SUPER_ADMIN"],
   "iat":    1748000000,
   "exp":    1748086400
 }
@@ -51,7 +51,7 @@ Login / Register
 |:---|:---|:---|
 | `sub` | String | Username — đọc bởi `UserPrincipalConverter` qua `jwt.getSubject()` |
 | `userId` | Long | Internal DB ID — dùng để build `UserPrincipal` và query DB khi cần |
-| `roles` | List\<String\> | Global roles của user — chỉ `SUPER_ADMIN` hoặc `SUPPORT`; rỗng với user thường |
+| `roles` | List\<String\> | Global roles của user — chỉ `ROLE_SUPER_ADMIN` hoặc `ROLE_SUPPORT` (giá trị enum `RoleName` đầy đủ, có prefix `ROLE_`); rỗng với user thường |
 | `iat` | Unix epoch | Thời điểm token được cấp |
 | `exp` | Unix epoch | Thời điểm token hết hạn = `iat` + 86400 giây (24h) |
 
@@ -73,7 +73,7 @@ AuthService.buildAuthResponse(user)
     │
     └── buildBundle(user, rtValue)
         ├── Query DB: findByUserIdAndBusinessIsNullAndStoreIsNullAndDeletedAtIsNull(userId)
-        │   └── lấy global roles (SUPER_ADMIN, SUPPORT) để nhúng vào token
+        │   └── lấy global roles (ROLE_SUPER_ADMIN, ROLE_SUPPORT) để nhúng vào token
         │
         ├── jwtService.generateToken(user, { userId, roles })
         │   └── HS256 JWT, exp = now + 24h
@@ -100,7 +100,7 @@ BearerTokenAuthenticationFilter nhận "Authorization: Bearer <token>"
     │   └── UserPrincipalConverter.convert(jwt)
     │       ├── username ← jwt.getSubject()
     │       ├── userId   ← jwt.getClaim("userId")  (normalize Integer/Long → Long)
-    │       ├── roles    ← jwt.getClaim("roles")   → ["SUPER_ADMIN"] hoặc []
+    │       ├── roles    ← jwt.getClaim("roles")   → ["ROLE_SUPER_ADMIN"] hoặc []
     │       └── set SecurityContext với UserPrincipal(userId, username, roles) + authorities
     │
     └── Token invalid → JwtException bị bắt → 401 Unauthorized
@@ -221,6 +221,8 @@ Client gửi request với token đã hết hạn
 | `jwt.secret` | Base64-encoded string | HMAC-SHA256 signing key — phải đủ 256-bit sau decode |
 | `jwt.expiration` | `86400000` (ms) | TTL access token = 24 giờ |
 | `jwt.refresh-token-expiration-days` | `30` | TTL refresh token = 30 ngày |
+| `refresh-token.cleanup.cron` | `0 0 2 * * *` (02:00 AM) | Lịch chạy `RefreshTokenCleanupScheduler` — xóa cứng token đã hết hạn khỏi bảng `refresh_tokens` (token rotation tạo row mới mỗi lần refresh nên bảng phình vô hạn nếu không dọn) |
+| `refresh-token.cleanup.retention-days` | `7` | Chỉ xóa token hết hạn quá N ngày. Token revoked nhưng CHƯA hết hạn không bị xóa — giữ lại làm "bẫy" cho reuse-detection trong `RefreshTokenService.rotate` |
 
 > `jwt.secret` phải được thay bằng giá trị ngẫu nhiên mạnh trong production.
 > Không commit secret thật vào source code.

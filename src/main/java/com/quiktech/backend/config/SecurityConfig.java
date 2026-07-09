@@ -15,7 +15,11 @@ import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.security.web.SecurityFilterChain;
 
+import org.springframework.http.MediaType;
+
 import jakarta.servlet.http.HttpServletResponse;
+
+import java.nio.charset.StandardCharsets;
 
 /**
  * Cấu hình HTTP Security filter chain cho toàn bộ ứng dụng.
@@ -47,6 +51,12 @@ public class SecurityConfig {
 
     private final Converter<Jwt, AbstractAuthenticationToken> jwtAuthConverter;
 
+    // JSON response cố định khớp với format ApiResult của codebase (cùng pattern với
+    // RATE_LIMIT_BODY trong RateLimitFilter):
+    // {"success":false,"data":null,"error":{"code":"UNAUTHORIZED","message":"...","field":null}}
+    private static final String UNAUTHORIZED_BODY = """
+            {"success":false,"data":null,"error":{"code":"UNAUTHORIZED","message":"Authentication required. Provide a valid Bearer token.","field":null}}""";
+
     /**
      * Định nghĩa filter chain chính xử lý mọi HTTP request.
      * Thứ tự các bước cấu hình phản ánh thứ tự xử lý thực tế của Spring Security.
@@ -74,10 +84,17 @@ public class SecurityConfig {
                 .sessionManagement(session -> session
                         .sessionCreationPolicy(SessionCreationPolicy.STATELESS))
 
-                // Trả về 401 JSON-friendly thay vì redirect đến trang login mặc định của Spring
+                // Trả về 401 JSON-friendly thay vì redirect đến trang login mặc định của Spring.
+                // Ghi thẳng body ApiResult (giống RateLimitFilter) thay vì sendError() —
+                // sendError() trả về trang HTML lỗi mặc định của servlet container,
+                // không khớp envelope {success,data,error} mà client parse.
                 .exceptionHandling(ex -> ex
-                        .authenticationEntryPoint((request, response, e) ->
-                                response.sendError(HttpServletResponse.SC_UNAUTHORIZED, "Unauthorized"))
+                        .authenticationEntryPoint((request, response, e) -> {
+                            response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+                            response.setContentType(MediaType.APPLICATION_JSON_VALUE);
+                            response.setCharacterEncoding(StandardCharsets.UTF_8.name());
+                            response.getWriter().write(UNAUTHORIZED_BODY);
+                        })
                 )
 
                 // Kích hoạt BearerTokenAuthenticationFilter — tự động validate JWT và đưa
