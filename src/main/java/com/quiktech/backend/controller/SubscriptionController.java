@@ -43,7 +43,7 @@ public class SubscriptionController {
     public ResponseEntity<ApiResult<SubscriptionResponse>> changePlan(
             @PathVariable Long businessId,
             @Valid @RequestBody ChangePlanRequest request) {
-        return ResponseEntity.ok(ApiResult.ok(subscriptionService.changePlan(businessId, request.plan())));
+        return ResponseEntity.ok(ApiResult.ok(subscriptionService.changePlan(businessId, request.plan(), request.billingCycle())));
     }
 
     @GetMapping("/invoices/pending")

@@ -33,11 +33,20 @@ public interface SubscriptionRepository extends JpaRepository<Subscription, Long
             @Param("active") SubscriptionStatus active,
             @Param("now") Instant now);
 
-    // Bulk-expire subscription ACTIVE đã hết hạn và KHÔNG có pending downgrade
+    // Bulk-expire subscription ACTIVE đã hết hạn và KHÔNG có pending downgrade.
+    // Phải hạ 4 cột limit về FREE (scheduler truyền vào) ngay trong cùng UPDATE:
+    // SubscriptionLimitService chỉ đọc maxXxx, không đọc status/expiresAt — nếu chỉ
+    // đổi status, business EXPIRED giữ nguyên quyền lợi gói trả phí vĩnh viễn
+    // (PRO limit = null = unlimited dù đã ngừng trả tiền).
+    // Giữ nguyên s.plan làm record lịch sử — UI/renewal cần biết gói cũ là gì.
     @Modifying(clearAutomatically = true)
     @Query("""
         UPDATE Subscription s
-        SET s.status = :expired
+        SET s.status = :expired,
+            s.maxStores = :maxStores,
+            s.maxStaff = :maxStaff,
+            s.maxProducts = :maxProducts,
+            s.maxWarehouses = :maxWarehouses
         WHERE s.status = :active
         AND s.expiresAt IS NOT NULL
         AND s.expiresAt < :now
@@ -46,7 +55,11 @@ public interface SubscriptionRepository extends JpaRepository<Subscription, Long
     int expireOverdue(
             @Param("expired") SubscriptionStatus expired,
             @Param("active") SubscriptionStatus active,
-            @Param("now") Instant now);
+            @Param("now") Instant now,
+            @Param("maxStores") Integer maxStores,
+            @Param("maxStaff") Integer maxStaff,
+            @Param("maxProducts") Integer maxProducts,
+            @Param("maxWarehouses") Integer maxWarehouses);
 
     // Lấy các subscription ACTIVE sắp hết hạn trong khoảng (now, deadline] — JOIN FETCH để tránh N+1 khi đọc business.email
     @Query("""

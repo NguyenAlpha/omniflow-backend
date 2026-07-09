@@ -194,7 +194,10 @@ Tạo yêu cầu nâng cấp gói. Hệ thống tạo invoice PENDING và trả 
 **Quyền:** OWNER của business.
 
 **Ràng buộc:**
-- Chỉ được nâng lên gói cao hơn gói hiện tại (FREE→BASIC, FREE→PRO, BASIC→PRO).
+- Sub `ACTIVE`: chỉ được nâng lên gói cao hơn gói hiện tại (FREE→BASIC, FREE→PRO, BASIC→PRO).
+- Sub `EXPIRED`: được mua lại **bất kỳ gói trả phí nào** (renewal/re-subscribe) — kể cả gói
+  bằng hoặc thấp hơn plan cũ (VD: PRO hết hạn mua lại PRO hoặc BASIC).
+- `plan = FREE` luôn bị từ chối — không có gì để thanh toán.
 - Nếu đã có invoice PENDING chưa xử lý → lỗi 400.
 
 ### Path parameters
@@ -255,7 +258,8 @@ Tạo yêu cầu nâng cấp gói. Hệ thống tạo invoice PENDING và trả 
 | HTTP | `error.code` | Nguyên nhân |
 |:----:|:------------|:-----------|
 | 400 | `VALIDATION_ERROR` | `plan` hoặc `billingCycle` không hợp lệ |
-| 400 | `VALIDATION_ERROR` | Gói mới không cao hơn gói hiện tại |
+| 400 | `VALIDATION_ERROR` | `plan = FREE` (không có gì để thanh toán) |
+| 400 | `VALIDATION_ERROR` | Sub còn ACTIVE nhưng gói mới không cao hơn gói hiện tại |
 | 400 | `VALIDATION_ERROR` | Đã có invoice PENDING chưa xử lý |
 | 403 | `ACCESS_DENIED` | Không phải OWNER |
 | 404 | `SUBSCRIPTION_NOT_FOUND` | Business chưa có subscription |
@@ -470,17 +474,25 @@ Trả về `SubscriptionResponse` (xem [BUSINESS.md](./BUSINESS.md#đối-tượ
 
 Override trực tiếp plan của business — không qua luồng invoice. Dùng cho điều chỉnh thủ công (tặng gói, sửa lỗi).
 
+**Hành vi:**
+- `plan = FREE`: `expiresAt = null`, `billingCycle = null` (FREE không có thời hạn).
+- Plan trả phí: bắt buộc gửi `billingCycle` — `expiresAt` được tính lại = now + 30/365 ngày.
+- Lịch downgrade đã đặt trước (`pendingPlan`/`pendingBillingCycle`) luôn bị xóa —
+  quyết định của admin thay thế lịch cũ.
+
 ### Request
 
 ```json
 {
-  "plan": "PRO"
+  "plan": "PRO",
+  "billingCycle": "MONTHLY"
 }
 ```
 
 | Field | Type | Bắt buộc | Giá trị |
 |:------|:-----|:--------:|:--------|
 | `plan` | string | ✅ | `FREE`, `BASIC`, `PRO` |
+| `billingCycle` | string | Khi plan trả phí | `MONTHLY`, `YEARLY` — bỏ trống nếu `plan = FREE` |
 
 ### Response `200 OK`
 

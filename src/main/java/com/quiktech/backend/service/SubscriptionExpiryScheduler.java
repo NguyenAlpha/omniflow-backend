@@ -66,10 +66,17 @@ public class SubscriptionExpiryScheduler {
         }
 
         // 2. Bulk-expire phần còn lại (không có pending plan)
+        // Hạ limit về FREE ngay trong UPDATE — sub EXPIRED không được giữ quyền lợi
+        // gói trả phí (soft cap: data hiện có không bị xóa, chỉ chặn tạo mới vượt FREE)
+        PlanLimits freeLimits = PlanLimits.FREE;
         int expired = subscriptionRepository.expireOverdue(
                 SubscriptionStatus.EXPIRED,
                 SubscriptionStatus.ACTIVE,
-                now);
+                now,
+                freeLimits.maxStores,
+                freeLimits.maxStaff,
+                freeLimits.maxProducts,
+                freeLimits.maxWarehouses);
 
         if (expired > 0) {
             log.info("Expired {} subscription(s) past their expiresAt", expired);

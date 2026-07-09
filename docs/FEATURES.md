@@ -72,6 +72,13 @@
 - Lịch sử toàn bộ invoice được lưu (`subscription_invoices`) — immutable
 - Chu kỳ: `MONTHLY` (30 ngày) hoặc `YEARLY` (365 ngày)
 
+**Hết hạn gói (scheduler hàng ngày 01:00 AM):**
+- Sub ACTIVE quá `expiresAt` → `status = EXPIRED`, 4 limit hạ về gói FREE
+  (soft cap — data hiện có giữ nguyên, chỉ chặn tạo mới vượt giới hạn FREE)
+- `plan` giữ nguyên làm record lịch sử — UI biết gói cũ để gợi ý mua lại
+- Sub EXPIRED được mua lại **bất kỳ gói trả phí nào** qua luồng nâng cấp
+  (kể cả gói bằng/thấp hơn plan cũ — renewal/re-subscribe)
+
 **Email notification (async, qua Spring Mail):**
 - Admin confirm invoice → gửi email xác nhận đến business email
 - Admin reject invoice → gửi email thông báo từ chối kèm lý do

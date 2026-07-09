@@ -97,14 +97,27 @@ public class SubscriptionService {
     /**
      * Business owner tạo yêu cầu nâng cấp gói.
      * Tạo invoice PENDING + trả về thông tin tài khoản ngân hàng để chuyển khoản.
-     * Chỉ cho phép nâng lên gói cao hơn gói hiện tại.
+     * Sub ACTIVE: chỉ cho phép nâng lên gói cao hơn gói hiện tại.
+     * Sub không còn ACTIVE (EXPIRED): cho phép mua lại bất kỳ gói trả phí nào
+     * (renewal/re-subscribe) — plan trên sub lúc này chỉ là record lịch sử.
      * Không cho phép tạo khi đã có invoice PENDING.
      */
     @Transactional
     public UpgradeResponse requestUpgrade(Long businessId, SubscriptionPlan newPlan, BillingCycle billingCycle) {
         Subscription sub = getSubscription(businessId);
 
-        if (newPlan.ordinal() <= sub.getPlan().ordinal()) {
+        // FREE không có gì để thanh toán — chặn tường minh. Trước đây FREE bị chặn
+        // gián tiếp qua so sánh ordinal, nhưng với sub EXPIRED thì check ordinal
+        // bên dưới được bỏ qua nên cần guard riêng.
+        if (newPlan == SubscriptionPlan.FREE) {
+            throw new IllegalArgumentException("Cannot request an upgrade to the FREE plan");
+        }
+
+        // Điều kiện "gói mới phải cao hơn" chỉ áp dụng khi sub còn ACTIVE.
+        // Sub EXPIRED được mua lại gói bằng/thấp hơn plan cũ (VD: PRO hết hạn mua lại
+        // chính PRO hoặc BASIC) — nếu vẫn áp check ordinal, user PRO hết hạn sẽ kẹt
+        // vĩnh viễn: không còn gói nào cao hơn để mua, không có đường thanh toán nào.
+        if (sub.getStatus() == SubscriptionStatus.ACTIVE && newPlan.ordinal() <= sub.getPlan().ordinal()) {
             throw new IllegalArgumentException("New plan must be higher than current plan");
         }
 
@@ -184,12 +197,17 @@ public class SubscriptionService {
 
     /**
      * Admin override trực tiếp plan (không qua invoice flow) — dùng cho điều chỉnh thủ công.
+     * FREE: không có thời hạn → expiresAt/billingCycle = null.
+     * Gói trả phí: bắt buộc truyền billingCycle để tính expiresAt mới — nếu giữ
+     * expiresAt cũ (có thể đã ở quá khứ) scheduler sẽ expire ngay lần chạy kế tiếp,
+     * còn nếu để null thì gói trả phí không bao giờ hết hạn.
      */
     @PreAuthorize("hasRole('ROLE_SUPER_ADMIN')")
     @Transactional
-    public SubscriptionResponse changePlan(Long businessId, SubscriptionPlan newPlan) {
+    public SubscriptionResponse changePlan(Long businessId, SubscriptionPlan newPlan, BillingCycle billingCycle) {
         Subscription sub = getSubscription(businessId);
         PlanLimits limits = PlanLimits.valueOf(newPlan.name());
+        Instant now = Instant.now();
 
         sub.setPlan(newPlan);
         sub.setStatus(SubscriptionStatus.ACTIVE);
@@ -197,7 +215,25 @@ public class SubscriptionService {
         sub.setMaxStaff(limits.maxStaff);
         sub.setMaxProducts(limits.maxProducts);
         sub.setMaxWarehouses(limits.maxWarehouses);
-        sub.setStartedAt(Instant.now());
+        sub.setStartedAt(now);
+
+        if (newPlan == SubscriptionPlan.FREE) {
+            sub.setExpiresAt(null);
+            sub.setBillingCycle(null);
+        } else {
+            if (billingCycle == null) {
+                throw new IllegalArgumentException("billingCycle is required when changing to a paid plan");
+            }
+            sub.setBillingCycle(billingCycle);
+            sub.setExpiresAt(billingCycle == BillingCycle.YEARLY
+                    ? now.plus(365, ChronoUnit.DAYS)
+                    : now.plus(30, ChronoUnit.DAYS));
+        }
+
+        // Quyết định thủ công của admin thay thế mọi lịch downgrade đã đặt trước —
+        // nếu không clear, scheduler sẽ áp pendingPlan cũ đè lên plan admin vừa set
+        sub.setPendingPlan(null);
+        sub.setPendingBillingCycle(null);
 
         return toResponse(subscriptionRepository.save(sub));
     }
