@@ -97,7 +97,7 @@ Cập nhật thông tin profile của người dùng hiện tại.
 
 | Field | Type | Bắt buộc | Ràng buộc |
 |:------|:-----|:--------:|:----------|
-| `username` | string | ✅ | Không được để trống, tối đa 50 ký tự |
+| `username` | string | ✅ | Không được để trống, tối đa 50 ký tự, chỉ chứa `a-z A-Z 0-9 . _ -` (không cho `@`) |
 | `email` | string | ✅ | Không được để trống, format email hợp lệ, tối đa 100 ký tự |
 | `fullName` | string | ✅ | Không được để trống, tối đa 200 ký tự |
 | `phone` | string | ❌ | Tối đa 20 ký tự |
@@ -146,7 +146,10 @@ Cập nhật thông tin profile của người dùng hiện tại.
 | Field | Type | Bắt buộc | Ràng buộc |
 |:------|:-----|:--------:|:----------|
 | `currentPassword` | string | ✅ | Không được để trống |
-| `newPassword` | string | ✅ | Không được để trống, tối thiểu 6 ký tự |
+| `newPassword` | string | ✅ | Không được để trống, 6–72 ký tự (BCrypt giới hạn 72 bytes) |
+
+> Sau khi đổi mật khẩu thành công, **toàn bộ refresh token của user bị thu hồi** — các phiên
+> khác phải đăng nhập lại (đá kẻ xâm nhập đang giữ refresh token cũ ra khỏi hệ thống).
 
 ### Response `200 OK`
 

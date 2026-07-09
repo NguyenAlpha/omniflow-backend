@@ -2,9 +2,11 @@ package com.quiktech.backend.repository;
 
 import com.quiktech.backend.entity.UserRole;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
+import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 
@@ -84,4 +86,10 @@ public interface UserRoleRepository extends JpaRepository<UserRole, Long> {
 
     // Used by SystemAdminSeeder to check if user already has a global role
     boolean existsByUserIdAndBusinessIsNullAndStoreIsNullAndDeletedAtIsNull(Long userId);
+
+    // Soft-delete toàn bộ role của user — gọi khi xóa mềm user để evaluator không còn
+    // thấy role active (findActiveStoreRole/findActiveBusinessRole filter deletedAt IS NULL)
+    @Modifying
+    @Query("UPDATE UserRole ur SET ur.deletedAt = :now WHERE ur.user.id = :userId AND ur.deletedAt IS NULL")
+    int softDeleteAllByUserId(@Param("userId") Long userId, @Param("now") Instant now);
 }

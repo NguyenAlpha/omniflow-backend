@@ -29,8 +29,8 @@
 | Tên cột | Kiểu | Ràng buộc | Ý nghĩa |
 |---|---|---|---|
 | `id` | BIGSERIAL | PK | Khóa chính |
-| `username` | VARCHAR(50) | NOT NULL, UNIQUE | Tên đăng nhập |
-| `email` | VARCHAR(100) | NOT NULL, UNIQUE | Email đăng ký |
+| `username` | VARCHAR(50) | NOT NULL, UNIQUE (partial) | Tên đăng nhập |
+| `email` | VARCHAR(100) | NOT NULL, UNIQUE (partial) | Email đăng ký |
 | `password_hash` | VARCHAR(255) | NOT NULL | Mật khẩu đã hash (bcrypt) |
 | `full_name` | VARCHAR(200) | NOT NULL | Họ và tên |
 | `phone` | VARCHAR(20) | | Số điện thoại |
@@ -40,6 +40,9 @@
 | `deleted_at` | TIMESTAMPTZ | | Thời điểm xoá mềm — null = chưa xoá |
 
 > Độc lập hoàn toàn — không biết gì về store hay role. Dễ mở rộng OAuth, 2FA mà không ảnh hưởng nghiệp vụ.
+>
+> **Unique partial (V7):** `uq_users_username_active` / `uq_users_email_active` — UNIQUE chỉ áp dụng
+> `WHERE deleted_at IS NULL`, để username/email của user đã xóa mềm được đăng ký lại bởi người mới.
 
 ### `roles` — Định nghĩa vai trò (RBAC)
 | Tên cột | Kiểu | Ràng buộc | Ý nghĩa |

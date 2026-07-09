@@ -8,26 +8,37 @@ import com.quiktech.backend.dto.response.common.ErrorCode;
 import com.quiktech.backend.dto.response.common.PagedResult;
 import com.quiktech.backend.dto.response.user.UserAdminResponse;
 import com.quiktech.backend.entity.User;
+import com.quiktech.backend.entity.UserRole;
 import com.quiktech.backend.exception.ResourceNotFoundException;
 import com.quiktech.backend.repository.UserRepository;
+import com.quiktech.backend.repository.UserRoleRepository;
+import com.quiktech.backend.security.BusinessAccessEvaluator;
+import com.quiktech.backend.security.StoreAccessEvaluator;
 import com.quiktech.backend.security.UserPrincipal;
 import lombok.RequiredArgsConstructor;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.util.StringUtils;
 
 import java.time.Instant;
+import java.util.List;
 
 @Service
 @RequiredArgsConstructor
 public class UserService {
 
     private final UserRepository userRepository;
+    private final UserRoleRepository userRoleRepository;
     private final PasswordEncoder passwordEncoder;
     private final RefreshTokenService refreshTokenService;
+    private final StoreAccessEvaluator storeAccessEvaluator;
+    private final BusinessAccessEvaluator businessAccessEvaluator;
 
     @Transactional(readOnly = true)
     public UserSummaryResponse getProfile(UserPrincipal currentUser) {
@@ -44,7 +55,14 @@ public class UserService {
         user.setFullName(request.fullName());
         user.setPhone(request.phone());
         user.setUpdatedAt(Instant.now());
-        return toResponse(userRepository.save(user));
+        // saveAndFlush + catch: 2 request song song cùng pass checkUsernameAndEmailUnique
+        // (TOCTOU) — unique index DB chặn request thua, convert 500 → 400 như register.
+        // Phải flush ngay trong try; để flush lúc commit thì exception thoát ra ngoài catch.
+        try {
+            return toResponse(userRepository.saveAndFlush(user));
+        } catch (DataIntegrityViolationException e) {
+            throw new IllegalArgumentException("Username or email already taken");
+        }
     }
 
     @Transactional
@@ -73,7 +91,12 @@ public class UserService {
         user.setFullName(request.fullName());
         user.setPhone(request.phone());
         user.setUpdatedAt(Instant.now());
-        return toAdminResponse(userRepository.save(user));
+        // TOCTOU: xem comment tại updateProfile
+        try {
+            return toAdminResponse(userRepository.saveAndFlush(user));
+        } catch (DataIntegrityViolationException e) {
+            throw new IllegalArgumentException("Username or email already taken");
+        }
     }
 
     @Transactional(readOnly = true)
@@ -104,13 +127,38 @@ public class UserService {
         if (user.getDeletedAt() != null) {
             throw new IllegalArgumentException("User already deleted");
         }
+
+        // Ghi nhớ role active TRƯỚC khi soft-delete để biết cache phân quyền nào cần evict
+        List<UserRole> ownerRoles = userRoleRepository.findActiveBusinessRolesForUser(userId);
+        List<UserRole> storeRoles = userRoleRepository.findActiveStoreRolesWithBusinessDetails(userId);
+
         user.setDeletedAt(Instant.now());
         user.setIsActive(false);
         user.setUpdatedAt(Instant.now());
         userRepository.save(user);
+
+        // Soft-delete toàn bộ role — nếu không, role rác vẫn active trong DB và evaluator
+        // (findActiveStoreRole/findActiveBusinessRole) vẫn cho user đã xóa pass phân quyền
+        userRoleRepository.softDeleteAllByUserId(userId, Instant.now());
+
         // Xóa mềm cũng phải thu hồi toàn bộ refresh token (như khóa tài khoản):
         // chặn user đã offboard tiếp tục gia hạn phiên (CRITICAL #2).
         refreshTokenService.revokeAll(userId);
+
+        // Evict cache phân quyền SAU commit — evict giữa transaction sẽ bị request khác
+        // cache lại role cũ chưa commit (xem StoreService.evictMemberCachesAfterCommit)
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCommit() {
+                for (UserRole ur : ownerRoles) {
+                    businessAccessEvaluator.evictBusinessRoleCache(userId, ur.getBusiness().getId());
+                }
+                for (UserRole ur : storeRoles) {
+                    storeAccessEvaluator.evictStoreRoleCache(userId, ur.getStore().getId());
+                    businessAccessEvaluator.evictBusinessMemberCache(userId, ur.getStore().getBusiness().getId());
+                }
+            }
+        });
     }
 
     private void checkUsernameAndEmailUnique(String username, String email, Long excludeId) {

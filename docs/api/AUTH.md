@@ -50,9 +50,9 @@ Tạo tài khoản mới. Trả về JWT và thông tin user ngay sau khi đăng
 
 | Field | Type | Bắt buộc | Ràng buộc |
 |:------|:-----|:--------:|:----------|
-| `username` | string | ✅ | max 50 ký tự, unique |
+| `username` | string | ✅ | max 50 ký tự, unique, chỉ chứa `a-z A-Z 0-9 . _ -` (không cho `@` — tránh trùng định dạng email) |
 | `email` | string | ✅ | format email hợp lệ, max 100 ký tự, unique |
-| `password` | string | ✅ | 6–100 ký tự |
+| `password` | string | ✅ | 6–72 ký tự (BCrypt giới hạn 72 bytes) |
 | `fullName` | string | ✅ | max 200 ký tự |
 | `phone` | string | ❌ | 8–20 ký tự, chỉ chứa `0-9`, `+`, `-`, `(`, `)`, space |
 
