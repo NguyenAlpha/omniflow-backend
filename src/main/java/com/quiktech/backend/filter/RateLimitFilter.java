@@ -11,18 +11,22 @@ import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
+import org.springframework.web.util.UrlPathHelper;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.Set;
 import java.util.concurrent.TimeUnit;
 
+@Slf4j
 @Component
 @Order(Ordered.HIGHEST_PRECEDENCE)
 @RequiredArgsConstructor
@@ -38,9 +42,30 @@ public class RateLimitFilter extends OncePerRequestFilter {
     private int registerMaxRequests;
     @Value("${rate-limit.register.window-seconds:60}")
     private int registerWindowSeconds;
+    @Value("${rate-limit.refresh.max-requests:20}")
+    private int refreshMaxRequests;
+    @Value("${rate-limit.refresh.window-seconds:60}")
+    private int refreshWindowSeconds;
+
+    /**
+     * Danh sách IP proxy tin cậy (comma-separated). Chỉ khi remoteAddr nằm trong danh
+     * sách này thì header X-Forwarded-For mới được dùng để lấy IP client — client tự
+     * gửi X-Forwarded-For giả sẽ bị bỏ qua (chống bypass rate limit bằng spoof IP).
+     * Mặc định rỗng = không tin proxy nào, luôn dùng remoteAddr.
+     */
+    @Value("${rate-limit.trusted-proxies:}")
+    private Set<String> trustedProxies;
+
+    /**
+     * Decode path trước khi so khớp — so sánh URI thô bằng endsWith có thể bị bypass
+     * bằng URL-encoding (VD: /api/auth/logi%6E vẫn route tới /api/auth/login nhưng
+     * không match chuỗi thô). UrlPathHelper trả về path đã decode, đã bỏ context path.
+     */
+    private static final UrlPathHelper PATH_HELPER = UrlPathHelper.defaultInstance;
 
     private BucketConfiguration loginConfig;
     private BucketConfiguration registerConfig;
+    private BucketConfiguration refreshConfig;
 
     // JSON response cố định khớp với format ApiResult của codebase:
     // {"success":false,"data":null,"error":{"code":"RATE_LIMIT_EXCEEDED","message":"...","field":null}}
@@ -62,6 +87,13 @@ public class RateLimitFilter extends OncePerRequestFilter {
                         .refillIntervally(registerMaxRequests, Duration.ofSeconds(registerWindowSeconds))
                         .build())
                 .build();
+
+        refreshConfig = BucketConfiguration.builder()
+                .addLimit(Bandwidth.builder()
+                        .capacity(refreshMaxRequests)
+                        .refillIntervally(refreshMaxRequests, Duration.ofSeconds(refreshWindowSeconds))
+                        .build())
+                .build();
     }
 
     @Override
@@ -73,26 +105,39 @@ public class RateLimitFilter extends OncePerRequestFilter {
             return;
         }
 
-        String uri = request.getRequestURI();
+        // Path đã decode + bỏ context path — so khớp bằng equals, không dùng endsWith
+        // trên URI thô (bypass được bằng URL-encoding)
+        String path = PATH_HELPER.getPathWithinApplication(request);
         String ip = extractIp(request);
         String bucketKey = null;
         BucketConfiguration config = null;
 
-        if (uri.endsWith("/api/auth/login")) {
+        if ("/api/auth/login".equals(path)) {
             bucketKey = "rl:login:" + ip;
             config = loginConfig;
-        } else if (uri.endsWith("/api/auth/register")) {
+        } else if ("/api/auth/register".equals(path)) {
             bucketKey = "rl:register:" + ip;
             config = registerConfig;
+        } else if ("/api/auth/refresh".equals(path)) {
+            bucketKey = "rl:refresh:" + ip;
+            config = refreshConfig;
         }
 
         if (bucketKey != null) {
-            byte[] key = bucketKey.getBytes(StandardCharsets.UTF_8);
-            final BucketConfiguration finalConfig = config;
-            Bucket bucket = rateLimitProxyManager.builder().build(key, () -> finalConfig);
+            // Fail-open khi Redis lỗi: log warning và cho request đi qua — nhất quán với
+            // graceful degradation của các evaluator. Không try-catch thì Redis down làm
+            // toàn bộ login/register trả 500 (mất chức năng đăng nhập thay vì mất rate limit).
+            ConsumptionProbe probe = null;
+            try {
+                byte[] key = bucketKey.getBytes(StandardCharsets.UTF_8);
+                final BucketConfiguration finalConfig = config;
+                Bucket bucket = rateLimitProxyManager.builder().build(key, () -> finalConfig);
+                probe = bucket.tryConsumeAndReturnRemaining(1);
+            } catch (Exception e) {
+                log.warn("Rate limit check failed (Redis unavailable?) — failing open for {}", bucketKey, e);
+            }
 
-            ConsumptionProbe probe = bucket.tryConsumeAndReturnRemaining(1);
-            if (!probe.isConsumed()) {
+            if (probe != null && !probe.isConsumed()) {
                 long retryAfter = TimeUnit.NANOSECONDS.toSeconds(probe.getNanosToWaitForRefill()) + 1;
                 response.setStatus(429);
                 response.setHeader("Retry-After", String.valueOf(retryAfter));
@@ -106,11 +151,24 @@ public class RateLimitFilter extends OncePerRequestFilter {
         chain.doFilter(request, response);
     }
 
+    /**
+     * Lấy IP client làm rate-limit key.
+     *
+     * <p>X-Forwarded-For chỉ được tin khi kết nối đến trực tiếp từ proxy trong
+     * {@code rate-limit.trusted-proxies} — client gọi thẳng có thể tự đặt header này
+     * để đổi bucket mỗi request (bypass hoàn toàn rate limit). Khi tin proxy, lấy
+     * entry CUỐI của danh sách (entry do proxy tin cậy append = IP kết nối thật);
+     * các entry trước đó do client/proxy lạ tự khai, không kiểm chứng được.
+     */
     private String extractIp(HttpServletRequest request) {
-        String forwarded = request.getHeader("X-Forwarded-For");
-        if (forwarded != null && !forwarded.isBlank()) {
-            return forwarded.split(",")[0].trim();
+        String remoteAddr = request.getRemoteAddr();
+        if (trustedProxies.contains(remoteAddr)) {
+            String forwarded = request.getHeader("X-Forwarded-For");
+            if (forwarded != null && !forwarded.isBlank()) {
+                String[] hops = forwarded.split(",");
+                return hops[hops.length - 1].trim();
+            }
         }
-        return request.getRemoteAddr();
+        return remoteAddr;
     }
 }
