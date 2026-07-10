@@ -1,5 +1,6 @@
 package com.quiktech.backend.service;
 
+import com.quiktech.backend.annotation.Auditable;
 import com.quiktech.backend.dto.request.catalog.CategoryUpsertRequest;
 import com.quiktech.backend.dto.response.catalog.CategoryResponse;
 import com.quiktech.backend.dto.response.common.ErrorCode;
@@ -82,6 +83,7 @@ public class CategoryService {
         return toResponse(categoryRepository.save(category));
     }
 
+    @Auditable(action = "DELETE_CATEGORY", entityType = "CATEGORY")
     @Transactional
     public void delete(Long businessId, UUID publicId, UserPrincipal currentUser) {
         findBusinessOrThrow(businessId);

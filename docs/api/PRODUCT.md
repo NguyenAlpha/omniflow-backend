@@ -506,6 +506,9 @@ Bật/tắt trạng thái hoạt động của sản phẩm. Chỉ **OWNER** ho�
 
 Xoá sản phẩm. Chỉ **OWNER** hoặc **MANAGER** mới được thực hiện.
 
+> Sản phẩm còn tồn kho (`totalStock > 0`) không thể xóa — phải xuất/điều chỉnh hết
+> tồn trước, tránh lệch giữa tồn kho và catalog.
+
 ### Path parameters
 
 | Parameter | Type | Mô tả |
@@ -527,6 +530,7 @@ Xoá sản phẩm. Chỉ **OWNER** hoặc **MANAGER** mới được thực hi�
 
 | HTTP | `error.code` | Nguyên nhân |
 |:----:|:------------|:-----------|
+| 400 | `VALIDATION_ERROR` | Sản phẩm còn tồn kho (`totalStock > 0`) |
 | 401 | `UNAUTHORIZED` | Không có hoặc JWT hết hạn |
 | 403 | `FORBIDDEN` | Không phải OWNER hoặc MANAGER của business |
 | 404 | `NOT_FOUND` | Không tìm thấy sản phẩm |

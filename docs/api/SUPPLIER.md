@@ -251,14 +251,16 @@ Ghi nhận thanh toán công nợ cho nhà cung cấp — giảm `debtBalance`. 
 ```json
 {
   "amount": 2000000.00,
-  "paymentMethod": "BANK_TRANSFER"
+  "paymentMethod": "BANK_TRANSFER",
+  "storeId": 1
 }
 ```
 
 | Field | Type | Bắt buộc | Ràng buộc |
 |:------|:-----|:--------:|:----------|
 | `amount` | number | ✅ | Số tiền thanh toán — tối thiểu 0.01 |
-| `paymentMethod` | string | ❌ | Phương thức thanh toán — `CASH`, `BANK_TRANSFER`, v.v. |
+| `paymentMethod` | string | ❌ | Enum `PaymentMethod`: `CASH`, `BANK_TRANSFER`, `CREDIT_CARD`, `DEBIT_CARD`, `MOBILE_PAYMENT`, `OTHER`. Giá trị khác → 400. Mặc định `CASH` |
+| `storeId` | number | ❌ | Store gắn phiếu chi (phải thuộc business). Không gửi → gán vào store đầu tiên của business (kèm log warn phía server) |
 
 ### Response `200 OK`
 
@@ -268,15 +270,19 @@ Trả về `SupplierResponse` với `debtBalance` đã được giảm.
 
 | HTTP | `error.code` | Nguyên nhân |
 |:----:|:------------|:-----------|
-| 400 | `VALIDATION_ERROR` | `amount` thiếu hoặc nhỏ hơn 0.01 |
+| 400 | `VALIDATION_ERROR` | `amount` thiếu hoặc nhỏ hơn 0.01; `paymentMethod` không thuộc enum |
 | 403 | `ACCESS_DENIED` | Không phải OWNER hoặc MANAGER |
 | 404 | `SUPPLIER_NOT_FOUND` | Nhà cung cấp không tồn tại |
+| 404 | `STORE_NOT_FOUND` | `storeId` không tồn tại hoặc không thuộc business |
 
 ---
 
 ## DELETE `/api/businesses/{businessId}/suppliers/{publicId}`
 
 Xóa nhà cung cấp. Yêu cầu user là **OWNER** hoặc **MANAGER** của business.
+
+> Nhà cung cấp còn công nợ (`debtBalance != 0`) không thể xóa — phải tất toán trước
+> để khoản nợ không biến mất khỏi báo cáo công nợ.
 
 ### Path parameters
 
@@ -299,5 +305,6 @@ Xóa nhà cung cấp. Yêu cầu user là **OWNER** hoặc **MANAGER** của bus
 
 | HTTP | `error.code` | Nguyên nhân |
 |:----:|:------------|:-----------|
+| 400 | `VALIDATION_ERROR` | Nhà cung cấp còn công nợ chưa tất toán |
 | 403 | `ACCESS_DENIED` | Không phải OWNER hoặc MANAGER |
 | 404 | `SUPPLIER_NOT_FOUND` | Nhà cung cấp không tồn tại |

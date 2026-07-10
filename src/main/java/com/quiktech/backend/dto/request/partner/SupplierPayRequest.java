@@ -1,10 +1,15 @@
 package com.quiktech.backend.dto.request.partner;
 
+import com.quiktech.backend.entity.enums.PaymentMethod;
 import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.NotNull;
 import java.math.BigDecimal;
 
 public record SupplierPayRequest(
     @NotNull @DecimalMin("0.01") BigDecimal amount,
-    String paymentMethod
+    // Enum thay vì String tự do — giá trị lạ bị Jackson từ chối ngay (400),
+    // null → mặc định CASH (giữ tương thích client cũ)
+    PaymentMethod paymentMethod,
+    // Store gắn phiếu chi công nợ; null → fallback store đầu tiên của business (kèm log warn)
+    Long storeId
 ) {}

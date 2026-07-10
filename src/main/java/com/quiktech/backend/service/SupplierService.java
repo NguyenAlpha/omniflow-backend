@@ -5,11 +5,14 @@ import com.quiktech.backend.dto.request.partner.SupplierUpsertRequest;
 import com.quiktech.backend.dto.response.common.ErrorCode;
 import com.quiktech.backend.dto.response.common.PagedResult;
 import com.quiktech.backend.dto.response.partner.SupplierResponse;
+import com.quiktech.backend.annotation.Auditable;
 import com.quiktech.backend.entity.*;
+import com.quiktech.backend.entity.enums.PaymentMethod;
 import com.quiktech.backend.exception.ResourceNotFoundException;
 import com.quiktech.backend.repository.*;
 import com.quiktech.backend.security.UserPrincipal;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -19,6 +22,7 @@ import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class SupplierService {
@@ -96,6 +100,7 @@ public class SupplierService {
         return toResponse(supplierRepository.save(supplier));
     }
 
+    @Auditable(action = "PAY_SUPPLIER_DEBT", entityType = "SUPPLIER")
     @Transactional
     public SupplierResponse pay(Long businessId, UUID publicId, SupplierPayRequest request, UserPrincipal currentUser) {
         findBusinessOrThrow(businessId);
@@ -129,16 +134,36 @@ public class SupplierService {
             remaining = remaining.subtract(apply);
         }
 
-        Store store = storeRepository.findByBusinessIdAndDeletedAtIsNull(businessId).stream()
-                .findFirst()
-                .orElseThrow(() -> new ResourceNotFoundException(ErrorCode.STORE_NOT_FOUND, "Store not found"));
+        // remaining > 0 nghĩa là debtBalance và tổng debtAmount của các purchase order
+        // đã lệch từ trước — không nuốt im lặng, log warn để phát hiện lệch sổ tích lũy
+        if (remaining.compareTo(BigDecimal.ZERO) > 0) {
+            log.warn("Supplier debt payment: {} remaining after allocating across received purchase orders "
+                    + "(supplierId={}, businessId={}) — debtBalance lệch với tổng debtAmount của purchase order",
+                    remaining, saved.getId(), businessId);
+        }
 
-        String method = request.paymentMethod() != null ? request.paymentMethod() : "CASH";
+        // Client gửi storeId thì validate thuộc business và dùng; không gửi thì fallback
+        // store đầu tiên như trước (tương thích client cũ) kèm warn — báo cáo thu chi
+        // theo store có thể sai khi business nhiều store
+        Store store;
+        if (request.storeId() != null) {
+            store = storeRepository.findByIdAndDeletedAtIsNull(request.storeId())
+                    .filter(s -> s.getBusiness().getId().equals(businessId))
+                    .orElseThrow(() -> new ResourceNotFoundException(ErrorCode.STORE_NOT_FOUND, "Store not found"));
+        } else {
+            store = storeRepository.findByBusinessIdAndDeletedAtIsNull(businessId).stream()
+                    .findFirst()
+                    .orElseThrow(() -> new ResourceNotFoundException(ErrorCode.STORE_NOT_FOUND, "Store not found"));
+            log.warn("Supplier debt payment without storeId: assigned to first store {} of business {}",
+                    store.getId(), businessId);
+        }
+
+        PaymentMethod method = request.paymentMethod() != null ? request.paymentMethod() : PaymentMethod.CASH;
         paymentRepository.save(Payment.builder()
                 .store(store)
                 .supplier(saved)
                 .amount(amount)
-                .paymentMethod(method)
+                .paymentMethod(method.name())
                 .note("Supplier payment: " + saved.getName())
                 .publicId(UUID.randomUUID())
                 .lastModifiedByUser(userRef)
@@ -148,10 +173,20 @@ public class SupplierService {
         return toResponse(saved);
     }
 
+    @Auditable(action = "DELETE_SUPPLIER", entityType = "SUPPLIER")
     @Transactional
     public void delete(Long businessId, UUID publicId, UserPrincipal currentUser) {
         findBusinessOrThrow(businessId);
         Supplier supplier = findSupplierOrThrow(businessId, publicId);
+
+        // Chặn xóa khi còn công nợ: sau soft-delete, NCC biến mất khỏi
+        // findSuppliersWithDebt và mọi báo cáo công nợ (filter deleted_at IS NULL)
+        // → khoản nợ "bốc hơi" chỉ bằng 1 request delete. Yêu cầu tất toán trước.
+        if (supplier.getDebtBalance().signum() != 0) {
+            throw new IllegalArgumentException(
+                    "Cannot delete supplier with outstanding debt balance; settle the debt first");
+        }
+
         supplier.setDeletedAt(Instant.now());
         supplierRepository.save(supplier);
     }

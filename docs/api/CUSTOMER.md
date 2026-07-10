@@ -324,9 +324,57 @@ Cùng cấu trúc với `POST`, xem bảng fields ở trên.
 
 ---
 
+## PUT `/api/businesses/{businessId}/customers/{publicId}/pay`
+
+Ghi nhận thanh toán công nợ của khách hàng — giảm `debtBalance`, phân bổ vào các đơn
+COMPLETED còn nợ (cũ nhất trước) và tạo phiếu thu (`Payment`). Chỉ **OWNER** hoặc
+**MANAGER** mới được thực hiện.
+
+### Path parameters
+
+| Parameter | Type | Mô tả |
+|:----------|:-----|:------|
+| `businessId` | number | ID của business |
+| `publicId` | UUID | Public ID của khách hàng |
+
+### Request
+
+```json
+{
+  "amount": 500000.00,
+  "paymentMethod": "CASH",
+  "storeId": 1
+}
+```
+
+| Field | Type | Bắt buộc | Ràng buộc |
+|:------|:-----|:--------:|:----------|
+| `amount` | number | ✅ | Số tiền thanh toán — tối thiểu 0.01, không vượt quá `debtBalance` |
+| `paymentMethod` | string | ❌ | Enum `PaymentMethod`: `CASH`, `BANK_TRANSFER`, `CREDIT_CARD`, `DEBIT_CARD`, `MOBILE_PAYMENT`, `OTHER`. Giá trị khác → 400. Mặc định `CASH` |
+| `storeId` | number | ❌ | Store gắn phiếu thu (phải thuộc business). Không gửi → gán vào store đầu tiên của business (kèm log warn phía server) |
+
+### Response `200 OK`
+
+Trả về `CustomerResponse` với `debtBalance` đã được giảm.
+
+### Lỗi
+
+| HTTP | `error.code` | Nguyên nhân |
+|:----:|:------------|:-----------|
+| 400 | `VALIDATION_ERROR` | `amount` thiếu, nhỏ hơn 0.01 hoặc vượt quá `debtBalance`; `paymentMethod` không thuộc enum |
+| 401 | `UNAUTHORIZED` | Không có hoặc JWT hết hạn |
+| 403 | `FORBIDDEN` | Không phải OWNER hoặc MANAGER của business |
+| 404 | `NOT_FOUND` | Không tìm thấy khách hàng |
+| 404 | `STORE_NOT_FOUND` | `storeId` không tồn tại hoặc không thuộc business |
+
+---
+
 ## DELETE `/api/businesses/{businessId}/customers/{publicId}`
 
 Xoá khách hàng. Chỉ **OWNER** hoặc **MANAGER** mới được thực hiện.
+
+> Khách hàng còn công nợ (`debtBalance != 0`) không thể xóa — phải tất toán trước
+> để khoản nợ không biến mất khỏi báo cáo công nợ.
 
 ### Path parameters
 
@@ -349,6 +397,7 @@ Xoá khách hàng. Chỉ **OWNER** hoặc **MANAGER** mới được thực hi�
 
 | HTTP | `error.code` | Nguyên nhân |
 |:----:|:------------|:-----------|
+| 400 | `VALIDATION_ERROR` | Khách hàng còn công nợ chưa tất toán |
 | 401 | `UNAUTHORIZED` | Không có hoặc JWT hết hạn |
 | 403 | `FORBIDDEN` | Không phải OWNER hoặc MANAGER của business |
 | 404 | `NOT_FOUND` | Không tìm thấy khách hàng |

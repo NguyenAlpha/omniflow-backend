@@ -184,6 +184,7 @@ public class ProductService {
         return toResponse(saved);
     }
 
+    @Auditable(action = "SET_PRODUCT_STATUS", entityType = "PRODUCT")
     @Transactional
     public ProductResponse setStatus(Long businessId, UUID publicId, boolean isActive, UserPrincipal currentUser) {
         findBusinessOrThrow(businessId);
@@ -200,6 +201,15 @@ public class ProductService {
     public void delete(Long businessId, UUID publicId, UserPrincipal currentUser) {
         findBusinessOrThrow(businessId);
         Product product = findProductOrThrow(businessId, publicId);
+
+        // Chặn xóa khi còn tồn kho: sau soft-delete, hàng vẫn nằm trong kho
+        // (inventory row còn nguyên) nhưng product không tra cứu được nữa
+        // → lệch giữa tồn kho và catalog. Yêu cầu xuất/điều chỉnh hết tồn trước.
+        if (product.getTotalStock() != null && product.getTotalStock().signum() > 0) {
+            throw new IllegalArgumentException(
+                    "Cannot delete product with stock on hand; adjust inventory to zero first");
+        }
+
         product.setDeletedAt(Instant.now());
         productRepository.save(product);
         log.info("Product deleted: publicId={}, sku={}", publicId, product.getSku());

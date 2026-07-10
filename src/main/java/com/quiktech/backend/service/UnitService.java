@@ -1,5 +1,6 @@
 package com.quiktech.backend.service;
 
+import com.quiktech.backend.annotation.Auditable;
 import com.quiktech.backend.dto.request.catalog.UnitUpsertRequest;
 import com.quiktech.backend.dto.response.catalog.UnitResponse;
 import com.quiktech.backend.dto.response.common.ErrorCode;
@@ -85,6 +86,7 @@ public class UnitService {
         return toResponse(unitRepository.save(unit));
     }
 
+    @Auditable(action = "DELETE_UNIT", entityType = "UNIT")
     @Transactional
     public void delete(Long businessId, UUID publicId, UserPrincipal currentUser) {
         findBusinessOrThrow(businessId);
