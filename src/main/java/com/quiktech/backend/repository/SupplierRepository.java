@@ -1,9 +1,11 @@
 package com.quiktech.backend.repository;
 
 import com.quiktech.backend.entity.Supplier;
+import jakarta.persistence.LockModeType;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
@@ -27,6 +29,16 @@ public interface SupplierRepository extends JpaRepository<Supplier, Long> {
      * (Filter deleted_at đã có sẵn qua @SQLRestriction trên entity.)
      */
     Optional<Supplier> findByBusinessIdAndPublicId(Long businessId, UUID publicId);
+
+    /**
+     * Biến thể có SELECT ... FOR UPDATE cho nghiệp vụ tiền bạc (pay công nợ):
+     * serialize chuỗi đọc debtBalance → trừ nợ → phân bổ purchase order → tạo Payment.
+     * Nếu không lock, 2 request pay đồng thời cùng đọc một debtBalance
+     * → double-payment. Lock giữ đến khi transaction của caller commit.
+     */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT s FROM Supplier s WHERE s.business.id = :businessId AND s.publicId = :publicId")
+    Optional<Supplier> findByBusinessIdAndPublicIdForUpdate(@Param("businessId") Long businessId, @Param("publicId") UUID publicId);
 
     // Suppliers with debt
     @Query("""

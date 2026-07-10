@@ -99,7 +99,10 @@ public class CustomerService {
     @Transactional
     public CustomerResponse pay(Long businessId, UUID publicId, CustomerPayRequest request, UserPrincipal currentUser) {
         findBusinessOrThrow(businessId);
-        Customer customer = findCustomerOrThrow(businessId, publicId);
+        // PESSIMISTIC_WRITE: serialize các request pay đồng thời trên cùng customer,
+        // tránh 2 giao dịch cùng đọc một debtBalance rồi cùng trừ → double-payment
+        Customer customer = customerRepository.findByBusinessIdAndPublicIdForUpdate(businessId, publicId)
+                .orElseThrow(() -> new ResourceNotFoundException(ErrorCode.CUSTOMER_NOT_FOUND, "Customer not found"));
 
         BigDecimal amount = request.amount();
         if (amount.compareTo(customer.getDebtBalance()) > 0) {

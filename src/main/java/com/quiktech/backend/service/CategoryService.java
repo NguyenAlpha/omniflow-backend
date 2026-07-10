@@ -9,6 +9,7 @@ import com.quiktech.backend.entity.User;
 import com.quiktech.backend.exception.ResourceNotFoundException;
 import com.quiktech.backend.repository.BusinessRepository;
 import com.quiktech.backend.repository.CategoryRepository;
+import com.quiktech.backend.repository.ProductRepository;
 import com.quiktech.backend.repository.UserRepository;
 import com.quiktech.backend.security.UserPrincipal;
 import lombok.RequiredArgsConstructor;
@@ -25,6 +26,7 @@ public class CategoryService {
 
     private final CategoryRepository categoryRepository;
     private final BusinessRepository businessRepository;
+    private final ProductRepository productRepository;
     private final UserRepository userRepository;
 
     @Transactional(readOnly = true)
@@ -87,6 +89,15 @@ public class CategoryService {
         // Scoped theo businessId để chống IDOR — category của business khác trả về 404
         Category category = categoryRepository.findByBusinessIdAndPublicId(businessId, publicId)
                 .orElseThrow(() -> new ResourceNotFoundException(ErrorCode.CATEGORY_NOT_FOUND, "Category not found"));
+
+        // Chặn xóa category đang được product còn sống tham chiếu — Category có
+        // @SQLRestriction nên nếu xóa, các product liên quan sẽ mất thông tin category
+        // một cách im lặng trong mọi response. Yêu cầu chuyển product sang category khác trước.
+        long inUse = productRepository.countByCategoryIdAndDeletedAtIsNull(category.getId());
+        if (inUse > 0) {
+            throw new IllegalArgumentException(
+                    "Cannot delete category: " + inUse + " product(s) still reference it");
+        }
 
         category.setDeletedAt(Instant.now());
         categoryRepository.save(category);

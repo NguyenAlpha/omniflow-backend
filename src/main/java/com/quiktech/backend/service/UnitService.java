@@ -9,6 +9,7 @@ import com.quiktech.backend.entity.User;
 import com.quiktech.backend.exception.ForbiddenException;
 import com.quiktech.backend.exception.ResourceNotFoundException;
 import com.quiktech.backend.repository.BusinessRepository;
+import com.quiktech.backend.repository.ProductRepository;
 import com.quiktech.backend.repository.UnitRepository;
 import com.quiktech.backend.repository.UserRepository;
 import com.quiktech.backend.security.UserPrincipal;
@@ -26,6 +27,7 @@ public class UnitService {
 
     private final UnitRepository unitRepository;
     private final BusinessRepository businessRepository;
+    private final ProductRepository productRepository;
     private final UserRepository userRepository;
 
     @Transactional(readOnly = true)
@@ -93,6 +95,16 @@ public class UnitService {
 
         if (unit.getBusiness() == null) {
             throw new ForbiddenException(ErrorCode.FORBIDDEN, "Cannot delete system units");
+        }
+
+        // Chặn xóa unit đang được product còn sống tham chiếu — Unit có @SQLRestriction
+        // và các query product đều INNER JOIN FETCH p.unit, nên nếu xóa unit thì toàn bộ
+        // product dùng unit đó biến mất khỏi API (list/get/search), thậm chí search có thể 500
+        // vì lazy load unit đã xóa. Yêu cầu chuyển product sang unit khác trước.
+        long inUse = productRepository.countByUnitIdAndDeletedAtIsNull(unit.getId());
+        if (inUse > 0) {
+            throw new IllegalArgumentException(
+                    "Cannot delete unit: " + inUse + " product(s) still reference it");
         }
 
         unit.setDeletedAt(Instant.now());

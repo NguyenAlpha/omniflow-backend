@@ -101,7 +101,7 @@
 - Tạo danh mục per-store
 - Xem danh sách danh mục của cửa hàng
 - Cập nhật tên và mô tả danh mục
-- Soft delete danh mục
+- Soft delete danh mục — bị chặn nếu còn sản phẩm (chưa xóa) tham chiếu danh mục đó
 - Tên danh mục unique trong cùng cửa hàng
 
 ---
@@ -110,7 +110,7 @@
 
 - System units (do SUPER_ADMIN quản lý, dùng chung toàn hệ thống): Cái, Kg, Lít, Hộp, Thùng, Gói, ...
 - Store units (do OWNER/MANAGER cửa hàng quản lý): đơn vị tính tùy chỉnh theo nghiệp vụ
-- Tạo / cập nhật / soft delete store unit
+- Tạo / cập nhật / soft delete store unit — xóa bị chặn nếu còn sản phẩm (chưa xóa) dùng unit đó
 - Tên unit unique trong cùng cửa hàng (system units unique toàn hệ thống)
 - Query luôn trả về cả system units lẫn store units
 

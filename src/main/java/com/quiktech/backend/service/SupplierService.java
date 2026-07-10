@@ -99,7 +99,10 @@ public class SupplierService {
     @Transactional
     public SupplierResponse pay(Long businessId, UUID publicId, SupplierPayRequest request, UserPrincipal currentUser) {
         findBusinessOrThrow(businessId);
-        Supplier supplier = findSupplierOrThrow(businessId, publicId);
+        // PESSIMISTIC_WRITE: serialize các request pay đồng thời trên cùng supplier,
+        // tránh 2 giao dịch cùng đọc một debtBalance rồi cùng trừ → double-payment
+        Supplier supplier = supplierRepository.findByBusinessIdAndPublicIdForUpdate(businessId, publicId)
+                .orElseThrow(() -> new ResourceNotFoundException(ErrorCode.SUPPLIER_NOT_FOUND, "Supplier not found"));
 
         BigDecimal amount = request.amount();
         if (amount.compareTo(supplier.getDebtBalance()) > 0) {

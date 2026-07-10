@@ -35,6 +35,11 @@ public interface ProductRepository extends JpaRepository<Product, Long>, JpaSpec
 
     long countByBusinessIdAndDeletedAtIsNull(Long businessId);
 
+    // Guard xóa category/unit: đếm product còn sống đang tham chiếu trước khi cho phép soft-delete
+    long countByCategoryIdAndDeletedAtIsNull(Long categoryId);
+
+    long countByUnitIdAndDeletedAtIsNull(Long unitId);
+
     @Query("SELECT p FROM Product p LEFT JOIN FETCH p.category JOIN FETCH p.unit WHERE p.business.id = :businessId AND p.deletedAt IS NULL")
     List<Product> findAllByBusinessId(@Param("businessId") Long businessId);
 
