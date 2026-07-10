@@ -20,7 +20,18 @@ public interface UnitRepository extends JpaRepository<Unit, Long> {
 
     Optional<Unit> findByBusinessIdAndNameAndDeletedAtIsNull(Long businessId, String name);
 
-    Optional<Unit> findByPublicId(UUID publicId);
+    /**
+     * Lookup scoped theo business để chống IDOR, nhưng vẫn cho phép truy cập unit hệ thống
+     * (business IS NULL — dùng chung cho mọi business). Unit thuộc business khác sẽ trả về
+     * empty → 404. Caller vẫn phải tự chặn sửa/xóa unit hệ thống (check business == null).
+     * (Filter deleted_at đã có sẵn qua @SQLRestriction trên entity.)
+     */
+    @Query("""
+        SELECT u FROM Unit u
+        WHERE (u.business.id = :businessId OR u.business IS NULL)
+        AND u.publicId = :publicId
+    """)
+    Optional<Unit> findByBusinessIdOrSystemAndPublicId(@Param("businessId") Long businessId, @Param("publicId") UUID publicId);
 
     // Get both system and business units
     @Query("""

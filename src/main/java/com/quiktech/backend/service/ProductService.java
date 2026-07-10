@@ -104,7 +104,7 @@ public class ProductService {
     @Transactional(readOnly = true)
     public ProductDetailResponse get(Long businessId, UUID publicId, UserPrincipal currentUser) {
         findBusinessOrThrow(businessId);
-        return toDetailResponse(findProductDetailOrThrow(publicId));
+        return toDetailResponse(findProductDetailOrThrow(businessId, publicId));
     }
 
     @Auditable(action = "CREATE_PRODUCT", entityType = "PRODUCT")
@@ -119,8 +119,8 @@ public class ProductService {
             throw new IllegalArgumentException("SKU already exists in this business");
         }
 
-        Category category = resolveCategory(request.categoryPublicId());
-        Unit unit = resolveUnit(request.unitPublicId());
+        Category category = resolveCategory(businessId, request.categoryPublicId());
+        Unit unit = resolveUnit(businessId, request.unitPublicId());
 
         // getReferenceById: JPA proxy — không SELECT, chỉ dùng ID cho FK lastModifiedByUser
         User userRef = userRepository.getReferenceById(currentUser.userId());
@@ -150,7 +150,7 @@ public class ProductService {
     public ProductResponse update(Long businessId, UUID publicId, ProductUpsertRequest request, UserPrincipal currentUser) {
         findBusinessOrThrow(businessId);
 
-        Product product = findProductOrThrow(publicId);
+        Product product = findProductOrThrow(businessId, publicId);
 
         productRepository.findByBusinessIdAndSkuAndDeletedAtIsNull(businessId, request.sku())
                 .filter(p -> !p.getPublicId().equals(publicId))
@@ -165,8 +165,8 @@ public class ProductService {
         product.setSku(request.sku());
         product.setName(request.name());
         product.setDescription(request.description());
-        product.setCategory(resolveCategory(request.categoryPublicId()));
-        product.setUnit(resolveUnit(request.unitPublicId()));
+        product.setCategory(resolveCategory(businessId, request.categoryPublicId()));
+        product.setUnit(resolveUnit(businessId, request.unitPublicId()));
         product.setCostPrice(request.costPrice());
         product.setSellingPrice(request.sellingPrice());
         product.setMinStockLevel(request.minStockLevel());
@@ -182,7 +182,7 @@ public class ProductService {
     @Transactional
     public ProductResponse setStatus(Long businessId, UUID publicId, boolean isActive, UserPrincipal currentUser) {
         findBusinessOrThrow(businessId);
-        Product product = findProductOrThrow(publicId);
+        Product product = findProductOrThrow(businessId, publicId);
         product.setIsActive(isActive);
         product.setUpdatedAt(Instant.now());
         Product saved = productRepository.save(product);
@@ -194,7 +194,7 @@ public class ProductService {
     @Transactional
     public void delete(Long businessId, UUID publicId, UserPrincipal currentUser) {
         findBusinessOrThrow(businessId);
-        Product product = findProductOrThrow(publicId);
+        Product product = findProductOrThrow(businessId, publicId);
         product.setDeletedAt(Instant.now());
         productRepository.save(product);
         log.info("Product deleted: publicId={}, sku={}", publicId, product.getSku());
@@ -294,14 +294,16 @@ public class ProductService {
         priceHistoryRepository.save(history);
     }
 
-    private Category resolveCategory(UUID publicId) {
+    // Scoped theo businessId để chống gán category của business khác vào product (IDOR qua body)
+    private Category resolveCategory(Long businessId, UUID publicId) {
         if (publicId == null) return null;
-        return categoryRepository.findByPublicId(publicId)
+        return categoryRepository.findByBusinessIdAndPublicId(businessId, publicId)
                 .orElseThrow(() -> new ResourceNotFoundException(ErrorCode.CATEGORY_NOT_FOUND, "Category not found"));
     }
 
-    private Unit resolveUnit(UUID publicId) {
-        return unitRepository.findByPublicId(publicId)
+    // Cho phép unit hệ thống (business IS NULL) hoặc unit của chính business — chặn unit của business khác
+    private Unit resolveUnit(Long businessId, UUID publicId) {
+        return unitRepository.findByBusinessIdOrSystemAndPublicId(businessId, publicId)
                 .orElseThrow(() -> new ResourceNotFoundException(ErrorCode.UNIT_NOT_FOUND, "Unit not found"));
     }
 
@@ -310,13 +312,14 @@ public class ProductService {
                 .orElseThrow(() -> new ResourceNotFoundException(ErrorCode.BUSINESS_NOT_FOUND, "Business not found"));
     }
 
-    private Product findProductOrThrow(UUID publicId) {
-        return productRepository.findByPublicId(publicId)
+    // Scoped theo businessId để chống IDOR — product của business khác trả về 404
+    private Product findProductOrThrow(Long businessId, UUID publicId) {
+        return productRepository.findByBusinessIdAndPublicId(businessId, publicId)
                 .orElseThrow(() -> new ResourceNotFoundException(ErrorCode.PRODUCT_NOT_FOUND, "Product not found"));
     }
 
-    private Product findProductDetailOrThrow(UUID publicId) {
-        return productRepository.findByPublicIdWithPriceHistories(publicId)
+    private Product findProductDetailOrThrow(Long businessId, UUID publicId) {
+        return productRepository.findByBusinessIdAndPublicIdWithPriceHistories(businessId, publicId)
                 .orElseThrow(() -> new ResourceNotFoundException(ErrorCode.PRODUCT_NOT_FOUND, "Product not found"));
     }
 

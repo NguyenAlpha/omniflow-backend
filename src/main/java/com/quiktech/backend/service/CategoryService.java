@@ -61,7 +61,8 @@ public class CategoryService {
     public CategoryResponse update(Long businessId, UUID publicId, CategoryUpsertRequest request, UserPrincipal currentUser) {
         findBusinessOrThrow(businessId);
 
-        Category category = categoryRepository.findByPublicId(publicId)
+        // Scoped theo businessId để chống IDOR — category của business khác trả về 404
+        Category category = categoryRepository.findByBusinessIdAndPublicId(businessId, publicId)
                 .orElseThrow(() -> new ResourceNotFoundException(ErrorCode.CATEGORY_NOT_FOUND, "Category not found"));
 
         categoryRepository.findByBusinessIdAndNameAndDeletedAtIsNull(businessId, request.name())
@@ -83,7 +84,8 @@ public class CategoryService {
     public void delete(Long businessId, UUID publicId, UserPrincipal currentUser) {
         findBusinessOrThrow(businessId);
 
-        Category category = categoryRepository.findByPublicId(publicId)
+        // Scoped theo businessId để chống IDOR — category của business khác trả về 404
+        Category category = categoryRepository.findByBusinessIdAndPublicId(businessId, publicId)
                 .orElseThrow(() -> new ResourceNotFoundException(ErrorCode.CATEGORY_NOT_FOUND, "Category not found"));
 
         category.setDeletedAt(Instant.now());

@@ -20,6 +20,14 @@ public interface SupplierRepository extends JpaRepository<Supplier, Long> {
 
     Optional<Supplier> findByPublicId(UUID publicId);
 
+    /**
+     * Lookup scoped theo business để chống IDOR: {@code @PreAuthorize} chỉ kiểm tra quyền
+     * trên businessId của URL, không kiểm tra tenant của entity được load. Supplier không
+     * thuộc business trong URL sẽ trả về empty → 404.
+     * (Filter deleted_at đã có sẵn qua @SQLRestriction trên entity.)
+     */
+    Optional<Supplier> findByBusinessIdAndPublicId(Long businessId, UUID publicId);
+
     // Suppliers with debt
     @Query("""
         SELECT s FROM Supplier s

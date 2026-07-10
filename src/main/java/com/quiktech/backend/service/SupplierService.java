@@ -46,7 +46,7 @@ public class SupplierService {
     @Transactional(readOnly = true)
     public SupplierResponse get(Long businessId, UUID publicId, UserPrincipal currentUser) {
         findBusinessOrThrow(businessId);
-        return toResponse(findSupplierOrThrow(publicId));
+        return toResponse(findSupplierOrThrow(businessId, publicId));
     }
 
     @Transactional
@@ -77,7 +77,7 @@ public class SupplierService {
     @Transactional
     public SupplierResponse update(Long businessId, UUID publicId, SupplierUpsertRequest request, UserPrincipal currentUser) {
         findBusinessOrThrow(businessId);
-        Supplier supplier = findSupplierOrThrow(publicId);
+        Supplier supplier = findSupplierOrThrow(businessId, publicId);
 
         supplierRepository.findByBusinessIdAndCodeAndDeletedAtIsNull(businessId, request.code())
                 .filter(s -> !s.getPublicId().equals(publicId))
@@ -99,7 +99,7 @@ public class SupplierService {
     @Transactional
     public SupplierResponse pay(Long businessId, UUID publicId, SupplierPayRequest request, UserPrincipal currentUser) {
         findBusinessOrThrow(businessId);
-        Supplier supplier = findSupplierOrThrow(publicId);
+        Supplier supplier = findSupplierOrThrow(businessId, publicId);
 
         BigDecimal amount = request.amount();
         if (amount.compareTo(supplier.getDebtBalance()) > 0) {
@@ -148,7 +148,7 @@ public class SupplierService {
     @Transactional
     public void delete(Long businessId, UUID publicId, UserPrincipal currentUser) {
         findBusinessOrThrow(businessId);
-        Supplier supplier = findSupplierOrThrow(publicId);
+        Supplier supplier = findSupplierOrThrow(businessId, publicId);
         supplier.setDeletedAt(Instant.now());
         supplierRepository.save(supplier);
     }
@@ -158,8 +158,9 @@ public class SupplierService {
                 .orElseThrow(() -> new ResourceNotFoundException(ErrorCode.BUSINESS_NOT_FOUND, "Business not found"));
     }
 
-    Supplier findSupplierOrThrow(UUID publicId) {
-        return supplierRepository.findByPublicId(publicId)
+    // Scoped theo businessId để chống IDOR — supplier của business khác trả về 404
+    Supplier findSupplierOrThrow(Long businessId, UUID publicId) {
+        return supplierRepository.findByBusinessIdAndPublicId(businessId, publicId)
                 .orElseThrow(() -> new ResourceNotFoundException(ErrorCode.SUPPLIER_NOT_FOUND, "Supplier not found"));
     }
 

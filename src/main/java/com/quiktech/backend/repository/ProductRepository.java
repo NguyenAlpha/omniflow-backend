@@ -22,6 +22,15 @@ public interface ProductRepository extends JpaRepository<Product, Long>, JpaSpec
     @Query("SELECT p FROM Product p LEFT JOIN FETCH p.category JOIN FETCH p.unit WHERE p.publicId = :publicId AND p.deletedAt IS NULL")
     Optional<Product> findByPublicId(@Param("publicId") UUID publicId);
 
+    /**
+     * Lookup scoped theo business để chống IDOR: {@code @PreAuthorize} chỉ kiểm tra quyền
+     * trên businessId của URL, không kiểm tra tenant của entity được load. Nếu chỉ tra theo
+     * publicId, thành viên business A có thể đọc/sửa/xóa product của business B khi đoán được
+     * UUID. Query này đảm bảo product không thuộc business trong URL sẽ trả về 404.
+     */
+    @Query("SELECT p FROM Product p LEFT JOIN FETCH p.category JOIN FETCH p.unit WHERE p.business.id = :businessId AND p.publicId = :publicId AND p.deletedAt IS NULL")
+    Optional<Product> findByBusinessIdAndPublicId(@Param("businessId") Long businessId, @Param("publicId") UUID publicId);
+
     List<Product> findByCategoryIdAndDeletedAtIsNull(Long categoryId);
 
     long countByBusinessIdAndDeletedAtIsNull(Long businessId);
@@ -39,8 +48,9 @@ public interface ProductRepository extends JpaRepository<Product, Long>, JpaSpec
     @Query("SELECT p FROM Product p LEFT JOIN FETCH p.category JOIN FETCH p.unit WHERE p.id IN :ids")
     List<Product> findAllWithCategoryAndUnit(@Param("ids") List<Long> ids);
 
-    @Query("SELECT p FROM Product p LEFT JOIN FETCH p.priceHistories WHERE p.publicId = :publicId AND p.deletedAt IS NULL")
-    Optional<Product> findByPublicIdWithPriceHistories(@Param("publicId") UUID publicId);
+    // Scoped theo business để chống IDOR (xem Javadoc findByBusinessIdAndPublicId)
+    @Query("SELECT p FROM Product p LEFT JOIN FETCH p.priceHistories WHERE p.business.id = :businessId AND p.publicId = :publicId AND p.deletedAt IS NULL")
+    Optional<Product> findByBusinessIdAndPublicIdWithPriceHistories(@Param("businessId") Long businessId, @Param("publicId") UUID publicId);
 
     @Modifying
     @Query(value = "UPDATE products SET total_stock = (SELECT COALESCE(SUM(quantity), 0) FROM inventory WHERE product_id = :productId AND deleted_at IS NULL) WHERE id = :productId", nativeQuery = true)

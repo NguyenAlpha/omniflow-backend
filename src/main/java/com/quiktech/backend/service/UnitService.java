@@ -61,7 +61,8 @@ public class UnitService {
     public UnitResponse update(Long businessId, UUID publicId, UnitUpsertRequest request, UserPrincipal currentUser) {
         findBusinessOrThrow(businessId);
 
-        Unit unit = unitRepository.findByPublicId(publicId)
+        // Scoped theo businessId (cho phép unit hệ thống) để chống IDOR — unit của business khác trả về 404
+        Unit unit = unitRepository.findByBusinessIdOrSystemAndPublicId(businessId, publicId)
                 .orElseThrow(() -> new ResourceNotFoundException(ErrorCode.UNIT_NOT_FOUND, "Unit not found"));
 
         if (unit.getBusiness() == null) {
@@ -86,7 +87,8 @@ public class UnitService {
     public void delete(Long businessId, UUID publicId, UserPrincipal currentUser) {
         findBusinessOrThrow(businessId);
 
-        Unit unit = unitRepository.findByPublicId(publicId)
+        // Scoped theo businessId (cho phép unit hệ thống) để chống IDOR — unit của business khác trả về 404
+        Unit unit = unitRepository.findByBusinessIdOrSystemAndPublicId(businessId, publicId)
                 .orElseThrow(() -> new ResourceNotFoundException(ErrorCode.UNIT_NOT_FOUND, "Unit not found"));
 
         if (unit.getBusiness() == null) {

@@ -20,6 +20,14 @@ public interface CustomerRepository extends JpaRepository<Customer, Long> {
 
     Optional<Customer> findByPublicId(UUID publicId);
 
+    /**
+     * Lookup scoped theo business để chống IDOR: {@code @PreAuthorize} chỉ kiểm tra quyền
+     * trên businessId của URL, không kiểm tra tenant của entity được load. Customer không
+     * thuộc business trong URL sẽ trả về empty → 404.
+     * (Filter deleted_at đã có sẵn qua @SQLRestriction trên entity.)
+     */
+    Optional<Customer> findByBusinessIdAndPublicId(Long businessId, UUID publicId);
+
     // Customers with debt
     @Query("""
         SELECT c FROM Customer c

@@ -46,7 +46,7 @@ public class CustomerService {
     @Transactional(readOnly = true)
     public CustomerResponse get(Long businessId, UUID publicId, UserPrincipal currentUser) {
         findBusinessOrThrow(businessId);
-        return toResponse(findCustomerOrThrow(publicId));
+        return toResponse(findCustomerOrThrow(businessId, publicId));
     }
 
     @Transactional
@@ -77,7 +77,7 @@ public class CustomerService {
     @Transactional
     public CustomerResponse update(Long businessId, UUID publicId, CustomerUpsertRequest request, UserPrincipal currentUser) {
         findBusinessOrThrow(businessId);
-        Customer customer = findCustomerOrThrow(publicId);
+        Customer customer = findCustomerOrThrow(businessId, publicId);
 
         customerRepository.findByBusinessIdAndCodeAndDeletedAtIsNull(businessId, request.code())
                 .filter(c -> !c.getPublicId().equals(publicId))
@@ -99,7 +99,7 @@ public class CustomerService {
     @Transactional
     public CustomerResponse pay(Long businessId, UUID publicId, CustomerPayRequest request, UserPrincipal currentUser) {
         findBusinessOrThrow(businessId);
-        Customer customer = findCustomerOrThrow(publicId);
+        Customer customer = findCustomerOrThrow(businessId, publicId);
 
         BigDecimal amount = request.amount();
         if (amount.compareTo(customer.getDebtBalance()) > 0) {
@@ -148,7 +148,7 @@ public class CustomerService {
     @Transactional
     public void delete(Long businessId, UUID publicId, UserPrincipal currentUser) {
         findBusinessOrThrow(businessId);
-        Customer customer = findCustomerOrThrow(publicId);
+        Customer customer = findCustomerOrThrow(businessId, publicId);
         customer.setDeletedAt(Instant.now());
         customerRepository.save(customer);
     }
@@ -158,8 +158,9 @@ public class CustomerService {
                 .orElseThrow(() -> new ResourceNotFoundException(ErrorCode.BUSINESS_NOT_FOUND, "Business not found"));
     }
 
-    Customer findCustomerOrThrow(UUID publicId) {
-        return customerRepository.findByPublicId(publicId)
+    // Scoped theo businessId để chống IDOR — customer của business khác trả về 404
+    Customer findCustomerOrThrow(Long businessId, UUID publicId) {
+        return customerRepository.findByBusinessIdAndPublicId(businessId, publicId)
                 .orElseThrow(() -> new ResourceNotFoundException(ErrorCode.CUSTOMER_NOT_FOUND, "Customer not found"));
     }
 

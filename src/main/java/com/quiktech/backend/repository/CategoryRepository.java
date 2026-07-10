@@ -14,7 +14,13 @@ public interface CategoryRepository extends JpaRepository<Category, Long> {
 
     Optional<Category> findByBusinessIdAndNameAndDeletedAtIsNull(Long businessId, String name);
 
-    Optional<Category> findByPublicId(UUID publicId);
+    /**
+     * Lookup scoped theo business để chống IDOR: {@code @PreAuthorize} chỉ kiểm tra quyền
+     * trên businessId của URL, không kiểm tra tenant của entity được load. Category không
+     * thuộc business trong URL sẽ trả về empty → 404.
+     * (Filter deleted_at đã có sẵn qua @SQLRestriction trên entity.)
+     */
+    Optional<Category> findByBusinessIdAndPublicId(Long businessId, UUID publicId);
 
     long countByBusinessIdAndDeletedAtIsNull(Long businessId);
 }
