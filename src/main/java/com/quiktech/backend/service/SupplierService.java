@@ -44,7 +44,13 @@ public class SupplierService {
     @Transactional(readOnly = true)
     public PagedResult<SupplierResponse> search(Long businessId, String q, Pageable pageable, UserPrincipal currentUser) {
         findBusinessOrThrow(businessId);
-        return PagedResult.of(supplierRepository.searchSuppliers(businessId, q, pageable).map(this::toResponse));
+        return PagedResult.of(supplierRepository.searchSuppliers(businessId, escapeLike(q), pageable).map(this::toResponse));
+    }
+
+    // Escape ký tự wildcard của LIKE/ILIKE để từ khóa được hiểu là chuỗi thường —
+    // không escape thì q = "%" match toàn bộ bảng. Khớp với ESCAPE '\' trong searchSuppliers.
+    private static String escapeLike(String q) {
+        return q.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_");
     }
 
     @Transactional(readOnly = true)
@@ -57,7 +63,11 @@ public class SupplierService {
     public SupplierResponse create(Long businessId, SupplierUpsertRequest request, UserPrincipal currentUser) {
         Business business = findBusinessOrThrow(businessId);
 
-        if (supplierRepository.findByBusinessIdAndCodeAndDeletedAtIsNull(businessId, request.code()).isPresent()) {
+        // Trim trước khi check unique + lưu: không trim thì " NCC01" và "NCC01" cùng tồn tại được
+        String code = request.code().trim();
+        String name = request.name().trim();
+
+        if (supplierRepository.findByBusinessIdAndCodeAndDeletedAtIsNull(businessId, code).isPresent()) {
             throw new IllegalArgumentException("Supplier code already exists in this business");
         }
 
@@ -65,8 +75,8 @@ public class SupplierService {
 
         Supplier supplier = Supplier.builder()
                 .business(business)
-                .code(request.code())
-                .name(request.name())
+                .code(code)
+                .name(name)
                 .phone(request.phone())
                 .email(request.email())
                 .address(request.address())
@@ -83,13 +93,17 @@ public class SupplierService {
         findBusinessOrThrow(businessId);
         Supplier supplier = findSupplierOrThrow(businessId, publicId);
 
-        supplierRepository.findByBusinessIdAndCodeAndDeletedAtIsNull(businessId, request.code())
+        // Trim trước khi check unique + lưu (xem chú thích ở create)
+        String code = request.code().trim();
+        String name = request.name().trim();
+
+        supplierRepository.findByBusinessIdAndCodeAndDeletedAtIsNull(businessId, code)
                 .filter(s -> !s.getPublicId().equals(publicId))
                 .ifPresent(s -> { throw new IllegalArgumentException("Supplier code already exists in this business"); });
 
         User userRef = userRepository.getReferenceById(currentUser.userId());
-        supplier.setCode(request.code());
-        supplier.setName(request.name());
+        supplier.setCode(code);
+        supplier.setName(name);
         supplier.setPhone(request.phone());
         supplier.setEmail(request.email());
         supplier.setAddress(request.address());
@@ -188,6 +202,10 @@ public class SupplierService {
         }
 
         supplier.setDeletedAt(Instant.now());
+        // Soft delete cũng là mutation — set trường sync để client local-first nhận được
+        // tín hiệu "record đã xóa" khi sync delta được implement
+        supplier.setLastModifiedByUser(userRepository.getReferenceById(currentUser.userId()));
+        supplier.setLastModifiedAt(Instant.now());
         supplierRepository.save(supplier);
     }
 

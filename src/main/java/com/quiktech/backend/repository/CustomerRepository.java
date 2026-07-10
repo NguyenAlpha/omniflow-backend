@@ -50,16 +50,18 @@ public interface CustomerRepository extends JpaRepository<Customer, Long> {
     """)
     List<Customer> findCustomersWithDebt(@Param("businessId") Long businessId);
 
-    // Full-text search
+    // Substring search bằng ILIKE (không phải full-text search — search_vector + GIN index
+    // trong schema chưa được dùng ở đây). ESCAPE '\': caller (CustomerService) escape %/_
+    // trong searchTerm để wildcard người dùng gõ vào không match toàn bộ bảng.
     @Query("""
         SELECT c FROM Customer c
         WHERE c.business.id = :businessId
         AND c.deletedAt IS NULL
         AND (
-            c.name ILIKE CONCAT('%', :searchTerm, '%')
-            OR c.code ILIKE CONCAT('%', :searchTerm, '%')
-            OR c.phone ILIKE CONCAT('%', :searchTerm, '%')
-            OR c.email ILIKE CONCAT('%', :searchTerm, '%')
+            c.name ILIKE CONCAT('%', :searchTerm, '%') ESCAPE '\\'
+            OR c.code ILIKE CONCAT('%', :searchTerm, '%') ESCAPE '\\'
+            OR c.phone ILIKE CONCAT('%', :searchTerm, '%') ESCAPE '\\'
+            OR c.email ILIKE CONCAT('%', :searchTerm, '%') ESCAPE '\\'
         )
         ORDER BY c.name ASC
     """)

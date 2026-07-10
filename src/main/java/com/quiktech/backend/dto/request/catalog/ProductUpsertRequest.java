@@ -1,6 +1,7 @@
 package com.quiktech.backend.dto.request.catalog;
 
 import jakarta.validation.constraints.DecimalMin;
+import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
@@ -15,7 +16,7 @@ public record ProductUpsertRequest(
     @NotNull UUID unitPublicId,
     @NotNull @DecimalMin("0.00") BigDecimal costPrice,
     @NotNull @DecimalMin("0.00") BigDecimal sellingPrice,
-    @NotNull Integer minStockLevel,
+    @NotNull @Min(0) Integer minStockLevel,
     @NotNull Boolean isActive
 ) {
 }

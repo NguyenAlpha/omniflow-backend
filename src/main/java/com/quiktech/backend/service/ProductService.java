@@ -119,8 +119,13 @@ public class ProductService {
 
         subscriptionLimitService.checkProductLimit(businessId);
 
-        if (productRepository.findByBusinessIdAndSkuAndDeletedAtIsNull(businessId, request.sku()).isPresent()) {
-            log.warn("Create product failed: SKU already exists: businessId={}, sku={}", businessId, request.sku());
+        // Trim trước khi check unique + lưu: không trim thì " SKU01" và "SKU01" cùng tồn tại được
+        // (unique check và partial unique index đều so sánh chuỗi thô)
+        String sku = request.sku().trim();
+        String name = request.name().trim();
+
+        if (productRepository.findByBusinessIdAndSkuAndDeletedAtIsNull(businessId, sku).isPresent()) {
+            log.warn("Create product failed: SKU already exists: businessId={}, sku={}", businessId, sku);
             throw new IllegalArgumentException("SKU already exists in this business");
         }
 
@@ -132,8 +137,8 @@ public class ProductService {
 
         Product product = Product.builder()
                 .business(business)
-                .sku(request.sku())
-                .name(request.name())
+                .sku(sku)
+                .name(name)
                 .description(request.description())
                 .category(category)
                 .unit(unit)
@@ -157,18 +162,22 @@ public class ProductService {
 
         Product product = findProductOrThrow(businessId, publicId);
 
-        productRepository.findByBusinessIdAndSkuAndDeletedAtIsNull(businessId, request.sku())
+        // Trim trước khi check unique + lưu (xem chú thích ở create)
+        String sku = request.sku().trim();
+        String name = request.name().trim();
+
+        productRepository.findByBusinessIdAndSkuAndDeletedAtIsNull(businessId, sku)
                 .filter(p -> !p.getPublicId().equals(publicId))
                 .ifPresent(p -> {
-                    log.warn("Update product failed: SKU already exists: businessId={}, sku={}", businessId, request.sku());
+                    log.warn("Update product failed: SKU already exists: businessId={}, sku={}", businessId, sku);
                     throw new IllegalArgumentException("SKU already exists in this business");
                 });
 
         User userRef = userRepository.getReferenceById(currentUser.userId());
         recordPriceHistoryIfChanged(product, request.costPrice(), request.sellingPrice(), userRef);
 
-        product.setSku(request.sku());
-        product.setName(request.name());
+        product.setSku(sku);
+        product.setName(name);
         product.setDescription(request.description());
         product.setCategory(resolveCategory(businessId, request.categoryPublicId()));
         product.setUnit(resolveUnit(businessId, request.unitPublicId()));
@@ -191,6 +200,10 @@ public class ProductService {
         Product product = findProductOrThrow(businessId, publicId);
         product.setIsActive(isActive);
         product.setUpdatedAt(Instant.now());
+        // Cập nhật trường sync như mọi mutation khác — client local-first dựa vào
+        // lastModifiedAt/syncVersion để pull delta, đổi status mà không cập nhật thì client bỏ sót
+        product.setLastModifiedByUser(userRepository.getReferenceById(currentUser.userId()));
+        product.setLastModifiedAt(Instant.now());
         Product saved = productRepository.save(product);
         log.info("Product status updated: publicId={}, isActive={}", publicId, isActive);
         return toResponse(saved);
@@ -211,6 +224,10 @@ public class ProductService {
         }
 
         product.setDeletedAt(Instant.now());
+        // Soft delete cũng là mutation — set trường sync để client local-first nhận được
+        // tín hiệu "record đã xóa" khi sync delta được implement
+        product.setLastModifiedByUser(userRepository.getReferenceById(currentUser.userId()));
+        product.setLastModifiedAt(Instant.now());
         productRepository.save(product);
         log.info("Product deleted: publicId={}, sku={}", publicId, product.getSku());
     }

@@ -53,8 +53,10 @@ public interface ProductRepository extends JpaRepository<Product, Long>, JpaSpec
     @Query("SELECT p FROM Product p LEFT JOIN FETCH p.category JOIN FETCH p.unit WHERE p.id IN :ids")
     List<Product> findAllWithCategoryAndUnit(@Param("ids") List<Long> ids);
 
-    // Scoped theo business để chống IDOR (xem Javadoc findByBusinessIdAndPublicId)
-    @Query("SELECT p FROM Product p LEFT JOIN FETCH p.priceHistories WHERE p.business.id = :businessId AND p.publicId = :publicId AND p.deletedAt IS NULL")
+    // Scoped theo business để chống IDOR (xem Javadoc findByBusinessIdAndPublicId).
+    // Fetch kèm category/unit (toResponse cần) và ph.changedBy — không fetch changedBy thì
+    // mỗi dòng price history lazy-load 1 user riêng (N+1) khi build detail response.
+    @Query("SELECT p FROM Product p LEFT JOIN FETCH p.category JOIN FETCH p.unit LEFT JOIN FETCH p.priceHistories ph LEFT JOIN FETCH ph.changedBy WHERE p.business.id = :businessId AND p.publicId = :publicId AND p.deletedAt IS NULL")
     Optional<Product> findByBusinessIdAndPublicIdWithPriceHistories(@Param("businessId") Long businessId, @Param("publicId") UUID publicId);
 
     @Modifying

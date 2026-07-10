@@ -50,16 +50,17 @@ public interface SupplierRepository extends JpaRepository<Supplier, Long> {
     """)
     List<Supplier> findSuppliersWithDebt(@Param("businessId") Long businessId);
 
-    // Search suppliers
+    // Search suppliers — substring search bằng ILIKE. ESCAPE '\': caller (SupplierService)
+    // escape %/_ trong searchTerm để wildcard người dùng gõ vào không match toàn bộ bảng.
     @Query("""
         SELECT s FROM Supplier s
         WHERE s.business.id = :businessId
         AND s.deletedAt IS NULL
         AND (
-            s.name ILIKE CONCAT('%', :searchTerm, '%')
-            OR s.code ILIKE CONCAT('%', :searchTerm, '%')
-            OR s.phone ILIKE CONCAT('%', :searchTerm, '%')
-            OR s.email ILIKE CONCAT('%', :searchTerm, '%')
+            s.name ILIKE CONCAT('%', :searchTerm, '%') ESCAPE '\\'
+            OR s.code ILIKE CONCAT('%', :searchTerm, '%') ESCAPE '\\'
+            OR s.phone ILIKE CONCAT('%', :searchTerm, '%') ESCAPE '\\'
+            OR s.email ILIKE CONCAT('%', :searchTerm, '%') ESCAPE '\\'
         )
         ORDER BY s.name ASC
     """)

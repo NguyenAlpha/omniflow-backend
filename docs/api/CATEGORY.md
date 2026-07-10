@@ -117,7 +117,7 @@ Tạo danh mục mới.
 
 | Field | Type | Bắt buộc | Ràng buộc |
 |:------|:-----|:--------:|:----------|
-| `name` | string | ✅ | Không rỗng, max 100 ký tự |
+| `name` | string | ✅ | Không rỗng, max 100 ký tự (được trim trước khi lưu); không trùng tên danh mục khác trong business |
 | `description` | string | ❌ | max 2000 ký tự |
 
 ### Response `201 Created`
@@ -175,7 +175,7 @@ Cập nhật toàn bộ thông tin danh mục.
 
 | Field | Type | Bắt buộc | Ràng buộc |
 |:------|:-----|:--------:|:----------|
-| `name` | string | ✅ | Không rỗng, max 100 ký tự |
+| `name` | string | ✅ | Không rỗng, max 100 ký tự (được trim trước khi lưu); không trùng tên danh mục khác trong business |
 | `description` | string | ❌ | max 2000 ký tự |
 
 ### Response `200 OK`
@@ -213,6 +213,9 @@ Cập nhật toàn bộ thông tin danh mục.
 
 Xóa mềm danh mục.
 
+> Danh mục đang được sản phẩm (chưa xóa) tham chiếu không thể xóa — phải chuyển
+> các sản phẩm đó sang danh mục khác trước.
+
 **Quyền:** Owner hoặc Manager của business (`isOwnerOrManager`).
 
 ### Path Parameters
@@ -236,6 +239,7 @@ Xóa mềm danh mục.
 
 | HTTP | Code | Nguyên nhân |
 |:-----|:-----|:------------|
+| 400 | `VALIDATION_ERROR` | Danh mục còn được sản phẩm (chưa xóa) tham chiếu |
 | 401 | `UNAUTHORIZED` | Thiếu hoặc JWT không hợp lệ |
 | 403 | `FORBIDDEN` | Không đủ quyền (không phải Owner/Manager) |
 | 404 | `CATEGORY_NOT_FOUND` | `publicId` không tồn tại hoặc đã bị xóa |

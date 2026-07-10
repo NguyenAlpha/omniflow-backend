@@ -43,15 +43,23 @@ public class UnitService {
     public UnitResponse create(Long businessId, UnitUpsertRequest request, UserPrincipal currentUser) {
         Business business = findBusinessOrThrow(businessId);
 
-        if (unitRepository.findByBusinessIdAndNameAndDeletedAtIsNull(businessId, request.name()).isPresent()) {
+        // Trim trước khi check unique + lưu: không trim thì " Cái" và "Cái" cùng tồn tại được
+        String name = request.name().trim();
+
+        if (unitRepository.findByBusinessIdAndNameAndDeletedAtIsNull(businessId, name).isPresent()) {
             throw new IllegalArgumentException("Unit name already exists in this business");
+        }
+        // Check cả system unit: DB không chặn (ux_units_business_name dùng COALESCE(business_id, 0)
+        // nên business unit trùng tên system unit vẫn insert được) → dropdown hiện 2 mục "Cái"
+        if (unitRepository.findByBusinessIdIsNullAndNameAndDeletedAtIsNull(name).isPresent()) {
+            throw new IllegalArgumentException("Unit name conflicts with a system unit");
         }
 
         User userRef = userRepository.getReferenceById(currentUser.userId());
 
         Unit unit = Unit.builder()
                 .business(business)
-                .name(request.name())
+                .name(name)
                 .abbreviation(request.abbreviation())
                 .publicId(UUID.randomUUID())
                 .lastModifiedByUser(userRef)
@@ -72,13 +80,19 @@ public class UnitService {
             throw new ForbiddenException(ErrorCode.FORBIDDEN, "Cannot modify system units");
         }
 
-        unitRepository.findByBusinessIdAndNameAndDeletedAtIsNull(businessId, request.name())
+        // Trim + check trùng system unit như create (xem chú thích ở create)
+        String name = request.name().trim();
+
+        unitRepository.findByBusinessIdAndNameAndDeletedAtIsNull(businessId, name)
                 .filter(u -> !u.getPublicId().equals(publicId))
                 .ifPresent(u -> { throw new IllegalArgumentException("Unit name already exists in this business"); });
+        if (unitRepository.findByBusinessIdIsNullAndNameAndDeletedAtIsNull(name).isPresent()) {
+            throw new IllegalArgumentException("Unit name conflicts with a system unit");
+        }
 
         User userRef = userRepository.getReferenceById(currentUser.userId());
 
-        unit.setName(request.name());
+        unit.setName(name);
         unit.setAbbreviation(request.abbreviation());
         unit.setLastModifiedByUser(userRef);
         unit.setLastModifiedAt(Instant.now());
@@ -110,6 +124,10 @@ public class UnitService {
         }
 
         unit.setDeletedAt(Instant.now());
+        // Soft delete cũng là mutation — set trường sync để client local-first nhận được
+        // tín hiệu "record đã xóa" khi sync delta được implement
+        unit.setLastModifiedByUser(userRepository.getReferenceById(currentUser.userId()));
+        unit.setLastModifiedAt(Instant.now());
         unitRepository.save(unit);
     }
 

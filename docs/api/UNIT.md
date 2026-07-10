@@ -113,7 +113,7 @@ Tạo đơn vị tính mới.
 
 | Field | Type | Bắt buộc | Ràng buộc |
 |:------|:-----|:--------:|:----------|
-| `name` | string | ✅ | Không rỗng, max 50 ký tự |
+| `name` | string | ✅ | Không rỗng, max 50 ký tự (được trim trước khi lưu); không trùng tên unit khác trong business và không trùng tên system unit |
 | `abbreviation` | string | ✅ | Không rỗng, max 10 ký tự |
 
 ### Response `201 Created`
@@ -138,7 +138,7 @@ Tạo đơn vị tính mới.
 
 | HTTP | Code | Nguyên nhân |
 |:-----|:-----|:------------|
-| 400 | `VALIDATION_ERROR` | `name` hoặc `abbreviation` không hợp lệ |
+| 400 | `VALIDATION_ERROR` | `name` hoặc `abbreviation` không hợp lệ; `name` trùng unit khác trong business hoặc trùng system unit |
 | 401 | `UNAUTHORIZED` | Thiếu hoặc JWT không hợp lệ |
 | 403 | `FORBIDDEN` | Không đủ quyền (không phải Owner/Manager) |
 | 404 | `BUSINESS_NOT_FOUND` | `businessId` không tồn tại |
@@ -194,9 +194,9 @@ Cập nhật thông tin đơn vị tính.
 
 | HTTP | Code | Nguyên nhân |
 |:-----|:-----|:------------|
-| 400 | `VALIDATION_ERROR` | `name` hoặc `abbreviation` không hợp lệ |
+| 400 | `VALIDATION_ERROR` | `name` hoặc `abbreviation` không hợp lệ; `name` trùng unit khác trong business hoặc trùng system unit |
 | 401 | `UNAUTHORIZED` | Thiếu hoặc JWT không hợp lệ |
-| 403 | `FORBIDDEN` | Không đủ quyền (không phải Owner/Manager) |
+| 403 | `FORBIDDEN` | Không đủ quyền (không phải Owner/Manager); unit là system unit (không được sửa) |
 | 404 | `UNIT_NOT_FOUND` | `publicId` không tồn tại hoặc đã bị xóa |
 
 ---
@@ -204,6 +204,9 @@ Cập nhật thông tin đơn vị tính.
 ## DELETE `/api/businesses/{businessId}/units/{publicId}`
 
 Xóa mềm đơn vị tính.
+
+> Unit đang được sản phẩm (chưa xóa) tham chiếu không thể xóa — phải chuyển
+> các sản phẩm đó sang unit khác trước.
 
 **Quyền:** Owner hoặc Manager của business (`isOwnerOrManager`).
 
@@ -228,6 +231,7 @@ Xóa mềm đơn vị tính.
 
 | HTTP | Code | Nguyên nhân |
 |:-----|:-----|:------------|
+| 400 | `VALIDATION_ERROR` | Unit còn được sản phẩm (chưa xóa) tham chiếu |
 | 401 | `UNAUTHORIZED` | Thiếu hoặc JWT không hợp lệ |
-| 403 | `FORBIDDEN` | Không đủ quyền (không phải Owner/Manager) |
+| 403 | `FORBIDDEN` | Không đủ quyền (không phải Owner/Manager); unit là system unit (không được xóa) |
 | 404 | `UNIT_NOT_FOUND` | `publicId` không tồn tại hoặc đã bị xóa |

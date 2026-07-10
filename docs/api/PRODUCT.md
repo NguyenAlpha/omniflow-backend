@@ -320,14 +320,14 @@ Tạo sản phẩm mới. Chỉ **OWNER** hoặc **MANAGER** của business mớ
 
 | Field | Type | Bắt buộc | Ràng buộc |
 |:------|:-----|:--------:|:----------|
-| `sku` | string | ✅ | Không được để trống, tối đa 50 ký tự |
-| `name` | string | ✅ | Không được để trống, tối đa 200 ký tự |
+| `sku` | string | ✅ | Không được để trống, tối đa 50 ký tự (được trim trước khi lưu) |
+| `name` | string | ✅ | Không được để trống, tối đa 200 ký tự (được trim trước khi lưu) |
 | `description` | string | ❌ | Tối đa 4000 ký tự |
 | `categoryPublicId` | UUID | ❌ | |
 | `unitPublicId` | UUID | ✅ | |
 | `costPrice` | number | ✅ | Tối thiểu `0.00` |
 | `sellingPrice` | number | ✅ | Tối thiểu `0.00` |
-| `minStockLevel` | number | ✅ | |
+| `minStockLevel` | number | ✅ | Tối thiểu `0` |
 | `isActive` | boolean | ✅ | |
 
 ### Response `201 Created`

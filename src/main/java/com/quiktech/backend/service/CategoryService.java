@@ -42,7 +42,10 @@ public class CategoryService {
     public CategoryResponse create(Long businessId, CategoryUpsertRequest request, UserPrincipal currentUser) {
         Business business = findBusinessOrThrow(businessId);
 
-        if (categoryRepository.findByBusinessIdAndNameAndDeletedAtIsNull(businessId, request.name()).isPresent()) {
+        // Trim trước khi check unique + lưu: không trim thì " Đồ uống" và "Đồ uống" cùng tồn tại được
+        String name = request.name().trim();
+
+        if (categoryRepository.findByBusinessIdAndNameAndDeletedAtIsNull(businessId, name).isPresent()) {
             throw new IllegalArgumentException("Category name already exists in this business");
         }
 
@@ -50,7 +53,7 @@ public class CategoryService {
 
         Category category = Category.builder()
                 .business(business)
-                .name(request.name())
+                .name(name)
                 .description(request.description())
                 .publicId(UUID.randomUUID())
                 .createdBy(userRef)
@@ -68,13 +71,16 @@ public class CategoryService {
         Category category = categoryRepository.findByBusinessIdAndPublicId(businessId, publicId)
                 .orElseThrow(() -> new ResourceNotFoundException(ErrorCode.CATEGORY_NOT_FOUND, "Category not found"));
 
-        categoryRepository.findByBusinessIdAndNameAndDeletedAtIsNull(businessId, request.name())
+        // Trim trước khi check unique + lưu (xem chú thích ở create)
+        String name = request.name().trim();
+
+        categoryRepository.findByBusinessIdAndNameAndDeletedAtIsNull(businessId, name)
                 .filter(c -> !c.getPublicId().equals(publicId))
                 .ifPresent(c -> { throw new IllegalArgumentException("Category name already exists in this business"); });
 
         User userRef = userRepository.getReferenceById(currentUser.userId());
 
-        category.setName(request.name());
+        category.setName(name);
         category.setDescription(request.description());
         category.setLastModifiedByUser(userRef);
         category.setLastModifiedAt(Instant.now());
@@ -102,6 +108,10 @@ public class CategoryService {
         }
 
         category.setDeletedAt(Instant.now());
+        // Soft delete cũng là mutation — set trường sync để client local-first nhận được
+        // tín hiệu "record đã xóa" khi sync delta được implement
+        category.setLastModifiedByUser(userRepository.getReferenceById(currentUser.userId()));
+        category.setLastModifiedAt(Instant.now());
         categoryRepository.save(category);
     }
 

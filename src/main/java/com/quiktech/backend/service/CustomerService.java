@@ -44,7 +44,13 @@ public class CustomerService {
     @Transactional(readOnly = true)
     public PagedResult<CustomerResponse> search(Long businessId, String q, Pageable pageable, UserPrincipal currentUser) {
         findBusinessOrThrow(businessId);
-        return PagedResult.of(customerRepository.searchCustomers(businessId, q, pageable).map(this::toResponse));
+        return PagedResult.of(customerRepository.searchCustomers(businessId, escapeLike(q), pageable).map(this::toResponse));
+    }
+
+    // Escape ký tự wildcard của LIKE/ILIKE để từ khóa được hiểu là chuỗi thường —
+    // không escape thì q = "%" match toàn bộ bảng. Khớp với ESCAPE '\' trong searchCustomers.
+    private static String escapeLike(String q) {
+        return q.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_");
     }
 
     @Transactional(readOnly = true)
@@ -57,7 +63,11 @@ public class CustomerService {
     public CustomerResponse create(Long businessId, CustomerUpsertRequest request, UserPrincipal currentUser) {
         Business business = findBusinessOrThrow(businessId);
 
-        if (customerRepository.findByBusinessIdAndCodeAndDeletedAtIsNull(businessId, request.code()).isPresent()) {
+        // Trim trước khi check unique + lưu: không trim thì " KH01" và "KH01" cùng tồn tại được
+        String code = request.code().trim();
+        String name = request.name().trim();
+
+        if (customerRepository.findByBusinessIdAndCodeAndDeletedAtIsNull(businessId, code).isPresent()) {
             throw new IllegalArgumentException("Customer code already exists in this business");
         }
 
@@ -65,8 +75,8 @@ public class CustomerService {
 
         Customer customer = Customer.builder()
                 .business(business)
-                .code(request.code())
-                .name(request.name())
+                .code(code)
+                .name(name)
                 .phone(request.phone())
                 .email(request.email())
                 .address(request.address())
@@ -83,13 +93,17 @@ public class CustomerService {
         findBusinessOrThrow(businessId);
         Customer customer = findCustomerOrThrow(businessId, publicId);
 
-        customerRepository.findByBusinessIdAndCodeAndDeletedAtIsNull(businessId, request.code())
+        // Trim trước khi check unique + lưu (xem chú thích ở create)
+        String code = request.code().trim();
+        String name = request.name().trim();
+
+        customerRepository.findByBusinessIdAndCodeAndDeletedAtIsNull(businessId, code)
                 .filter(c -> !c.getPublicId().equals(publicId))
                 .ifPresent(c -> { throw new IllegalArgumentException("Customer code already exists in this business"); });
 
         User userRef = userRepository.getReferenceById(currentUser.userId());
-        customer.setCode(request.code());
-        customer.setName(request.name());
+        customer.setCode(code);
+        customer.setName(name);
         customer.setPhone(request.phone());
         customer.setEmail(request.email());
         customer.setAddress(request.address());
@@ -188,6 +202,10 @@ public class CustomerService {
         }
 
         customer.setDeletedAt(Instant.now());
+        // Soft delete cũng là mutation — set trường sync để client local-first nhận được
+        // tín hiệu "record đã xóa" khi sync delta được implement
+        customer.setLastModifiedByUser(userRepository.getReferenceById(currentUser.userId()));
+        customer.setLastModifiedAt(Instant.now());
         customerRepository.save(customer);
     }
 

@@ -98,28 +98,29 @@
 
 ## 6. Danh mục sản phẩm (Category)
 
-- Tạo danh mục per-store
-- Xem danh sách danh mục của cửa hàng
+- Tạo danh mục per-business (dùng chung cho mọi store trong business)
+- Xem danh sách danh mục của business
 - Cập nhật tên và mô tả danh mục
 - Soft delete danh mục — bị chặn nếu còn sản phẩm (chưa xóa) tham chiếu danh mục đó
-- Tên danh mục unique trong cùng cửa hàng
+- Tên danh mục unique trong cùng business
 
 ---
 
 ## 7. Đơn vị tính (Unit)
 
 - System units (do SUPER_ADMIN quản lý, dùng chung toàn hệ thống): Cái, Kg, Lít, Hộp, Thùng, Gói, ...
-- Store units (do OWNER/MANAGER cửa hàng quản lý): đơn vị tính tùy chỉnh theo nghiệp vụ
-- Tạo / cập nhật / soft delete store unit — xóa bị chặn nếu còn sản phẩm (chưa xóa) dùng unit đó
-- Tên unit unique trong cùng cửa hàng (system units unique toàn hệ thống)
-- Query luôn trả về cả system units lẫn store units
+- Business units (do OWNER/MANAGER của business quản lý): đơn vị tính tùy chỉnh theo nghiệp vụ
+- Tạo / cập nhật / soft delete business unit — xóa bị chặn nếu còn sản phẩm (chưa xóa) dùng unit đó
+- Tên unit unique trong cùng business (system units unique toàn hệ thống;
+  business unit không được đặt trùng tên system unit)
+- Query luôn trả về cả system units lẫn business units
 
 ---
 
 ## 8. Quản lý Sản phẩm (Product)
 
 - Tạo sản phẩm với SKU, tên, mô tả, danh mục, đơn vị tính, giá vốn, giá bán, tồn tối thiểu
-- SKU unique trong cùng cửa hàng
+- SKU unique trong cùng business (mọi store của business dùng chung catalog)
 - Cập nhật thông tin sản phẩm
 - Khi cập nhật giá (giá vốn hoặc giá bán): tự động ghi vào `price_history` — immutable
 - Kích hoạt / ngừng kinh doanh sản phẩm (`is_active`)
@@ -163,10 +164,12 @@
 ## 11. Quản lý Khách hàng (Customer)
 
 - Tạo khách hàng với mã, tên, số điện thoại, email, địa chỉ
-- Mã khách hàng unique trong cùng cửa hàng
+- Mã khách hàng unique trong cùng business (mọi store của business dùng chung danh sách khách hàng)
 - Cập nhật thông tin khách hàng
-- Soft delete khách hàng
-- Tìm kiếm khách hàng theo tên / số điện thoại / mã (full-text search)
+- Soft delete khách hàng — bị chặn nếu còn công nợ chưa tất toán
+- Tìm kiếm khách hàng theo tên / mã / số điện thoại / email (substring ILIKE,
+  ký tự wildcard `%`/`_` trong từ khóa được escape; chưa dùng full-text search
+  dù schema đã có `search_vector` + GIN index)
 - Xem số dư công nợ (`debt_balance`) của từng khách hàng
 - Danh sách khách hàng đang có công nợ (filter `debt_balance > 0`)
 
@@ -175,10 +178,10 @@
 ## 12. Quản lý Nhà cung cấp (Supplier)
 
 - Tạo nhà cung cấp với mã, tên, số điện thoại, email, địa chỉ
-- Mã nhà cung cấp unique trong cùng cửa hàng
+- Mã nhà cung cấp unique trong cùng business (mọi store của business dùng chung danh sách NCC)
 - Cập nhật thông tin nhà cung cấp
-- Soft delete nhà cung cấp
-- Xem số dư công nợ (`debt_balance`) — tiền cửa hàng đang nợ nhà cung cấp
+- Soft delete nhà cung cấp — bị chặn nếu còn công nợ chưa tất toán
+- Xem số dư công nợ (`debt_balance`) — tiền business đang nợ nhà cung cấp
 - Danh sách nhà cung cấp đang có công nợ (filter `debt_balance > 0`)
 
 ---
@@ -270,11 +273,13 @@
 ## 18. Nhật ký thao tác (Audit Log)
 
 - Ghi log tự động cho các thao tác nhạy cảm:
-  - Sửa giá sản phẩm
+  - Sửa giá / trạng thái / xoá / import sản phẩm
   - Huỷ đơn hàng / đơn nhập
-  - Thay đổi role thành viên
-  - Thay đổi gói subscription
-  - Xoá khách hàng / nhà cung cấp
+  - Xoá khách hàng / nhà cung cấp / danh mục / đơn vị tính
+  - Thanh toán công nợ khách hàng / nhà cung cấp
+  - Điều chỉnh / chuyển kho tồn kho
+  (danh sách action đầy đủ xem mục 19)
+- Thay đổi role thành viên và thay đổi gói subscription **chưa được audit** (kế hoạch mở rộng)
 - Lưu trạng thái trước (`old_data` JSONB) và sau (`new_data` JSONB) mỗi thay đổi
 - Ghi nhận IP address của người thực hiện
 - Xem lịch sử thao tác theo bảng, record, hoặc người thực hiện
@@ -293,9 +298,12 @@ Ghi nhận mọi hành động quan trọng — ai xóa đơn hàng, ai thay đ�
 - Capture: user_id, store_id / business_id, IP, action, entity_type, new_value (JSON request)
 - Các operation được audit:
   - Order: `CREATE_ORDER`, `COMPLETE_ORDER`, `PAY_ORDER`, `CANCEL_ORDER`
-  - Inventory: `ADJUST_INVENTORY`
-  - Product: `CREATE_PRODUCT`, `UPDATE_PRODUCT`, `DELETE_PRODUCT`
+  - Inventory: `ADJUST_INVENTORY`, `TRANSFER_INVENTORY`
+  - Product: `CREATE_PRODUCT`, `UPDATE_PRODUCT`, `SET_PRODUCT_STATUS`, `DELETE_PRODUCT`, `IMPORT_PRODUCTS`
   - PurchaseOrder: `CREATE_PURCHASE_ORDER`, `RECEIVE_PURCHASE_ORDER`, `CANCEL_PURCHASE_ORDER`
+  - Customer: `PAY_CUSTOMER_DEBT`, `DELETE_CUSTOMER`
+  - Supplier: `PAY_SUPPLIER_DEBT`, `DELETE_SUPPLIER`
+  - Category / Unit: `DELETE_CATEGORY`, `DELETE_UNIT`
 - `old_value` chưa được capture (requires pre-method DB fetch — có thể mở rộng sau)
 
 ---
