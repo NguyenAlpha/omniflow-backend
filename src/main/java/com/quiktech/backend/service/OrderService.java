@@ -43,7 +43,6 @@ public class OrderService {
     private final InventoryTransactionRepository inventoryTransactionRepository;
     private final PaymentRepository paymentRepository;
     private final UserRepository userRepository;
-    private final SubscriptionLimitService subscriptionLimitService;
 
     @Transactional(readOnly = true)
     public PagedResult<OrderResponse> list(Long storeId, String orderCode, String status, LocalDate from, LocalDate to, UUID customerPublicId, Pageable pageable, UserPrincipal currentUser) {
@@ -69,7 +68,6 @@ public class OrderService {
     @Auditable(action = "CREATE_ORDER", entityType = "ORDER")
     @Transactional
     public OrderResponse create(Long storeId, OrderCreateRequest request, UserPrincipal currentUser) {
-        subscriptionLimitService.checkOrderLimit(storeId);
         Store store = findStoreOrThrow(storeId);
         Customer customer = resolveCustomer(request.customerPublicId());
         Warehouse warehouse = resolveWarehouse(request.warehousePublicId());

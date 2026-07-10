@@ -124,21 +124,6 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
     """)
     List<Order> findCompletedOrdersByCustomerWithDebt(@Param("customerId") Long customerId);
 
-    // Đếm đơn hàng không bị huỷ trong business trong khoảng thời gian — dùng để check limit theo tháng
-    @Query(value = """
-        SELECT COUNT(o.id)
-        FROM orders o
-        JOIN stores s ON s.id = o.store_id
-        WHERE s.business_id = :businessId
-        AND o.status != 'CANCELLED'
-        AND o.created_at >= :from
-        AND o.created_at < :to
-    """, nativeQuery = true)
-    long countActiveByBusinessIdAndPeriod(
-            @Param("businessId") Long businessId,
-            @Param("from") Instant from,
-            @Param("to") Instant to);
-
     @Query("SELECT o FROM Order o LEFT JOIN FETCH o.customer WHERE o.store.id = :storeId ORDER BY o.createdAt DESC")
     List<Order> findRecentByStoreId(@Param("storeId") Long storeId, Pageable pageable);
 

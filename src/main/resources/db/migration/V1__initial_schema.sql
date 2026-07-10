@@ -131,7 +131,6 @@ CREATE TABLE subscriptions (
     max_products INTEGER,
     max_warehouses INTEGER,
     max_stores INTEGER,
-    max_orders_per_month INTEGER,
     started_at TIMESTAMPTZ NOT NULL,
     expires_at TIMESTAMPTZ,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),

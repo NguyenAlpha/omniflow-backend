@@ -172,21 +172,26 @@
 | `plan` | VARCHAR(20) | NOT NULL | Gói: `FREE` / `BASIC` / `PRO` |
 | `status` | VARCHAR(20) | NOT NULL | Trạng thái: `ACTIVE` / `EXPIRED` / `CANCELLED` |
 | `billing_cycle` | VARCHAR(20) | | Chu kỳ: `MONTHLY` / `YEARLY` — null nếu FREE |
+| `max_stores` | INTEGER | | Giới hạn cửa hàng — null = không giới hạn |
 | `max_staff` | INTEGER | | Giới hạn nhân viên — null = không giới hạn |
 | `max_products` | INTEGER | | Giới hạn sản phẩm — null = không giới hạn |
 | `max_warehouses` | INTEGER | | Giới hạn kho — null = không giới hạn |
-| `max_orders_per_month` | INTEGER | | Giới hạn đơn hàng/tháng — null = không giới hạn |
 | `started_at` | TIMESTAMPTZ | NOT NULL | Thời điểm bắt đầu gói |
 | `expires_at` | TIMESTAMPTZ | | Thời điểm hết hạn — null nếu FREE |
+| `pending_plan` | VARCHAR(20) | | Gói downgrade đã đặt lịch — áp dụng cuối chu kỳ (V3) |
+| `pending_billing_cycle` | VARCHAR(20) | | Dự trữ — hiện luôn null (V3) |
+| `expiry_warning_sent_at` | TIMESTAMPTZ | | Đã gửi email cảnh báo hết hạn cho chu kỳ hiện tại — chống spam (V10) |
 | `created_at` | TIMESTAMPTZ | NOT NULL | Thời điểm tạo |
 | `updated_at` | TIMESTAMPTZ | NOT NULL | Thời điểm cập nhật |
 
-> **Giới hạn mặc định theo plan:**
-> | Plan | max_staff | max_products | max_warehouses | max_orders_per_month |
+> **Giới hạn mặc định theo plan** (nguồn: `PlanLimits`, null = không giới hạn):
+> | Plan | max_stores | max_staff | max_products | max_warehouses |
 > |---|---|---|---|---|
-> | FREE | 2 | 50 | 1 | 100 |
-> | BASIC | 10 | 500 | 3 | 1.000 |
-> | PRO | null | null | null | null |
+> | FREE | 1 | 0 | 50 | 1 |
+> | BASIC | 2 | 20 | 200 | 20 |
+> | PRO | 3 | null | null | null |
+>
+> Cột `max_orders_per_month` đã bị loại bỏ — chưa từng được gán giá trị (dead code).
 
 ---
 

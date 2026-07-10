@@ -39,6 +39,9 @@
 - Xem thông tin cửa hàng
 - Cập nhật thông tin cửa hàng (tên, địa chỉ, số điện thoại, email)
 - Vô hiệu hóa cửa hàng (`is_active = false`)
+  > **Lưu ý:** `is_active` của business/store hiện chỉ mang tính **hiển thị** (cờ trạng thái
+  > cho UI) — chưa có evaluator/service nào chặn truy cập khi `is_active = false`.
+  > Không dùng cờ này cho nghiệp vụ đình chỉ tenant; enforce sẽ bổ sung khi có yêu cầu thật.
 - Xem danh sách tất cả cửa hàng mà user đang là thành viên
 
 ---

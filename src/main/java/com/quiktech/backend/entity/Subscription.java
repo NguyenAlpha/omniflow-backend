@@ -48,9 +48,6 @@ public class Subscription {
     @Column
     private Integer maxWarehouses;
 
-    @Column
-    private Integer maxOrdersPerMonth;
-
     @Column(nullable = false, columnDefinition = "TIMESTAMPTZ")
     private Instant startedAt;
 
