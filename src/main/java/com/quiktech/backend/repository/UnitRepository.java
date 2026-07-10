@@ -20,6 +20,10 @@ public interface UnitRepository extends JpaRepository<Unit, Long> {
 
     Optional<Unit> findByBusinessIdAndNameAndDeletedAtIsNull(Long businessId, String name);
 
+    // Lookup system unit theo tên (business IS NULL) — dùng cho import CSV,
+    // trước đây import chỉ tra business unit nên không thể dùng "Cái", "Kg", ...
+    Optional<Unit> findByBusinessIdIsNullAndNameAndDeletedAtIsNull(String name);
+
     /**
      * Lookup scoped theo business để chống IDOR, nhưng vẫn cho phép truy cập unit hệ thống
      * (business IS NULL — dùng chung cho mọi business). Unit thuộc business khác sẽ trả về

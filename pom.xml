@@ -124,6 +124,12 @@
 			<artifactId>commons-lang3</artifactId>
 			<version>3.18.0</version>
 		</dependency>
+		<!-- Parse CSV chuẩn RFC 4180 cho import sản phẩm (tên chứa dấu phẩy/ngoặc kép) -->
+		<dependency>
+			<groupId>org.apache.commons</groupId>
+			<artifactId>commons-csv</artifactId>
+			<version>1.11.0</version>
+		</dependency>
 
 	</dependencies>
 

@@ -72,6 +72,23 @@ public class SubscriptionLimitService {
         }
     }
 
+    /**
+     * Dùng cho import hàng loạt: trả về số product còn được phép tạo (null = không giới hạn).
+     * Cũng khóa row subscription như các check trên để capacity ổn định đến khi caller commit.
+     *
+     * <p>Import KHÔNG được gọi {@code checkProductLimit} từng dòng giữa vòng lặp: khi vượt
+     * limit, exception ném xuyên qua proxy {@code @Transactional} sẽ đánh dấu transaction
+     * rollback-only dù caller có catch → toàn bộ import bị rollback và request trả 500
+     * ({@code UnexpectedRollbackException}) thay vì báo lỗi từng dòng.
+     */
+    @Transactional(propagation = Propagation.MANDATORY)
+    public Long getRemainingProductCapacity(Long businessId) {
+        Subscription sub = getSubscriptionForUpdate(businessId);
+        if (sub.getMaxProducts() == null) return null;
+        long count = productRepository.countByBusinessIdAndDeletedAtIsNull(businessId);
+        return Math.max(0, sub.getMaxProducts() - count);
+    }
+
     // SELECT ... FOR UPDATE — xem comment ở đầu nhóm check limit
     private Subscription getSubscriptionForUpdate(Long businessId) {
         return subscriptionRepository.findByBusinessIdForUpdate(businessId)

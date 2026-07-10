@@ -14,6 +14,9 @@ import com.quiktech.backend.repository.*;
 import com.quiktech.backend.security.UserPrincipal;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.csv.CSVFormat;
+import org.apache.commons.csv.CSVParser;
+import org.apache.commons.csv.CSVRecord;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
@@ -24,12 +27,12 @@ import org.springframework.data.jpa.domain.Specification;
 
 import org.springframework.web.multipart.MultipartFile;
 
-import java.io.BufferedReader;
 import java.io.InputStreamReader;
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -39,6 +42,8 @@ import java.util.stream.Collectors;
 @Service
 @RequiredArgsConstructor
 public class ProductService {
+
+    private static final int MAX_IMPORT_ROWS = 1000;
 
     private final ProductRepository productRepository;
     private final BusinessRepository businessRepository;
@@ -200,47 +205,78 @@ public class ProductService {
         log.info("Product deleted: publicId={}, sku={}", publicId, product.getSku());
     }
 
+    @Auditable(action = "IMPORT_PRODUCTS", entityType = "PRODUCT")
     @Transactional
     public ProductImportResponse importCsv(Long businessId, MultipartFile file, UserPrincipal currentUser) {
         Business business = findBusinessOrThrow(businessId);
         User userRef = userRepository.getReferenceById(currentUser.userId());
 
+        // Lấy capacity còn lại MỘT LẦN trước vòng lặp (kèm lock subscription).
+        // Không gọi checkProductLimit từng dòng: khi vượt limit, exception ném xuyên qua
+        // proxy @Transactional đánh dấu transaction rollback-only dù có catch trong loop
+        // → toàn bộ import bị rollback + request 500 (UnexpectedRollbackException).
+        Long remainingCapacity = subscriptionLimitService.getRemainingProductCapacity(businessId);
+
         int imported = 0;
         int skipped = 0;
         List<String> errors = new ArrayList<>();
 
-        try (BufferedReader reader = new BufferedReader(new InputStreamReader(file.getInputStream(), StandardCharsets.UTF_8))) {
-            String headerLine = reader.readLine();
-            if (headerLine == null) {
+        // Commons CSV (RFC 4180): xử lý đúng tên/mô tả chứa dấu phẩy, ngoặc kép, xuống dòng
+        // — split(",") cũ vỡ cột với dữ liệu như "Bàn phím, chuột combo"
+        CSVFormat format = CSVFormat.DEFAULT.builder()
+                .setIgnoreEmptyLines(true)
+                .setTrim(true)
+                .build();
+
+        // Expected columns: sku,name,description,categoryName,unitName,costPrice,sellingPrice,minStockLevel,isActive
+        try (CSVParser parser = format.parse(new InputStreamReader(file.getInputStream(), StandardCharsets.UTF_8))) {
+            Iterator<CSVRecord> it = parser.iterator();
+            if (!it.hasNext()) {
                 errors.add("File is empty");
                 return new ProductImportResponse(0, 0, errors);
             }
+            it.next(); // bỏ qua dòng header
 
-            // Expected columns: sku,name,description,categoryName,unitName,costPrice,sellingPrice,minStockLevel,isActive
-            String line;
             int rowNum = 1;
-            while ((line = reader.readLine()) != null) {
+            while (it.hasNext()) {
+                CSVRecord record = it.next();
                 rowNum++;
-                if (line.isBlank()) continue;
-                String[] cols = line.split(",", -1);
-                if (cols.length < 8) {
+                // Giới hạn số dòng: import chạy trong 1 transaction, file quá lớn sẽ giữ
+                // lock subscription + connection lâu và phình bộ nhớ persistence context
+                if (rowNum - 1 > MAX_IMPORT_ROWS) {
+                    errors.add("Import is limited to " + MAX_IMPORT_ROWS + " rows per file; remaining rows were ignored");
+                    break;
+                }
+                if (record.size() < 8) {
                     errors.add("Row " + rowNum + ": insufficient columns (expected at least 8)");
                     skipped++;
                     continue;
                 }
                 try {
-                    String sku = cols[0].trim();
-                    String name = cols[1].trim();
-                    String description = cols[2].trim();
-                    String categoryName = cols[3].trim();
-                    String unitName = cols[4].trim();
-                    BigDecimal costPrice = new BigDecimal(cols[5].trim());
-                    BigDecimal sellingPrice = new BigDecimal(cols[6].trim());
-                    int minStockLevel = Integer.parseInt(cols[7].trim());
-                    boolean isActive = cols.length > 8 ? Boolean.parseBoolean(cols[8].trim()) : true;
+                    String sku = record.get(0);
+                    String name = record.get(1);
+                    String description = record.get(2);
+                    String categoryName = record.get(3);
+                    String unitName = record.get(4);
+                    BigDecimal costPrice = new BigDecimal(record.get(5));
+                    BigDecimal sellingPrice = new BigDecimal(record.get(6));
+                    int minStockLevel = Integer.parseInt(record.get(7));
+                    boolean isActive = record.size() <= 8 || Boolean.parseBoolean(record.get(8));
 
                     if (sku.isEmpty() || name.isEmpty() || unitName.isEmpty()) {
                         errors.add("Row " + rowNum + ": sku, name, and unitName are required");
+                        skipped++;
+                        continue;
+                    }
+                    // Validate sớm theo ràng buộc DB — nếu để DB từ chối lúc flush thì
+                    // toàn bộ transaction import rollback thay vì báo lỗi từng dòng
+                    if (sku.length() > 50 || name.length() > 200) {
+                        errors.add("Row " + rowNum + ": sku max 50 characters, name max 200 characters");
+                        skipped++;
+                        continue;
+                    }
+                    if (costPrice.signum() < 0 || sellingPrice.signum() < 0 || minStockLevel < 0) {
+                        errors.add("Row " + rowNum + ": costPrice, sellingPrice, and minStockLevel must not be negative");
                         skipped++;
                         continue;
                     }
@@ -249,11 +285,26 @@ public class ProductService {
                         skipped++;
                         continue;
                     }
-                    subscriptionLimitService.checkProductLimit(businessId);
+                    if (remainingCapacity != null && imported >= remainingCapacity) {
+                        errors.add("Row " + rowNum + ": product limit reached for your current plan; remaining rows were skipped");
+                        skipped++;
+                        break;
+                    }
 
-                    Category category = categoryName.isEmpty() ? null
-                            : categoryRepository.findByBusinessIdAndNameAndDeletedAtIsNull(businessId, categoryName).orElse(null);
+                    // Category không tồn tại → báo lỗi rõ ràng thay vì import lặng lẽ với category null
+                    Category category = null;
+                    if (!categoryName.isEmpty()) {
+                        category = categoryRepository.findByBusinessIdAndNameAndDeletedAtIsNull(businessId, categoryName)
+                                .orElse(null);
+                        if (category == null) {
+                            errors.add("Row " + rowNum + ": category '" + categoryName + "' not found");
+                            skipped++;
+                            continue;
+                        }
+                    }
+                    // Ưu tiên business unit, fallback system unit (trước đây system unit không dùng được khi import)
                     Unit unit = unitRepository.findByBusinessIdAndNameAndDeletedAtIsNull(businessId, unitName)
+                            .or(() -> unitRepository.findByBusinessIdIsNullAndNameAndDeletedAtIsNull(unitName))
                             .orElseThrow(() -> new IllegalArgumentException("Unit '" + unitName + "' not found"));
 
                     Product product = Product.builder()
@@ -272,6 +323,7 @@ public class ProductService {
             errors.add("Failed to read file: " + e.getMessage());
         }
 
+        log.info("Product CSV import: businessId={}, imported={}, skipped={}", businessId, imported, skipped);
         return new ProductImportResponse(imported, skipped, errors);
     }
 

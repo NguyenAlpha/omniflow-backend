@@ -127,6 +127,10 @@
 - Lọc sản phẩm theo trạng thái (`is_active`)
 - Tìm kiếm sản phẩm theo tên / SKU / mô tả (LIKE và full-text search với `tsvector` + GIN index)
 - Phân trang kết quả tìm kiếm
+- Import sản phẩm hàng loạt từ file CSV (parse chuẩn RFC 4180, tối đa 1.000 dòng/file):
+  validate và báo lỗi theo từng dòng (giá âm, thiếu cột, SKU trùng, category không tồn tại),
+  dùng được cả system unit lẫn unit của business, tôn trọng giới hạn sản phẩm của gói
+  (các dòng vượt limit bị bỏ qua kèm thông báo, không rollback các dòng đã hợp lệ)
 
 ---
 
