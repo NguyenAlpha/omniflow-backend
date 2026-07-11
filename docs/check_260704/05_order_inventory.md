@@ -39,6 +39,17 @@ Về chống oversell: không dùng pessimistic lock hay atomic UPDATE, nhưng `
 - **Tác động:** Bất kỳ user nào là member của *một* store bất kỳ có thể: đọc đơn hàng/đơn nhập/đơn trả của tenant khác; **complete/cancel/pay đơn của tenant khác** (làm sai lệch công nợ, tồn kho của họ); tạo đơn bán trừ kho của tenant khác (`warehousePublicId` + `productPublicId` của store khác); điều chỉnh/chuyển kho tenant khác; **xóa warehouse của tenant khác**. Đây là vi phạm cách ly dữ liệu nghiêm trọng nhất có thể với B2B SaaS.
 - **Đề xuất:** Thêm điều kiện store vào mọi query lookup: `findByPublicIdAndStoreId(publicId, storeId)` (hoặc sau khi load, assert `entity.getStore().getId().equals(storeId)` và ném 404). Với Product/Customer/Supplier thuộc scope business thì đối chiếu theo businessId của store. Viết integration test: user store A gọi API với publicId của store B phải nhận 404.
 
+> **Trạng thái (2026-07-11): Đã xử lý** — commit `ef76630`. Mọi lookup theo publicId đã scoped
+> theo tenant ở tầng query: `OrderRepository`/`PurchaseOrderRepository`/`ReturnOrderRepository`
+> thêm điều kiện `store.id` vào `findByPublicIdWithItems`/`findByPublicIdWithCustomer` và đổi
+> `findByPublicId` → `findByPublicIdAndStoreId`; `WarehouseRepository`/`PaymentRepository` tương tự.
+> Product/Customer/Supplier (scope business) dùng `findByBusinessIdAndPublicId` sẵn có, đối chiếu
+> `store.getBusiness().getId()`. Đã sửa cả `InventoryService.listByWarehouse` (đọc tồn kho theo
+> warehousePublicId của tenant khác — cùng lớp lỗi, không được liệt kê ở trên).
+> `InventoryRepository.findByProductIdAndWarehouseId` giữ nguyên: an toàn vì product + warehouse
+> đầu vào đã được scoped. Integration test cross-tenant chưa viết (test suite hiện không compile
+> từ trước — xem backlog).
+
 ### [CRITICAL] ReturnOrder không có bất kỳ validation nghiệp vụ nào — thổi phồng tồn kho & xóa công nợ tùy ý
 
 - **Vị trí:** `ReturnOrderService.java:52-110` (create), `112-158` (complete); DTO `dto\request\order\ReturnOrderCreateRequest.java` và `ReturnOrderItemRequest.java` (không có annotation validation nào)

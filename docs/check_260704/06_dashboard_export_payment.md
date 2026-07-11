@@ -35,6 +35,14 @@ Dashboard và Admin ở mức tốt: Dashboard dùng materialized view được 
 
 **Đề xuất:** Sau khi `findByPublicId`, assert `payment.getStore().getId().equals(storeId)`, ném 404 nếu sai. Với customer/supplier trong `create`, dùng `findByPublicIdAndBusinessId(...)` hoặc verify sau khi fetch.
 
+> **Trạng thái (2026-07-11): Đã xử lý** — commit `ef76630`. `PaymentRepository.findByPublicId`
+> đổi thành `findByPublicIdAndStoreId` (scoped ở tầng query thay vì assert sau khi load);
+> `get()`/`delete()` dùng method này. `create()` lookup customer/supplier bằng
+> `findByBusinessIdAndPublicId(store.getBusiness().getId(), ...)`. Lưu ý:
+> `createDebtPayment`/`createDirectPayment` vẫn dùng `findByPublicId` không scoped nhưng là
+> dead code (không có caller nào trong codebase) — không sửa theo nguyên tắc surgical change,
+> cần scoped lại nếu sau này được dùng.
+
 ---
 
 ### [HIGH] Thiếu `@Version` trên `Customer.debtBalance` — lost update khi thanh toán đồng thời
