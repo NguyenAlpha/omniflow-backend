@@ -18,7 +18,12 @@ public interface WarehouseRepository extends JpaRepository<Warehouse, Long> {
 
     List<Warehouse> findByStoreIdAndIsActiveAndDeletedAtIsNull(Long storeId, Boolean isActive);
 
-    Optional<Warehouse> findByPublicId(UUID publicId);
+    /**
+     * Lookup scoped theo store để chống IDOR: {@code @PreAuthorize} chỉ kiểm tra quyền
+     * trên storeId của URL, không kiểm tra tenant của entity được load. Warehouse không
+     * thuộc store trong URL sẽ trả về empty → 404.
+     */
+    Optional<Warehouse> findByPublicIdAndStoreId(UUID publicId, Long storeId);
 
     long countByStoreIdAndDeletedAtIsNull(Long storeId);
 

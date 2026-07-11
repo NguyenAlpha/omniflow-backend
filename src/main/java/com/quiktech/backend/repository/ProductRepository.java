@@ -19,9 +19,6 @@ public interface ProductRepository extends JpaRepository<Product, Long>, JpaSpec
 
     // JOIN FETCH bắt buộc — category/unit có @SQLRestriction/@Where,
     // nếu để lazy load Hibernate sẽ throw EntityNotFoundException khi gọi getPublicId()
-    @Query("SELECT p FROM Product p LEFT JOIN FETCH p.category JOIN FETCH p.unit WHERE p.publicId = :publicId AND p.deletedAt IS NULL")
-    Optional<Product> findByPublicId(@Param("publicId") UUID publicId);
-
     /**
      * Lookup scoped theo business để chống IDOR: {@code @PreAuthorize} chỉ kiểm tra quyền
      * trên businessId của URL, không kiểm tra tenant của entity được load. Nếu chỉ tra theo

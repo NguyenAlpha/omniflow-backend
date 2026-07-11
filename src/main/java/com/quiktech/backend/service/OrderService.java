@@ -60,7 +60,7 @@ public class OrderService {
     @Transactional(readOnly = true)
     public OrderResponse get(Long storeId, UUID publicId, UserPrincipal currentUser) {
         findStoreOrThrow(storeId);
-        Order order = orderRepository.findByPublicIdWithItems(publicId)
+        Order order = orderRepository.findByPublicIdWithItems(publicId, storeId)
                 .orElseThrow(() -> new ResourceNotFoundException(ErrorCode.ORDER_NOT_FOUND, "Order not found"));
         return toResponse(order, order.getOrderItems());
     }
@@ -69,8 +69,8 @@ public class OrderService {
     @Transactional
     public OrderResponse create(Long storeId, OrderCreateRequest request, UserPrincipal currentUser) {
         Store store = findStoreOrThrow(storeId);
-        Customer customer = resolveCustomer(request.customerPublicId());
-        Warehouse warehouse = resolveWarehouse(request.warehousePublicId());
+        Customer customer = resolveCustomer(store, request.customerPublicId());
+        Warehouse warehouse = resolveWarehouse(storeId, request.warehousePublicId());
         User userRef = userRepository.getReferenceById(currentUser.userId());
 
         // Build order shell with all references
@@ -115,7 +115,7 @@ public class OrderService {
     @Transactional
     public OrderResponse complete(Long storeId, UUID publicId, UserPrincipal currentUser) {
         Store store = findStoreOrThrow(storeId);
-        Order order = orderRepository.findByPublicIdWithCustomer(publicId)
+        Order order = orderRepository.findByPublicIdWithCustomer(publicId, storeId)
                 .orElseThrow(() -> new ResourceNotFoundException(ErrorCode.ORDER_NOT_FOUND, "Order not found"));
 
         validateOrderCanTransition(order);
@@ -155,7 +155,7 @@ public class OrderService {
     @Transactional
     public OrderResponse pay(Long storeId, UUID publicId, BigDecimal amount, UserPrincipal currentUser) {
         findStoreOrThrow(storeId);
-        Order order = orderRepository.findByPublicIdWithCustomer(publicId)
+        Order order = orderRepository.findByPublicIdWithCustomer(publicId, storeId)
                 .orElseThrow(() -> new ResourceNotFoundException(ErrorCode.ORDER_NOT_FOUND, "Order not found"));
 
         if (OrderStatus.CANCELLED.equals(order.getStatus())) {
@@ -202,7 +202,7 @@ public class OrderService {
     @Transactional
     public OrderResponse cancel(Long storeId, UUID publicId, UserPrincipal currentUser) {
         Store store = findStoreOrThrow(storeId);
-        Order order = orderRepository.findByPublicIdWithItems(publicId)
+        Order order = orderRepository.findByPublicIdWithItems(publicId, storeId)
                 .orElseThrow(() -> new ResourceNotFoundException(ErrorCode.ORDER_NOT_FOUND, "Order not found"));
 
         validateOrderCanTransition(order);
@@ -279,16 +279,17 @@ public class OrderService {
 
     // ==== Helper Methods for create() ====
 
-    private Customer resolveCustomer(UUID customerPublicId) {
+    // Customer thuộc scope business → đối chiếu theo business của store để chống IDOR
+    private Customer resolveCustomer(Store store, UUID customerPublicId) {
         if (customerPublicId == null) {
             return null;  // Walk-in customer
         }
-        return customerRepository.findByPublicId(customerPublicId)
+        return customerRepository.findByBusinessIdAndPublicId(store.getBusiness().getId(), customerPublicId)
                 .orElseThrow(() -> new ResourceNotFoundException(ErrorCode.CUSTOMER_NOT_FOUND, "Customer not found"));
     }
 
-    private Warehouse resolveWarehouse(UUID warehousePublicId) {
-        return warehouseRepository.findByPublicId(warehousePublicId)
+    private Warehouse resolveWarehouse(Long storeId, UUID warehousePublicId) {
+        return warehouseRepository.findByPublicIdAndStoreId(warehousePublicId, storeId)
                 .orElseThrow(() -> new ResourceNotFoundException(ErrorCode.WAREHOUSE_NOT_FOUND, "Warehouse not found"));
     }
 
@@ -320,7 +321,8 @@ public class OrderService {
         Set<Long> affectedProductIds = new java.util.HashSet<>();
 
         for (OrderItemRequest itemReq : itemRequests) {
-            Product product = productRepository.findByPublicId(itemReq.productPublicId())
+            // Product thuộc scope business → đối chiếu theo business của store để chống IDOR
+            Product product = productRepository.findByBusinessIdAndPublicId(store.getBusiness().getId(), itemReq.productPublicId())
                     .orElseThrow(() -> new ResourceNotFoundException(ErrorCode.PRODUCT_NOT_FOUND, "Product not found"));
 
             BigDecimal lineTotal = computeLineTotal(itemReq.unitPrice(), itemReq.quantity(),

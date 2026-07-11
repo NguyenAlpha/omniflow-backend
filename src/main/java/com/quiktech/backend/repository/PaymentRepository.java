@@ -17,7 +17,12 @@ import java.util.UUID;
 @Repository
 public interface PaymentRepository extends JpaRepository<Payment, Long> {
 
-    Optional<Payment> findByPublicId(UUID publicId);
+    /**
+     * Lookup scoped theo store để chống IDOR: {@code @PreAuthorize} chỉ kiểm tra quyền
+     * trên storeId của URL, không kiểm tra tenant của entity được load. Payment không
+     * thuộc store trong URL sẽ trả về empty → 404.
+     */
+    Optional<Payment> findByPublicIdAndStoreId(UUID publicId, Long storeId);
 
     // Payments for customer
     List<Payment> findByCustomerIdOrderByCreatedAtDesc(Long customerId);

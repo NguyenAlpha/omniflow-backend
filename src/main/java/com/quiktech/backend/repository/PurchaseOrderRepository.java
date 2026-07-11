@@ -20,7 +20,12 @@ public interface PurchaseOrderRepository extends JpaRepository<PurchaseOrder, Lo
 
     Optional<PurchaseOrder> findByStoreIdAndOrderCode(Long storeId, String orderCode);
 
-    Optional<PurchaseOrder> findByPublicId(UUID publicId);
+    /**
+     * Lookup scoped theo store để chống IDOR: {@code @PreAuthorize} chỉ kiểm tra quyền
+     * trên storeId của URL, không kiểm tra tenant của entity được load. PurchaseOrder không
+     * thuộc store trong URL sẽ trả về empty → 404.
+     */
+    Optional<PurchaseOrder> findByPublicIdAndStoreId(UUID publicId, Long storeId);
 
     // Purchase orders by status
     @Query("""
@@ -100,12 +105,13 @@ public interface PurchaseOrderRepository extends JpaRepository<PurchaseOrder, Lo
         Pageable pageable
     );
 
+    // Điều kiện store.id: chống IDOR (xem Javadoc findByPublicIdAndStoreId)
     @Query("""
         SELECT DISTINCT p FROM PurchaseOrder p
         JOIN FETCH p.purchaseOrderItems pi JOIN FETCH pi.product
-        WHERE p.publicId = :publicId
+        WHERE p.publicId = :publicId AND p.store.id = :storeId
     """)
-    Optional<PurchaseOrder> findByPublicIdWithItems(@Param("publicId") UUID publicId);
+    Optional<PurchaseOrder> findByPublicIdWithItems(@Param("publicId") UUID publicId, @Param("storeId") Long storeId);
 
     @Query("""
         SELECT po FROM PurchaseOrder po

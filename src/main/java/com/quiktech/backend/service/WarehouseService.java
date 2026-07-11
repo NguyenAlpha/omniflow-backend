@@ -38,7 +38,7 @@ public class WarehouseService {
     @Transactional(readOnly = true)
     public WarehouseResponse get(Long storeId, UUID publicId, UserPrincipal currentUser) {
         findStoreOrThrow(storeId);
-        return toResponse(findWarehouseOrThrow(publicId));
+        return toResponse(findWarehouseOrThrow(storeId, publicId));
     }
 
     @Transactional
@@ -68,7 +68,7 @@ public class WarehouseService {
     @Transactional
     public WarehouseResponse update(Long storeId, UUID publicId, WarehouseUpsertRequest request, UserPrincipal currentUser) {
         findStoreOrThrow(storeId);
-        Warehouse warehouse = findWarehouseOrThrow(publicId);
+        Warehouse warehouse = findWarehouseOrThrow(storeId, publicId);
 
         warehouseRepository.findByStoreIdAndNameAndDeletedAtIsNull(storeId, request.name())
                 .filter(w -> !w.getPublicId().equals(publicId))
@@ -88,7 +88,7 @@ public class WarehouseService {
     @Transactional
     public void delete(Long storeId, UUID publicId, UserPrincipal currentUser) {
         findStoreOrThrow(storeId);
-        Warehouse warehouse = findWarehouseOrThrow(publicId);
+        Warehouse warehouse = findWarehouseOrThrow(storeId, publicId);
         warehouse.setDeletedAt(Instant.now());
         warehouseRepository.save(warehouse);
     }
@@ -98,8 +98,9 @@ public class WarehouseService {
                 .orElseThrow(() -> new ResourceNotFoundException(ErrorCode.STORE_NOT_FOUND, "Store not found"));
     }
 
-    private Warehouse findWarehouseOrThrow(UUID publicId) {
-        return warehouseRepository.findByPublicId(publicId)
+    // Lookup scoped theo store để chống IDOR (kho của tenant khác → 404)
+    private Warehouse findWarehouseOrThrow(Long storeId, UUID publicId) {
+        return warehouseRepository.findByPublicIdAndStoreId(publicId, storeId)
                 .orElseThrow(() -> new ResourceNotFoundException(ErrorCode.WAREHOUSE_NOT_FOUND, "Warehouse not found"));
     }
 

@@ -20,7 +20,12 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
 
     Optional<Order> findByStoreIdAndOrderCode(Long storeId, String orderCode);
 
-    Optional<Order> findByPublicId(UUID publicId);
+    /**
+     * Lookup scoped theo store để chống IDOR: {@code @PreAuthorize} chỉ kiểm tra quyền
+     * trên storeId của URL, không kiểm tra tenant của entity được load. Order không
+     * thuộc store trong URL sẽ trả về empty → 404.
+     */
+    Optional<Order> findByPublicIdAndStoreId(UUID publicId, Long storeId);
 
     // Orders by store and status
     @Query("""
@@ -105,15 +110,17 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
         Pageable pageable
     );
 
+    // Điều kiện store.id: chống IDOR (xem Javadoc findByPublicIdAndStoreId)
     @Query("""
         SELECT DISTINCT o FROM Order o
         JOIN FETCH o.orderItems oi JOIN FETCH oi.product
-        WHERE o.publicId = :publicId
+        WHERE o.publicId = :publicId AND o.store.id = :storeId
     """)
-    Optional<Order> findByPublicIdWithItems(@Param("publicId") UUID publicId);
+    Optional<Order> findByPublicIdWithItems(@Param("publicId") UUID publicId, @Param("storeId") Long storeId);
 
-    @Query("SELECT o FROM Order o LEFT JOIN FETCH o.customer WHERE o.publicId = :publicId")
-    Optional<Order> findByPublicIdWithCustomer(@Param("publicId") UUID publicId);
+    // Điều kiện store.id: chống IDOR (xem Javadoc findByPublicIdAndStoreId)
+    @Query("SELECT o FROM Order o LEFT JOIN FETCH o.customer WHERE o.publicId = :publicId AND o.store.id = :storeId")
+    Optional<Order> findByPublicIdWithCustomer(@Param("publicId") UUID publicId, @Param("storeId") Long storeId);
 
     @Query("""
         SELECT o FROM Order o

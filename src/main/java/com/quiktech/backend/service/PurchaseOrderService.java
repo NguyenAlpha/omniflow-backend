@@ -56,7 +56,7 @@ public class PurchaseOrderService {
     @Transactional(readOnly = true)
     public PurchaseOrderResponse get(Long storeId, UUID publicId, UserPrincipal currentUser) {
         findStoreOrThrow(storeId);
-        PurchaseOrder po = purchaseOrderRepository.findByPublicIdWithItems(publicId)
+        PurchaseOrder po = purchaseOrderRepository.findByPublicIdWithItems(publicId, storeId)
                 .orElseThrow(() -> new ResourceNotFoundException(ErrorCode.PURCHASE_ORDER_NOT_FOUND, "Purchase order not found"));
         return toResponse(po, po.getPurchaseOrderItems());
     }
@@ -66,10 +66,11 @@ public class PurchaseOrderService {
     public PurchaseOrderResponse create(Long storeId, PurchaseOrderCreateRequest request, UserPrincipal currentUser) {
         Store store = findStoreOrThrow(storeId);
 
-        Supplier supplier = supplierRepository.findByPublicId(request.supplierPublicId())
+        // Supplier thuộc scope business, warehouse thuộc scope store → lookup scoped để chống IDOR
+        Supplier supplier = supplierRepository.findByBusinessIdAndPublicId(store.getBusiness().getId(), request.supplierPublicId())
                 .orElseThrow(() -> new ResourceNotFoundException(ErrorCode.SUPPLIER_NOT_FOUND, "Supplier not found"));
 
-        Warehouse warehouse = warehouseRepository.findByPublicId(request.warehousePublicId())
+        Warehouse warehouse = warehouseRepository.findByPublicIdAndStoreId(request.warehousePublicId(), storeId)
                 .orElseThrow(() -> new ResourceNotFoundException(ErrorCode.WAREHOUSE_NOT_FOUND, "Warehouse not found"));
 
         User userRef = userRepository.getReferenceById(currentUser.userId());
@@ -93,7 +94,8 @@ public class PurchaseOrderService {
                 .build();
 
         for (PurchaseOrderItemRequest itemReq : request.items()) {
-            Product product = productRepository.findByPublicId(itemReq.productPublicId())
+            // Product thuộc scope business → đối chiếu theo business của store để chống IDOR
+            Product product = productRepository.findByBusinessIdAndPublicId(store.getBusiness().getId(), itemReq.productPublicId())
                     .orElseThrow(() -> new ResourceNotFoundException(ErrorCode.PRODUCT_NOT_FOUND, "Product not found"));
 
             BigDecimal lineTotal = itemReq.unitPrice().multiply(itemReq.quantity());
@@ -133,7 +135,7 @@ public class PurchaseOrderService {
     @Transactional
     public PurchaseOrderResponse receive(Long storeId, UUID publicId, UserPrincipal currentUser) {
         findStoreOrThrow(storeId);
-        PurchaseOrder po = purchaseOrderRepository.findByPublicIdWithItems(publicId)
+        PurchaseOrder po = purchaseOrderRepository.findByPublicIdWithItems(publicId, storeId)
                 .orElseThrow(() -> new ResourceNotFoundException(ErrorCode.PURCHASE_ORDER_NOT_FOUND, "Purchase order not found"));
 
         if (po.getStatus() != PurchaseOrderStatus.PENDING) {
@@ -185,7 +187,7 @@ public class PurchaseOrderService {
     @Transactional
     public PurchaseOrderResponse cancel(Long storeId, UUID publicId, UserPrincipal currentUser) {
         findStoreOrThrow(storeId);
-        PurchaseOrder po = purchaseOrderRepository.findByPublicId(publicId)
+        PurchaseOrder po = purchaseOrderRepository.findByPublicIdAndStoreId(publicId, storeId)
                 .orElseThrow(() -> new ResourceNotFoundException(ErrorCode.PURCHASE_ORDER_NOT_FOUND, "Purchase order not found"));
 
         if (po.getStatus() != PurchaseOrderStatus.PENDING) {
@@ -204,7 +206,7 @@ public class PurchaseOrderService {
     @Transactional
     public PurchaseOrderResponse pay(Long storeId, UUID publicId, BigDecimal amount, UserPrincipal currentUser) {
         findStoreOrThrow(storeId);
-        PurchaseOrder po = purchaseOrderRepository.findByPublicId(publicId)
+        PurchaseOrder po = purchaseOrderRepository.findByPublicIdAndStoreId(publicId, storeId)
                 .orElseThrow(() -> new ResourceNotFoundException(ErrorCode.PURCHASE_ORDER_NOT_FOUND, "Purchase order not found"));
 
         if (po.getStatus() == PurchaseOrderStatus.CANCELLED) {

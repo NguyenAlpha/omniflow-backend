@@ -47,7 +47,7 @@ public class ReturnOrderService {
     @Transactional(readOnly = true)
     public ReturnOrderResponse get(Long storeId, UUID publicId, UserPrincipal currentUser) {
         findStoreOrThrow(storeId);
-        ReturnOrder returnOrder = returnOrderRepository.findByPublicIdWithItems(publicId)
+        ReturnOrder returnOrder = returnOrderRepository.findByPublicIdWithItems(publicId, storeId)
                 .orElseThrow(() -> new ResourceNotFoundException(ErrorCode.RETURN_ORDER_NOT_FOUND, "Return order not found"));
         return toResponse(returnOrder, returnOrder.getReturnOrderItems());
     }
@@ -60,10 +60,11 @@ public class ReturnOrderService {
             throw new IllegalArgumentException("Return code already exists in this store");
         }
 
-        Order originalOrder = orderRepository.findByPublicId(request.originalOrderPublicId())
+        // Lookup scoped theo store để chống IDOR (đơn gốc/kho của tenant khác → 404)
+        Order originalOrder = orderRepository.findByPublicIdAndStoreId(request.originalOrderPublicId(), storeId)
                 .orElseThrow(() -> new ResourceNotFoundException(ErrorCode.ORDER_NOT_FOUND, "Original order not found"));
 
-        Warehouse warehouse = warehouseRepository.findByPublicId(request.warehousePublicId())
+        Warehouse warehouse = warehouseRepository.findByPublicIdAndStoreId(request.warehousePublicId(), storeId)
                 .orElseThrow(() -> new ResourceNotFoundException(ErrorCode.WAREHOUSE_NOT_FOUND, "Warehouse not found"));
 
         User userRef = userRepository.getReferenceById(currentUser.userId());
@@ -87,7 +88,8 @@ public class ReturnOrderService {
         BigDecimal totalRefund = BigDecimal.ZERO;
 
         for (ReturnOrderItemRequest itemReq : request.items()) {
-            Product product = productRepository.findByPublicId(itemReq.productPublicId())
+            // Product thuộc scope business → đối chiếu theo business của store để chống IDOR
+            Product product = productRepository.findByBusinessIdAndPublicId(store.getBusiness().getId(), itemReq.productPublicId())
                     .orElseThrow(() -> new ResourceNotFoundException(ErrorCode.PRODUCT_NOT_FOUND, "Product not found"));
 
             BigDecimal itemRefund = itemReq.unitPrice().multiply(itemReq.quantity());
@@ -117,7 +119,7 @@ public class ReturnOrderService {
     @Transactional
     public ReturnOrderResponse complete(Long storeId, UUID publicId, UserPrincipal currentUser) {
         findStoreOrThrow(storeId);
-        ReturnOrder returnOrder = returnOrderRepository.findByPublicIdWithItems(publicId)
+        ReturnOrder returnOrder = returnOrderRepository.findByPublicIdWithItems(publicId, storeId)
                 .orElseThrow(() -> new ResourceNotFoundException(ErrorCode.RETURN_ORDER_NOT_FOUND, "Return order not found"));
 
         if (returnOrder.getStatus() != ReturnOrderStatus.PENDING) {
@@ -165,7 +167,7 @@ public class ReturnOrderService {
     @Transactional
     public ReturnOrderResponse cancel(Long storeId, UUID publicId, UserPrincipal currentUser) {
         findStoreOrThrow(storeId);
-        ReturnOrder returnOrder = returnOrderRepository.findByPublicId(publicId)
+        ReturnOrder returnOrder = returnOrderRepository.findByPublicIdAndStoreId(publicId, storeId)
                 .orElseThrow(() -> new ResourceNotFoundException(ErrorCode.RETURN_ORDER_NOT_FOUND, "Return order not found"));
 
         if (returnOrder.getStatus() != ReturnOrderStatus.PENDING) {

@@ -17,7 +17,12 @@ public interface ReturnOrderRepository extends JpaRepository<ReturnOrder, Long> 
 
     Optional<ReturnOrder> findByStoreIdAndReturnCode(Long storeId, String returnCode);
 
-    Optional<ReturnOrder> findByPublicId(UUID publicId);
+    /**
+     * Lookup scoped theo store để chống IDOR: {@code @PreAuthorize} chỉ kiểm tra quyền
+     * trên storeId của URL, không kiểm tra tenant của entity được load. ReturnOrder không
+     * thuộc store trong URL sẽ trả về empty → 404.
+     */
+    Optional<ReturnOrder> findByPublicIdAndStoreId(UUID publicId, Long storeId);
 
     List<ReturnOrder> findByOriginalOrderId(Long originalOrderId);
 
@@ -39,11 +44,12 @@ public interface ReturnOrderRepository extends JpaRepository<ReturnOrder, Long> 
 
     List<ReturnOrder> findByStoreIdOrderByCreatedAtDesc(Long storeId);
 
+    // Điều kiện store.id: chống IDOR (xem Javadoc findByPublicIdAndStoreId)
     @Query("""
         SELECT DISTINCT r FROM ReturnOrder r
         JOIN FETCH r.returnOrderItems ri JOIN FETCH ri.product
-        WHERE r.publicId = :publicId
+        WHERE r.publicId = :publicId AND r.store.id = :storeId
     """)
-    Optional<ReturnOrder> findByPublicIdWithItems(@Param("publicId") UUID publicId);
+    Optional<ReturnOrder> findByPublicIdWithItems(@Param("publicId") UUID publicId, @Param("storeId") Long storeId);
 }
 

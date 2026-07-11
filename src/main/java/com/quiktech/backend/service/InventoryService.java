@@ -41,7 +41,8 @@ public class InventoryService {
     @Transactional(readOnly = true)
     public List<InventoryResponse> listByWarehouse(Long storeId, UUID warehousePublicId, UserPrincipal currentUser) {
         findStoreOrThrow(storeId);
-        Warehouse warehouse = warehouseRepository.findByPublicId(warehousePublicId)
+        // Lookup scoped theo store để chống IDOR (kho của tenant khác → 404)
+        Warehouse warehouse = warehouseRepository.findByPublicIdAndStoreId(warehousePublicId, storeId)
                 .orElseThrow(() -> new ResourceNotFoundException(ErrorCode.WAREHOUSE_NOT_FOUND, "Warehouse not found"));
         return inventoryRepository.findByWarehouseIdAndDeletedAtIsNull(warehouse.getId())
                 .stream().map(this::toResponse).toList();
@@ -59,10 +60,11 @@ public class InventoryService {
     public InventoryTransactionResponse adjust(Long storeId, InventoryAdjustRequest request, UserPrincipal currentUser) {
         Store store = findStoreOrThrow(storeId);
 
-        Product product = productRepository.findByPublicId(request.productPublicId())
+        // Product thuộc scope business, warehouse thuộc scope store → lookup scoped để chống IDOR
+        Product product = productRepository.findByBusinessIdAndPublicId(store.getBusiness().getId(), request.productPublicId())
                 .orElseThrow(() -> new ResourceNotFoundException(ErrorCode.PRODUCT_NOT_FOUND, "Product not found"));
 
-        Warehouse warehouse = warehouseRepository.findByPublicId(request.warehousePublicId())
+        Warehouse warehouse = warehouseRepository.findByPublicIdAndStoreId(request.warehousePublicId(), storeId)
                 .orElseThrow(() -> new ResourceNotFoundException(ErrorCode.WAREHOUSE_NOT_FOUND, "Warehouse not found"));
 
         User userRef = userRepository.getReferenceById(currentUser.userId());
@@ -110,13 +112,14 @@ public class InventoryService {
             throw new IllegalArgumentException("Source and destination warehouse must be different");
         }
 
-        Product product = productRepository.findByPublicId(request.productPublicId())
+        // Product thuộc scope business, warehouse thuộc scope store → lookup scoped để chống IDOR
+        Product product = productRepository.findByBusinessIdAndPublicId(store.getBusiness().getId(), request.productPublicId())
                 .orElseThrow(() -> new ResourceNotFoundException(ErrorCode.PRODUCT_NOT_FOUND, "Product not found"));
 
-        Warehouse fromWarehouse = warehouseRepository.findByPublicId(request.fromWarehousePublicId())
+        Warehouse fromWarehouse = warehouseRepository.findByPublicIdAndStoreId(request.fromWarehousePublicId(), storeId)
                 .orElseThrow(() -> new ResourceNotFoundException(ErrorCode.WAREHOUSE_NOT_FOUND, "Source warehouse not found"));
 
-        Warehouse toWarehouse = warehouseRepository.findByPublicId(request.toWarehousePublicId())
+        Warehouse toWarehouse = warehouseRepository.findByPublicIdAndStoreId(request.toWarehousePublicId(), storeId)
                 .orElseThrow(() -> new ResourceNotFoundException(ErrorCode.WAREHOUSE_NOT_FOUND, "Destination warehouse not found"));
 
         User userRef = userRepository.getReferenceById(currentUser.userId());

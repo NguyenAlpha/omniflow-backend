@@ -42,7 +42,8 @@ public class PaymentService {
     @Transactional(readOnly = true)
     public PaymentResponse get(Long storeId, UUID publicId) {
         findStoreOrThrow(storeId);
-        Payment payment = paymentRepository.findByPublicId(publicId)
+        // Lookup scoped theo store để chống IDOR (payment của tenant khác → 404)
+        Payment payment = paymentRepository.findByPublicIdAndStoreId(publicId, storeId)
                 .orElseThrow(() -> new ResourceNotFoundException(ErrorCode.PAYMENT_NOT_FOUND, "Payment not found"));
         return toResponse(payment);
     }
@@ -83,7 +84,8 @@ public class PaymentService {
         User userRef = userRepository.getReferenceById(currentUser.userId());
 
         if (hasCustomer) {
-            customer = customerRepository.findByPublicId(request.customerPublicId())
+            // Customer thuộc scope business → đối chiếu theo business của store để chống IDOR
+            customer = customerRepository.findByBusinessIdAndPublicId(store.getBusiness().getId(), request.customerPublicId())
                     .orElseThrow(() -> new ResourceNotFoundException(ErrorCode.CUSTOMER_NOT_FOUND, "Customer not found"));
             if (request.paidAmount().compareTo(customer.getDebtBalance()) > 0) {
                 throw new IllegalArgumentException("Payment amount exceeds customer debt balance");
@@ -92,7 +94,8 @@ public class PaymentService {
             customer.setDebtBalance(customer.getDebtBalance().subtract(request.paidAmount()));
             customerRepository.save(customer);
         } else {
-            supplier = supplierRepository.findByPublicId(request.supplierPublicId())
+            // Supplier thuộc scope business → đối chiếu theo business của store để chống IDOR
+            supplier = supplierRepository.findByBusinessIdAndPublicId(store.getBusiness().getId(), request.supplierPublicId())
                     .orElseThrow(() -> new ResourceNotFoundException(ErrorCode.SUPPLIER_NOT_FOUND, "Supplier not found"));
             if (request.paidAmount().compareTo(supplier.getDebtBalance()) > 0) {
                 throw new IllegalArgumentException("Payment amount exceeds supplier debt balance");
@@ -203,7 +206,9 @@ public class PaymentService {
     @Transactional
     public void delete(Long storeId, UUID publicId) {
         findStoreOrThrow(storeId);
-        Payment payment = paymentRepository.findByPublicId(publicId)
+        // Lookup scoped theo store để chống IDOR — nếu không, member store khác có thể
+        // xóa payment và cộng ngược debtBalance của customer/supplier tenant khác
+        Payment payment = paymentRepository.findByPublicIdAndStoreId(publicId, storeId)
                 .orElseThrow(() -> new ResourceNotFoundException(ErrorCode.PAYMENT_NOT_FOUND, "Payment not found"));
         // Reverse the debt adjustment made when payment was created
         if (payment.getCustomer() != null) {
