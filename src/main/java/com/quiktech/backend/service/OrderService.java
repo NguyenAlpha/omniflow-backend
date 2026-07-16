@@ -88,7 +88,8 @@ public class OrderService {
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
         
         BigDecimal discountAmt = computeDiscount(subtotal, request.discount(), request.discountType());
-        BigDecimal totalAmount = subtotal.subtract(discountAmt).add(request.tax());
+        BigDecimal totalAmount = subtotal.subtract(discountAmt).add(request.tax())
+                .setScale(2, RoundingMode.HALF_UP);
 
         BigDecimal paidAmt = request.paidAmount() != null ? request.paidAmount() : BigDecimal.ZERO;
         if (paidAmt.compareTo(totalAmount) > 0) {
@@ -206,6 +207,12 @@ public class OrderService {
                 .orElseThrow(() -> new ResourceNotFoundException(ErrorCode.ORDER_NOT_FOUND, "Order not found"));
 
         validateOrderCanTransition(order);
+
+        // Đơn đã thu tiền (kể cả một phần) không được hủy trực tiếp — nếu hủy, khoản đã thu
+        // biến mất khỏi sổ sách. Phải hoàn qua đơn trả hàng để ghi nhận hoàn tiền.
+        if (order.getPaidAmount().compareTo(BigDecimal.ZERO) > 0) {
+            throw new IllegalArgumentException("Cannot cancel an order with recorded payment. Use a return order to refund instead");
+        }
 
         User userRef = userRepository.getReferenceById(currentUser.userId());
 
@@ -361,20 +368,24 @@ public class OrderService {
         }
     }
 
+    // Tiền lưu ở scale 2 (cột NUMERIC(15,2)) → làm tròn HALF_UP ngay khi tính,
+    // tránh sai lệch tích lũy giữa giá trị tính toán và giá trị lưu DB
     private BigDecimal computeLineTotal(BigDecimal unitPrice, BigDecimal quantity,
             BigDecimal discount, String discountType) {
         BigDecimal base = unitPrice.multiply(quantity);
         if ("PERCENT".equals(discountType)) {
-            return base.multiply(BigDecimal.ONE.subtract(discount.divide(BigDecimal.valueOf(100), 10, RoundingMode.HALF_UP)));
+            return base.multiply(BigDecimal.ONE.subtract(discount.divide(BigDecimal.valueOf(100), 10, RoundingMode.HALF_UP)))
+                    .setScale(2, RoundingMode.HALF_UP);
         }
-        return base.subtract(discount);
+        return base.subtract(discount).setScale(2, RoundingMode.HALF_UP);
     }
 
     private BigDecimal computeDiscount(BigDecimal subtotal, BigDecimal discount, String discountType) {
         if ("PERCENT".equals(discountType)) {
-            return subtotal.multiply(discount.divide(BigDecimal.valueOf(100), 10, RoundingMode.HALF_UP));
+            return subtotal.multiply(discount.divide(BigDecimal.valueOf(100), 10, RoundingMode.HALF_UP))
+                    .setScale(2, RoundingMode.HALF_UP);
         }
-        return discount;
+        return discount.setScale(2, RoundingMode.HALF_UP);
     }
 
     private Store findStoreOrThrow(Long storeId) {

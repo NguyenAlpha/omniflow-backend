@@ -7,6 +7,7 @@ import com.quiktech.backend.dto.response.order.ReturnOrderItemResponse;
 import com.quiktech.backend.dto.response.order.ReturnOrderResponse;
 import com.quiktech.backend.entity.*;
 import com.quiktech.backend.entity.enums.InventoryTransactionType;
+import com.quiktech.backend.entity.enums.OrderStatus;
 import com.quiktech.backend.entity.enums.RefundMethod;
 import com.quiktech.backend.entity.enums.ReturnOrderStatus;
 import com.quiktech.backend.exception.ResourceNotFoundException;
@@ -17,9 +18,12 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 
@@ -31,10 +35,10 @@ public class ReturnOrderService {
     private final OrderRepository orderRepository;
     private final StoreRepository storeRepository;
     private final CustomerRepository customerRepository;
-    private final WarehouseRepository warehouseRepository;
     private final ProductRepository productRepository;
     private final InventoryRepository inventoryRepository;
     private final InventoryTransactionRepository inventoryTransactionRepository;
+    private final PaymentRepository paymentRepository;
     private final UserRepository userRepository;
 
     @Transactional(readOnly = true)
@@ -60,12 +64,36 @@ public class ReturnOrderService {
             throw new IllegalArgumentException("Return code already exists in this store");
         }
 
-        // Lookup scoped theo store để chống IDOR (đơn gốc/kho của tenant khác → 404)
-        Order originalOrder = orderRepository.findByPublicIdAndStoreId(request.originalOrderPublicId(), storeId)
+        // Lookup scoped theo store để chống IDOR (đơn gốc của tenant khác → 404)
+        Order originalOrder = orderRepository.findByPublicIdWithItems(request.originalOrderPublicId(), storeId)
                 .orElseThrow(() -> new ResourceNotFoundException(ErrorCode.ORDER_NOT_FOUND, "Original order not found"));
 
-        Warehouse warehouse = warehouseRepository.findByPublicIdAndStoreId(request.warehousePublicId(), storeId)
-                .orElseThrow(() -> new ResourceNotFoundException(ErrorCode.WAREHOUSE_NOT_FOUND, "Warehouse not found"));
+        if (originalOrder.getStatus() != OrderStatus.COMPLETED) {
+            throw new IllegalArgumentException("Only COMPLETED orders can be returned");
+        }
+
+        // Kho nhập hàng trả = kho xuất của đơn gốc, không cho client tự chọn
+        Warehouse warehouse = originalOrder.getWarehouse();
+
+        // Gộp số lượng/thành tiền theo product của đơn gốc (một product có thể nằm trên nhiều dòng)
+        Map<UUID, BigDecimal> purchasedQty = new HashMap<>();
+        Map<UUID, BigDecimal> purchasedTotal = new HashMap<>();
+        Map<UUID, Product> orderProducts = new HashMap<>();
+        for (OrderItem oi : originalOrder.getOrderItems()) {
+            UUID pid = oi.getProduct().getPublicId();
+            purchasedQty.merge(pid, oi.getQuantity(), BigDecimal::add);
+            purchasedTotal.merge(pid, oi.getTotalPrice(), BigDecimal::add);
+            orderProducts.putIfAbsent(pid, oi.getProduct());
+        }
+
+        // Số lượng đã trả trước đó (không tính đơn trả đã hủy) để chặn trả vượt số đã mua
+        Map<UUID, BigDecimal> alreadyReturned = new HashMap<>();
+        for (ReturnOrder prev : returnOrderRepository.findByOriginalOrderId(originalOrder.getId())) {
+            if (prev.getStatus() == ReturnOrderStatus.CANCELLED) continue;
+            for (ReturnOrderItem prevItem : prev.getReturnOrderItems()) {
+                alreadyReturned.merge(prevItem.getProduct().getPublicId(), prevItem.getQuantity(), BigDecimal::add);
+            }
+        }
 
         User userRef = userRepository.getReferenceById(currentUser.userId());
 
@@ -86,20 +114,37 @@ public class ReturnOrderService {
 
         List<ReturnOrderItem> items = new ArrayList<>();
         BigDecimal totalRefund = BigDecimal.ZERO;
+        Map<UUID, BigDecimal> requestedQty = new HashMap<>();
 
         for (ReturnOrderItemRequest itemReq : request.items()) {
-            // Product thuộc scope business → đối chiếu theo business của store để chống IDOR
-            Product product = productRepository.findByBusinessIdAndPublicId(store.getBusiness().getId(), itemReq.productPublicId())
-                    .orElseThrow(() -> new ResourceNotFoundException(ErrorCode.PRODUCT_NOT_FOUND, "Product not found"));
+            UUID pid = itemReq.productPublicId();
+            // Product phải nằm trong đơn gốc — vừa validate nghiệp vụ vừa chống IDOR
+            Product product = orderProducts.get(pid);
+            if (product == null) {
+                throw new IllegalArgumentException("Product is not part of the original order");
+            }
 
-            BigDecimal itemRefund = itemReq.unitPrice().multiply(itemReq.quantity());
+            BigDecimal purchased = purchasedQty.get(pid);
+            BigDecimal requested = requestedQty.merge(pid, itemReq.quantity(), BigDecimal::add);
+            BigDecimal returned = alreadyReturned.getOrDefault(pid, BigDecimal.ZERO);
+            if (returned.add(requested).compareTo(purchased) > 0) {
+                throw new IllegalArgumentException(
+                        "Return quantity exceeds purchased quantity for product " + product.getSku());
+            }
+
+            // Đơn giá hoàn = giá hiệu dụng sau chiết khấu dòng (totalPrice/quantity),
+            // không nhận từ client để tránh hoàn vượt số tiền đã trả
+            BigDecimal effectiveUnitPrice = purchasedTotal.get(pid)
+                    .divide(purchased, 2, RoundingMode.HALF_UP);
+            BigDecimal itemRefund = effectiveUnitPrice.multiply(itemReq.quantity())
+                    .setScale(2, RoundingMode.HALF_UP);
 
             ReturnOrderItem item = ReturnOrderItem.builder()
                     .store(store)
                     .returnOrder(returnOrder)
                     .product(product)
                     .quantity(itemReq.quantity())
-                    .unitPrice(itemReq.unitPrice())
+                    .unitPrice(effectiveUnitPrice)
                     .totalRefund(itemRefund)
                     .publicId(UUID.randomUUID())
                     .lastModifiedByUser(userRef)
@@ -140,19 +185,35 @@ public class ReturnOrderService {
         // Reduce customer debt and original order debt if applicable
         Order originalOrder = returnOrder.getOriginalOrder();
         Customer customer = originalOrder.getCustomer();
-        if (customer != null && returnOrder.getTotalRefund().compareTo(BigDecimal.ZERO) > 0) {
-            BigDecimal refund = returnOrder.getTotalRefund();
-
-            BigDecimal newCustomerDebt = customer.getDebtBalance().subtract(refund).max(BigDecimal.ZERO);
-            customer.setDebtBalance(newCustomerDebt);
-            customerRepository.save(customer);
-
-            if (originalOrder.getDebtAmount().compareTo(BigDecimal.ZERO) > 0) {
-                BigDecimal applied = refund.min(originalOrder.getDebtAmount());
-                originalOrder.setDebtAmount(originalOrder.getDebtAmount().subtract(applied));
+        BigDecimal refund = returnOrder.getTotalRefund();
+        if (refund.compareTo(BigDecimal.ZERO) > 0) {
+            // Chỉ trừ nợ đúng phần còn nợ trên đơn gốc; phần vượt là hoàn tiền mặt/chuyển khoản
+            BigDecimal appliedToDebt = BigDecimal.ZERO;
+            if (customer != null && originalOrder.getDebtAmount().compareTo(BigDecimal.ZERO) > 0) {
+                appliedToDebt = refund.min(originalOrder.getDebtAmount());
+                originalOrder.setDebtAmount(originalOrder.getDebtAmount().subtract(appliedToDebt));
                 originalOrder.setLastModifiedAt(Instant.now());
                 originalOrder.setUpdatedAt(Instant.now());
                 orderRepository.save(originalOrder);
+
+                customer.setDebtBalance(customer.getDebtBalance().subtract(appliedToDebt));
+                customerRepository.save(customer);
+            }
+
+            // Ghi nhận phần hoàn tiền thực chi bằng Payment âm — supplier IS NULL nên rơi vào
+            // nhóm INCOME của sổ quỹ, sumIncome tự trừ đi khoản hoàn
+            BigDecimal cashRefund = refund.subtract(appliedToDebt);
+            if (cashRefund.compareTo(BigDecimal.ZERO) > 0) {
+                paymentRepository.save(Payment.builder()
+                        .store(returnOrder.getStore())
+                        .customer(customer)
+                        .amount(cashRefund.negate())
+                        .paymentMethod(returnOrder.getRefundMethod().name())
+                        .note("Return: " + returnOrder.getReturnCode())
+                        .publicId(UUID.randomUUID())
+                        .lastModifiedByUser(userRef)
+                        .createdBy(userRef)
+                        .build());
             }
         }
 

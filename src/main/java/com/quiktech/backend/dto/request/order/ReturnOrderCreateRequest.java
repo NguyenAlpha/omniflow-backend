@@ -1,15 +1,19 @@
 package com.quiktech.backend.dto.request.order;
 
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotEmpty;
+import jakarta.validation.constraints.NotNull;
+
 import java.util.List;
 import java.util.UUID;
 
 public record ReturnOrderCreateRequest(
-    String returnCode,
-    UUID originalOrderPublicId,
-    UUID warehousePublicId,
+    @NotBlank String returnCode,
+    @NotNull UUID originalOrderPublicId,
     String reason,
-    String refundMethod,
+    @NotBlank String refundMethod,
     String note,
-    List<ReturnOrderItemRequest> items
+    @NotEmpty List<@Valid ReturnOrderItemRequest> items
 ) {
 }
