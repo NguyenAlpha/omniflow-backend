@@ -145,5 +145,16 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
     List<Order> findForExport(@Param("storeId") Long storeId,
                               @Param("from") Instant from,
                               @Param("to") Instant to);
+
+    // Đếm trước khi export để chặn load quá nhiều dòng vào heap (nguy cơ OOM)
+    @Query("""
+        SELECT COUNT(o) FROM Order o
+        WHERE o.store.id = :storeId
+        AND o.createdAt >= :from
+        AND o.createdAt <= :to
+    """)
+    long countForExport(@Param("storeId") Long storeId,
+                        @Param("from") Instant from,
+                        @Param("to") Instant to);
 }
 

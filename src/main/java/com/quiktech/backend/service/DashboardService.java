@@ -109,7 +109,8 @@ public class DashboardService {
     private BigDecimal toBd(Object v) {
         if (v == null) return BigDecimal.ZERO;
         if (v instanceof BigDecimal bd) return bd;
-        if (v instanceof Number n) return BigDecimal.valueOf(n.doubleValue());
+        // Convert qua toString thay vì doubleValue() để không mất độ chính xác với số lớn
+        if (v instanceof Number n) return new BigDecimal(n.toString());
         return BigDecimal.ZERO;
     }
 

@@ -34,6 +34,19 @@ public interface InventoryRepository extends JpaRepository<Inventory, Long> {
     """)
     List<Inventory> findLowStockItems(@Param("storeId") Long storeId);
 
+    // Đếm bằng COUNT thay vì load list rồi .size() — tránh kéo toàn bộ entity vào heap
+    @Query("""
+        SELECT COUNT(i) FROM Inventory i
+        JOIN i.product p
+        JOIN i.warehouse w
+        WHERE w.store.id = :storeId
+        AND i.quantity < p.minStockLevel
+        AND i.deletedAt IS NULL
+    """)
+    long countLowStockItems(@Param("storeId") Long storeId);
+
+    long countByStoreIdAndDeletedAtIsNull(Long storeId);
+
     // Total stock by product
     @Query("""
         SELECT SUM(i.quantity) FROM Inventory i
@@ -49,6 +62,7 @@ public interface InventoryRepository extends JpaRepository<Inventory, Long> {
         LEFT JOIN FETCH p.unit
         JOIN FETCH i.warehouse
         WHERE i.store.id = :storeId
+        AND i.deletedAt IS NULL
     """)
     List<Inventory> findByStoreIdWithDetails(@Param("storeId") Long storeId);
 }

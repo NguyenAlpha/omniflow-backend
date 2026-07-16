@@ -4,6 +4,7 @@ import com.quiktech.backend.dto.response.common.ApiResult;
 import com.quiktech.backend.dto.response.common.ErrorCode;
 import com.quiktech.backend.dto.response.common.ErrorDetail;
 import com.quiktech.backend.exception.InvalidTokenException;
+import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.AccessDeniedException;
@@ -89,6 +90,16 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ApiResult<?>> handleAccessDenied(AccessDeniedException ignored) {
         return ResponseEntity.status(HttpStatus.FORBIDDEN).body(
                 ApiResult.fail(ErrorDetail.of(ErrorCode.FORBIDDEN, "Access denied"))
+        );
+    }
+
+    // @Version trên entity (Customer/Supplier.syncVersion...) ném exception này khi hai
+    // request cùng sửa một bản ghi — trả 409 để client thử lại thay vì 500
+    @ExceptionHandler(OptimisticLockingFailureException.class)
+    public ResponseEntity<ApiResult<?>> handleOptimisticLock(OptimisticLockingFailureException ignored) {
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(
+                ApiResult.fail(ErrorDetail.of(ErrorCode.CONCURRENT_MODIFICATION,
+                        "The record was modified by another request. Please retry"))
         );
     }
 

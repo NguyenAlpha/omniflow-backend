@@ -51,12 +51,21 @@ public class ExportService {
 
     private static final DateTimeFormatter DATE_FMT = DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm").withZone(ZoneOffset.of("+07:00"));
 
+    // Chặn export quá lớn — toàn bộ entity + workbook được giữ trong heap nên dễ OOM
+    private static final long MAX_EXPORT_ROWS = 10_000;
+
     // ── Orders Excel ────────────────────────────────────────────────────────
 
     @Transactional(readOnly = true)
     public byte[] exportOrdersExcel(Long storeId, LocalDate from, LocalDate to) {
         Instant fromInstant = from != null ? from.atStartOfDay(ZoneOffset.UTC).toInstant() : Instant.EPOCH;
         Instant toInstant   = to   != null ? to.plusDays(1).atStartOfDay(ZoneOffset.UTC).toInstant() : Instant.now();
+
+        long count = orderRepository.countForExport(storeId, fromInstant, toInstant);
+        if (count > MAX_EXPORT_ROWS) {
+            throw new IllegalArgumentException(
+                    "Export exceeds " + MAX_EXPORT_ROWS + " rows (" + count + "). Please narrow the date range");
+        }
 
         List<Order> orders = orderRepository.findForExport(storeId, fromInstant, toInstant);
 
@@ -105,6 +114,12 @@ public class ExportService {
 
     @Transactional(readOnly = true)
     public byte[] exportInventoryExcel(Long storeId) {
+        long count = inventoryRepository.countByStoreIdAndDeletedAtIsNull(storeId);
+        if (count > MAX_EXPORT_ROWS) {
+            throw new IllegalArgumentException(
+                    "Export exceeds " + MAX_EXPORT_ROWS + " rows (" + count + "). Please export by warehouse or contact support");
+        }
+
         List<Inventory> items = inventoryRepository.findByStoreIdWithDetails(storeId);
 
         String[] headers = {"Sản phẩm", "SKU", "Kho", "Số lượng", "Đơn vị"};

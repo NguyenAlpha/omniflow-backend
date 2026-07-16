@@ -30,7 +30,8 @@ public class NotificationController {
     public ResponseEntity<ApiResult<NotificationSummaryResponse>> summary(@PathVariable Long storeId) {
         Long businessId = storeRepository.findBusinessIdByStoreId(storeId)
                 .orElseThrow(() -> new ResourceNotFoundException(ErrorCode.STORE_NOT_FOUND, "Store not found"));
-        long lowStock = inventoryRepository.findLowStockItems(storeId).size();
+        // COUNT ở DB thay vì load toàn bộ entity (JOIN FETCH) rồi .size()
+        long lowStock = inventoryRepository.countLowStockItems(storeId);
         long pendingInvoices = invoiceRepository.countByBusinessIdAndStatus(businessId, InvoiceStatus.PENDING);
         return ResponseEntity.ok(ApiResult.ok(new NotificationSummaryResponse(lowStock, pendingInvoices)));
     }

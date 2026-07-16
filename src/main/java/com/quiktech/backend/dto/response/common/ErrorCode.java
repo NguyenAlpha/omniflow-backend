@@ -67,5 +67,6 @@ public enum ErrorCode {
 
     // Generic
     FORBIDDEN,
+    CONCURRENT_MODIFICATION,
     INTERNAL_ERROR
 }
