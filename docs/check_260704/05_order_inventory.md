@@ -63,6 +63,15 @@ Về chống oversell: không dùng pessimistic lock hay atomic UPDATE, nhưng `
 - **Tác động:** Gian lận tài chính trực tiếp: tự tạo tồn kho ảo, tự xóa công nợ, refund âm/dương tùy ý. Đây là lỗ hổng nặng nhất về tính đúng đắn dữ liệu tài chính.
 - **Đề xuất:** (a) Thêm validation DTO (`@NotNull`, `@NotBlank returnCode`, `@NotEmpty items`, `@DecimalMin("0.01") quantity`, `@DecimalMin("0.00") unitPrice`); (b) chỉ cho trả đơn `COMPLETED`; (c) mỗi item phải khớp `OrderItem` của đơn gốc, `unitPrice` lấy từ `OrderItem` (không nhận từ client); (d) validate `quantity + tổng đã trả trước đó (các ReturnOrder không CANCELLED) ≤ quantity đã mua` — dùng `findByOriginalOrderId` sẵn có; (e) mặc định hoàn về `originalOrder.getWarehouse()`.
 
+> **Trạng thái (2026-07-16): Đã xử lý** — commit `80846ef`. Đủ (a)–(e): DTO có validation
+> (`warehousePublicId` và `unitPrice` bị **xóa khỏi DTO** — web UI đơn trả chưa build nên không
+> breaking); chỉ trả đơn COMPLETED; item phải thuộc đơn gốc (lấy Product từ chính OrderItem,
+> khỏi lookup lại); số lượng cộng dồn qua các đơn trả không CANCELLED ≤ số đã mua; kho hoàn cố
+> định theo `originalOrder.getWarehouse()`. Lưu ý quyết định: đơn giá hoàn = **giá hiệu dụng sau
+> chiết khấu dòng** (`SUM(totalPrice)/SUM(quantity)` theo product, HALF_UP scale 2) chứ không
+> phải `unitPrice` gốc — tránh hoàn nhiều hơn số khách thực trả với item có giảm giá. Chiết khấu
+> cấp đơn (order-level discount) chưa được phân bổ vào giá hoàn — chấp nhận ở giai đoạn này.
+
 ### [HIGH] Race condition tồn kho: chỉ dựa vào optimistic lock, không retry, lỗi trả về 500
 
 - **Vị trí:** `OrderService.java:230-257` (deductInventory — pattern read-check-write), `InventoryService.java:69-98, 123-153`, `PurchaseOrderService.java:246-266`; `Inventory.java:47-50` (`@Version syncVersion`); `GlobalExceptionHandler.java` (không có handler cho `OptimisticLockingFailureException`); toàn codebase không có `@Lock(PESSIMISTIC_WRITE)` hay atomic `UPDATE ... SET quantity = quantity - :q WHERE quantity >= :q`
@@ -70,12 +79,23 @@ Về chống oversell: không dùng pessimistic lock hay atomic UPDATE, nhưng `
 - **Tác động:** Đơn hàng hợp lệ bị fail 500 ngẫu nhiên dưới tải đồng thời; rủi ro tiềm ẩn oversell nếu sync flow đụng vào `syncVersion`.
 - **Đề xuất:** Chuyển sang pessimistic lock cho dòng inventory (`@Lock(LockModeType.PESSIMISTIC_WRITE)` trên `findByProductIdAndWarehouseId`) hoặc atomic UPDATE có điều kiện `quantity >= :q` (check số dòng ảnh hưởng). Tối thiểu: bắt `OptimisticLockingFailureException` trong handler trả về 409 kèm thông báo "thử lại", và tách version sync khỏi version lock.
 
+> **Trạng thái (2026-07-16): Đã xử lý một phần** — commit `046b5a3`. `GlobalExceptionHandler`
+> bắt `OptimisticLockingFailureException` → 409 + `ErrorCode.CONCURRENT_MODIFICATION` kèm thông
+> báo thử lại (mức "tối thiểu" trong đề xuất). Pessimistic lock/atomic UPDATE và việc tách
+> version sync khỏi version lock: **hoãn** — đợi Phase 2 (mobile sync) chốt thiết kế sync rồi
+> quyết một thể, tránh sửa hai lần.
+
 ### [HIGH] Customer/Supplier debtBalance: read-modify-write không có @Version — lost update công nợ
 
 - **Vị trí:** `OrderService.java:125-129` (complete), `172-176` (pay); `PurchaseOrderService.java:152-156, 217-221`; `ReturnOrderService.java:139-141`; `Customer.java` / `Supplier.java` — **không có `@Version`** (grep toàn entity chỉ thấy @Version ở Payment, ReturnOrder, PurchaseOrder, Inventory, Product, OrderItem, Order)
 - **Mô tả:** `debtBalance` được cập nhật kiểu `customer.setDebtBalance(customer.getDebtBalance().add(x))` trong Java. Hai thao tác đồng thời trên cùng khách hàng (vd: complete 2 đơn nợ, hoặc pay + complete, hoặc complete + return) đọc cùng giá trị cũ → một bên ghi đè bên kia, mất tiền nợ mà không có dấu vết.
 - **Tác động:** Sai lệch công nợ khách hàng/nhà cung cấp — lỗi tài chính khó truy vết vì không có exception nào xảy ra.
 - **Đề xuất:** Dùng atomic UPDATE: `UPDATE customers SET debt_balance = debt_balance + :delta WHERE id = :id` (`@Modifying`), hoặc thêm `@Version` cho Customer/Supplier. Ưu tiên atomic UPDATE vì tránh luôn vấn đề retry.
+
+> **Trạng thái (2026-07-16): Đã xử lý** — chọn phương án `@Version`: Customer/Supplier đã có
+> `@Version syncVersion` từ commit `e149baf` (đợt sửa entity trước đó), và commit `046b5a3` bổ
+> sung handler trả 409 `CONCURRENT_MODIFICATION` thay vì 500. Không dùng atomic UPDATE để giữ
+> nhất quán pattern optimistic lock của toàn codebase.
 
 ### [HIGH] Discount không có cận trên — tổng tiền âm
 
@@ -98,6 +118,15 @@ Về chống oversell: không dùng pessimistic lock hay atomic UPDATE, nhưng `
 - **Tác động:** Sổ quỹ và báo cáo doanh thu sai sau mỗi đơn trả; không đối soát được tiền hoàn.
 - **Đề xuất:** Ghi bản ghi Payment âm (hoặc bảng refund riêng) theo `refundMethod`; chỉ giảm `customer.debtBalance` đúng bằng phần áp vào công nợ, phần còn lại ghi nhận là tiền hoàn ra; cân nhắc trường `refundedAmount` trên Order để báo cáo trừ đúng.
 
+> **Trạng thái (2026-07-16): Đã xử lý** — commit `80846ef`. `complete()`: `appliedToDebt =
+> min(refund, order.debtAmount)` trừ đồng thời vào `order.debtAmount` và `customer.debtBalance`
+> (hai sổ nợ hết lệch); phần còn lại (`cashRefund`) ghi **Payment âm** theo `refundMethod`, note
+> `"Return: {returnCode}"` — vì `supplier IS NULL` nên rơi vào nhóm INCOME của sổ quỹ, `sumIncome`
+> tự trừ khoản hoàn, không cần đổi schema. Chưa làm: trường `refundedAmount` trên Order (báo cáo
+> doanh thu vẫn chưa trừ hàng trả — cần quyết định nghiệp vụ riêng). Lưu ý edge case:
+> `PaymentService.delete()` nếu xóa một Payment hoàn tiền (amount âm, có customer) sẽ đảo nợ sai
+> vì khoản hoàn không đụng công nợ lúc tạo — cân nhắc chặn xóa Payment có amount < 0.
+
 ### [MEDIUM] Hủy đơn PENDING đã thu tiền một phần — tiền đã thu biến mất khỏi sổ
 
 - **Vị trí:** `OrderService.java:202-228` (cancel); thiết kế ghi ở `ORDER_LIFECYCLE.md` mục 5
@@ -105,12 +134,22 @@ Về chống oversell: không dùng pessimistic lock hay atomic UPDATE, nhưng `
 - **Tác động:** Chênh lệch quỹ tiền mặt thực tế vs sổ sách; không đối soát được ca bán hàng.
 - **Đề xuất:** Khi cancel đơn có `paidAmount > 0`: hoặc chặn và yêu cầu hoàn tiền trước, hoặc ghi cặp bút toán thu/hoàn để audit.
 
+> **Trạng thái (2026-07-16): Đã xử lý** — commit `80846ef`, chọn phương án **chặn**: `cancel()`
+> từ chối đơn có `paidAmount > 0` (400, "Use a return order to refund instead"). Hệ quả flow:
+> đơn PENDING đã thu tiền phải **complete trước** (Payment được ghi) rồi hoàn qua đơn trả hàng —
+> đảm bảo mọi dòng tiền đều có bút toán.
+
 ### [MEDIUM] Làm tròn: tính toán scale 10 nhưng cột numeric(15,2) — DB tự làm tròn thầm lặng
 
 - **Vị trí:** `OrderService.java:87-92, 363-377`; các cột `precision = 15, scale = 2` trong `Order.java`, `OrderItem.java`
 - **Mô tả:** `computeLineTotal` PERCENT trả về BigDecimal scale cao (divide scale 10 rồi multiply); `subtotal` được cộng từ các giá trị **chưa làm tròn** rồi cả line total lẫn subtotal bị PostgreSQL round về 2 chữ số khi lưu. Hệ quả: `subtotal` lưu trong DB có thể lệch vài xu so với tổng các `totalPrice` đã lưu của items (round-then-sum ≠ sum-then-round); `debtAmount`/`paidAmount` so sánh trên giá trị chưa làm tròn.
 - **Tác động:** Lệch lẻ vài xu giữa tổng đơn và tổng item — với hệ thống tài chính sẽ gây lệch đối soát tích lũy.
 - **Đề xuất:** Chuẩn hóa `setScale(2, RoundingMode.HALF_UP)` ngay sau khi tính từng `lineTotal`, rồi mới cộng subtotal; áp dụng tương tự cho `discountAmt` và `totalAmount`.
+
+> **Trạng thái (2026-07-16): Đã xử lý** — commit `80846ef`. `computeLineTotal`,
+> `computeDiscount` và `totalAmount` trong `OrderService` đều `setScale(2, HALF_UP)` ngay khi
+> tính; subtotal cộng từ các lineTotal đã làm tròn nên khớp tổng items lưu DB. Đơn giá hoàn
+> trong `ReturnOrderService` cũng dùng cùng quy tắc.
 
 ### [MEDIUM] Danh sách không phân trang + N+1 query
 
@@ -121,6 +160,10 @@ Về chống oversell: không dùng pessimistic lock hay atomic UPDATE, nhưng `
   - `OrderService.java:54-57` + `OrderRepository.search` — không fetch join customer/warehouse/store; `toResponse` chạm cả 3 quan hệ → tối đa ~60 query phụ mỗi trang 20 đơn
 - **Tác động:** Suy giảm hiệu năng tăng dần theo dữ liệu; endpoint transactions có nguy cơ OOM/timeout với store hoạt động lâu.
 - **Đề xuất:** Thêm `Pageable` cho transactions/returns/inventory (giống Order/PO); dùng JOIN FETCH hoặc `@EntityGraph` cho các quan hệ được map trong response.
+
+> **Trạng thái (2026-07-16): Hoãn có chủ đích** — đổi response list → page là breaking change
+> với web admin (các màn transactions/returns/inventory đang parse mảng phẳng). Sẽ xử lý thành
+> một đợt riêng phối hợp cùng repo web; chưa lên lịch.
 
 ### [MEDIUM] Xóa warehouse không kiểm tra tồn kho còn lại; isActive không được enforce
 

@@ -53,6 +53,11 @@ Dashboard và Admin ở mức tốt: Dashboard dùng materialized view được 
 
 **Đề xuất:** Thêm `@Version Long version` vào `Customer` và `Supplier` entity; map `OptimisticLockingFailureException` → HTTP 409 trong `GlobalExceptionHandler`.
 
+> **Trạng thái (2026-07-16): Đã xử lý** — `@Version syncVersion` trên Customer/Supplier thực ra
+> đã có từ commit `e149baf` (nhận xét "không có optimistic lock" ở trên đã lỗi thời tại thời
+> điểm review); commit `046b5a3` bổ sung phần còn thiếu: handler
+> `OptimisticLockingFailureException` → 409 với `ErrorCode.CONCURRENT_MODIFICATION` mới.
+
 ---
 
 ### [MEDIUM] `@NotBlank` trên `PaymentMethod` (enum) — annotation sai kiểu, null bị lưu thành chuỗi "null"
@@ -63,6 +68,9 @@ Dashboard và Admin ở mức tốt: Dashboard dùng materialized view được 
 
 **Đề xuất:** Đổi `@NotBlank` thành `@NotNull` cho field enum.
 
+> **Trạng thái (2026-07-16): Đã xử lý** — commit `046b5a3`. Null giờ bị chặn ở tầng `@Valid`
+> (400) thay vì lưu chuỗi "null" vào DB.
+
 ---
 
 ### [MEDIUM] Export không lọc `deletedAt IS NULL` trong truy vấn tồn kho
@@ -72,6 +80,8 @@ Dashboard và Admin ở mức tốt: Dashboard dùng materialized view được 
 **Mô tả:** File Excel tồn kho xuất ra bao gồm cả các bản ghi inventory đã soft-delete. Người dùng nhận dữ liệu không còn chính xác.
 
 **Đề xuất:** Thêm `AND i.deletedAt IS NULL` vào query `findByStoreIdWithDetails`.
+
+> **Trạng thái (2026-07-16): Đã xử lý** — commit `046b5a3`, đúng theo đề xuất.
 
 ---
 
@@ -84,6 +94,11 @@ Dashboard và Admin ở mức tốt: Dashboard dùng materialized view được 
 **Mô tả:** Với store có hàng chục nghìn đơn hàng, một request export không có date filter sẽ load tất cả entity (cùng lazy-loaded relations) vào heap, gây OOM hoặc GC pressure nghiêm trọng. Toàn bộ dữ liệu cũng được giữ trong `byte[]` trước khi trả response.
 
 **Đề xuất:** Đặt giới hạn mặc định cho date range (ví dụ tối đa 3 tháng nếu không có filter), hoặc dùng streaming write (POI `SXSSFWorkbook` thay `XSSFWorkbook`) để tránh giữ toàn bộ sheet trong RAM.
+
+> **Trạng thái (2026-07-16): Đã xử lý** — commit `046b5a3`, chọn phương án cap: COUNT trước khi
+> load (`countForExport` / `countByStoreIdAndDeletedAtIsNull`), quá 10.000 dòng → 400 yêu cầu
+> thu hẹp filter. Chưa chuyển sang `SXSSFWorkbook` — với trần 10k dòng thì XSSF vẫn trong
+> ngưỡng an toàn heap.
 
 ---
 
@@ -98,6 +113,8 @@ long lowStock = inventoryRepository.findLowStockItems(storeId).size();
 
 **Đề xuất:** Thêm method `countLowStockItems(@Param("storeId") Long storeId)` trong `InventoryRepository` dùng `SELECT COUNT(i)`.
 
+> **Trạng thái (2026-07-16): Đã xử lý** — commit `046b5a3`, đúng theo đề xuất.
+
 ---
 
 ### [LOW] DashboardService: `toBd()` dùng `BigDecimal.valueOf(n.doubleValue())` — mất độ chính xác
@@ -110,6 +127,9 @@ if (v instanceof Number n) return BigDecimal.valueOf(n.doubleValue());
 **Mô tả:** Nếu DB trả về `BigDecimal` nhưng không match `instanceof BigDecimal` (ví dụ `Double` sau khi native query mapping), sẽ đi qua nhánh `Number` và convert qua `double` → mất độ chính xác với số lớn (doanh thu hàng tỷ đồng). Nhánh `instanceof BigDecimal` ở trên bắt được phần lớn trường hợp, nhưng còn `double`/`Double` thì không.
 
 **Đề xuất:** Thêm nhánh `if (v instanceof Double d) return BigDecimal.valueOf(d)` hoặc tổng quát hơn dùng `new BigDecimal(v.toString())` để tránh mất độ chính xác.
+
+> **Trạng thái (2026-07-16): Đã xử lý** — commit `046b5a3`, dùng phương án tổng quát
+> `new BigDecimal(n.toString())` cho nhánh `Number`.
 
 ---
 
