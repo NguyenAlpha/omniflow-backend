@@ -19,6 +19,7 @@ Business "Bakery XYZ" (id=2)
 |:------|:-----|
 | `admin` | SUPER_ADMIN — quản trị hệ thống |
 | `nguyen.an` | OWNER của Coffee Chain |
+| `vo.em` | BUSINESS_MANAGER (trợ lý) của Coffee Chain — quản mọi store, không đụng billing |
 | `tran.bich` | MANAGER ở Q1, STAFF ở Q3 (cùng 1 business) |
 | `le.cuong` | STAFF ở Chi nhánh Q1 |
 | `pham.dao` | OWNER của Bakery XYZ (business khác) |
@@ -34,6 +35,7 @@ Business "Bakery XYZ" (id=2)
 | 3 | tran.bich | Trần Thị Bích | true |
 | 4 | le.cuong | Lê Văn Cường | true |
 | 5 | pham.dao | Phạm Thị Đào | true |
+| 6 | vo.em | Võ Thị Em | true |
 
 ---
 
@@ -66,25 +68,32 @@ Business "Bakery XYZ" (id=2)
 | 4 | 3 | 5 `STAFF` | **NULL** | **2** | STAFF của Chi nhánh Q3 |
 | 5 | 4 | 5 `STAFF` | **NULL** | **1** | STAFF của Chi nhánh Q1 |
 | 6 | 5 | 3 `OWNER` | **2** | **NULL** | OWNER của Bakery XYZ |
+| 7 | 6 | 6 `BUSINESS_MANAGER` | **1** | **NULL** | Trợ lý của Coffee Chain |
 
 **Quy tắc NULL/SET:**
 
 ```
 business_id = NULL, store_id = NULL  →  Global role  (SUPER_ADMIN, SUPPORT)
-business_id = SET,  store_id = NULL  →  Business OWNER
+business_id = SET,  store_id = NULL  →  Business-level (OWNER hoặc BUSINESS_MANAGER)
 business_id = NULL, store_id = SET   →  Store MANAGER / STAFF
 business_id = SET,  store_id = SET   →  ❌ Không hợp lệ (CHECK constraint)
 ```
 
+> OWNER vs BUSINESS_MANAGER cùng ở dạng `business SET, store NULL` — phân biệt bằng `role_id`.
+> Cả hai đều với tới mọi store; nhưng chỉ OWNER được các thao tác owner-only (billing/subscription,
+> hồ sơ business, tạo store, quản lý trợ lý).
+
 ---
 
-## Bảng `business_members` — thông tin thành viên business
+## Bảng `business_members` — roster thành viên cấp business (OWNER + trợ lý)
 
 | id | user_id | business_id | joined_date | is_active |
 |:--:|:-------:|:-----------:|:-----------:|:---------:|
 | 1 | 2 | 1 | 2025-01-10 | true |
 | 2 | 5 | 2 | 2025-03-01 | true |
+| 3 | 6 | 1 | 2025-05-01 | true |
 
+> `nguyen.an` (OWNER) và `vo.em` (trợ lý) đều có record — roster chứa mọi thành viên cấp business.
 > `tran.bich`, `le.cuong` không có record — họ là store member.
 > `admin` không có record — SUPER_ADMIN không gắn với business.
 
@@ -109,6 +118,7 @@ business_id = SET,  store_id = SET   →  ❌ Không hợp lệ (CHECK constrain
 |:-----|:------------:|:------------------:|:---------------:|
 | admin (SUPER_ADMIN) | ✅ `biz=NULL, store=NULL` | ❌ | ❌ |
 | nguyen.an (OWNER) | ✅ `biz=1, store=NULL` | ✅ | ❌ |
+| vo.em (BUSINESS_MANAGER) | ✅ `biz=1, store=NULL` | ✅ | ❌ |
 | tran.bich (MANAGER Q1 + STAFF Q3) | ✅ 2 rows | ❌ | ✅ 2 rows |
 | le.cuong (STAFF Q1) | ✅ 1 row | ❌ | ✅ 1 row |
 | pham.dao (OWNER biz khác) | ✅ `biz=2, store=NULL` | ✅ | ❌ |
@@ -121,7 +131,7 @@ business_id = SET,  store_id = SET   →  ❌ Không hợp lệ (CHECK constrain
 |:-----|:---------|
 | `user_roles` | Kiểm tra quyền truy cập API (`@PreAuthorize`) |
 | `store_members` | Metadata nhân viên — `position_title`, `joined_date`, hiển thị danh sách nhân viên |
-| `business_members` | Metadata chủ doanh nghiệp — lịch sử gia nhập, quản lý thành viên business |
+| `business_members` | Roster cấp business (OWNER + trợ lý) — lịch sử gia nhập, quản lý thành viên business |
 
 `user_roles` là **access control**. `store_members` / `business_members` là **organizational data**.
 Tách biệt để thay đổi role không ảnh hưởng thông tin nhân sự và ngược lại.
@@ -135,6 +145,7 @@ Sau lần đầu user gọi API có `@PreAuthorize`, các key sau được sinh 
 | Redis key | Giá trị | Sinh từ |
 |:----------|:--------|:--------|
 | `business:role:2:1` | `"ROLE_OWNER"` | nguyen.an check quyền trên Coffee Chain |
+| `business:role:6:1` | `"ROLE_BUSINESS_MANAGER"` | vo.em (trợ lý) check quyền trên Coffee Chain |
 | `store:business:1` | `"1"` | resolve businessId của Chi nhánh Q1 |
 | `store:role:3:1` | `"ROLE_MANAGER"` | tran.bich check quyền tại Q1 |
 | `store:role:3:2` | `"ROLE_STAFF"` | tran.bich check quyền tại Q3 |

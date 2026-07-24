@@ -1,6 +1,7 @@
 package com.quiktech.backend.repository;
 
 import com.quiktech.backend.entity.UserRole;
+import com.quiktech.backend.entity.enums.RoleName;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
@@ -60,6 +61,17 @@ public interface UserRoleRepository extends JpaRepository<UserRole, Long> {
 
     // All active roles in a business — used for business member listing
     List<UserRole> findByBusinessIdAndIsActiveTrueAndDeletedAtIsNull(Long businessId);
+
+    // Đếm business-scoped role theo tên — cộng BUSINESS_MANAGER vào quota max_staff. OWNER không tính.
+    @Query("""
+        SELECT COUNT(ur) FROM UserRole ur
+        WHERE ur.business.id = :businessId
+          AND ur.store IS NULL
+          AND ur.role.name = :role
+          AND ur.isActive = true
+          AND ur.deletedAt IS NULL
+        """)
+    long countActiveByBusinessAndRole(@Param("businessId") Long businessId, @Param("role") RoleName role);
 
     // All active business-level roles for a user — used in getStores() and auth response
     @Query("""

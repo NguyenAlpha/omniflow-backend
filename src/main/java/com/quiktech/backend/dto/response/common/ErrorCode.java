@@ -11,6 +11,8 @@ public enum ErrorCode {
 
     // Business
     BUSINESS_NOT_FOUND,
+    BUSINESS_MEMBER_NOT_FOUND,
+    BUSINESS_MEMBER_ALREADY_EXISTS,
 
     // Store
     STORE_NOT_FOUND,

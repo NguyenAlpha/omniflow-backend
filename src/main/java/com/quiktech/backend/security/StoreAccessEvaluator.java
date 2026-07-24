@@ -82,7 +82,8 @@ public class StoreAccessEvaluator {
     }
 
     /**
-     * Kiểm tra user có phải OWNER của business chứa store này không.
+     * Kiểm tra user có quyền quản trị store này không — business OWNER hoặc BUSINESS_MANAGER
+     * (trợ lý cấp business được quản nhân sự + cài đặt của mọi store trong business).
      */
     public boolean isOwner(Long storeId, Authentication authentication) {
         if (authentication == null) return false;
@@ -90,7 +91,7 @@ public class StoreAccessEvaluator {
         UserPrincipal principal = extractPrincipal(authentication);
         if (principal == null) return false;
         Long businessId = resolveBusinessId(storeId);
-        return businessId != null && isOwnerWithCache(principal.userId(), businessId);
+        return businessId != null && hasBusinessRoleWithCache(principal.userId(), businessId);
     }
 
     /**
@@ -127,9 +128,9 @@ public class StoreAccessEvaluator {
         UserPrincipal principal = extractPrincipal(authentication);
         if (principal == null) return false;
 
-        // Kiểm tra business OWNER — dùng cache thay vì DB trực tiếp
+        // Kiểm tra business-level role (OWNER/BUSINESS_MANAGER) — dùng cache thay vì DB trực tiếp
         Long businessId = resolveBusinessId(storeId);
-        if (businessId != null && isOwnerWithCache(principal.userId(), businessId)) {
+        if (businessId != null && hasBusinessRoleWithCache(principal.userId(), businessId)) {
             return true;
         }
 
@@ -203,10 +204,14 @@ public class StoreAccessEvaluator {
     }
 
     /**
-     * Kiểm tra OWNER với Redis cache — dùng chung key {@code business:role:{userId}:{businessId}}
-     * với {@link BusinessAccessEvaluator}. Cache hit từ evaluator này có hiệu lực cho cả evaluator kia.
+     * Kiểm tra user có business-level role (OWNER hoặc BUSINESS_MANAGER) trong business không —
+     * dùng chung key {@code business:role:{userId}:{businessId}} với {@link BusinessAccessEvaluator}.
+     *
+     * <p>Cache lưu <b>tên role thật</b> (không hardcode ROLE_OWNER) để BusinessAccessEvaluator
+     * phân biệt được OWNER vs BUSINESS_MANAGER khi gác thao tác owner-only. Ở store context thì
+     * cả hai role đều được toàn quyền nên chỉ cần biết "có business role hay không".
      */
-    private boolean isOwnerWithCache(Long userId, Long businessId) {
+    private boolean hasBusinessRoleWithCache(Long userId, Long businessId) {
         String key = businessRoleCacheKey(userId, businessId);
 
         try {
@@ -215,17 +220,19 @@ public class StoreAccessEvaluator {
             // Redis down — tiếp tục xuống DB
         }
 
-        boolean isOwner = userRoleRepository.findActiveBusinessRole(userId, businessId).isPresent();
+        RoleName role = userRoleRepository.findActiveBusinessRole(userId, businessId)
+                .map(ur -> ur.getRole().getName())
+                .orElse(null);
 
-        if (isOwner) {
+        if (role != null) {
             try {
-                redisTemplate.opsForValue().set(key, RoleName.ROLE_OWNER.name(), cacheTtlSeconds, TimeUnit.SECONDS);
+                redisTemplate.opsForValue().set(key, role.name(), cacheTtlSeconds, TimeUnit.SECONDS);
             } catch (Exception ignored) {
                 // Redis down — bỏ qua
             }
         }
 
-        return isOwner;
+        return role != null;
     }
 
     /**

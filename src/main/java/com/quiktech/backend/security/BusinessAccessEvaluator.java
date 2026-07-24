@@ -42,13 +42,14 @@ public class BusinessAccessEvaluator {
         UserPrincipal principal = extractPrincipal(authentication);
         if (principal == null) return false;
 
-        if (isOwnerWithCache(principal.userId(), businessId)) return true;
+        if (resolveBusinessRoleWithCache(principal.userId(), businessId) != null) return true;
 
         return resolveBusinessMemberRoleWithCache(principal.userId(), businessId) != null;
     }
 
     /**
-     * Kiểm tra user có quyền ghi vào catalog không — OWNER hoặc MANAGER của store trong business.
+     * Kiểm tra user có quyền ghi vào catalog không — OWNER/BUSINESS_MANAGER (cấp business)
+     * hoặc MANAGER của store trong business.
      */
     public boolean isOwnerOrManager(Long businessId, Authentication authentication) {
         if (authentication == null) return false;
@@ -56,21 +57,23 @@ public class BusinessAccessEvaluator {
         UserPrincipal principal = extractPrincipal(authentication);
         if (principal == null) return false;
 
-        if (isOwnerWithCache(principal.userId(), businessId)) return true;
+        RoleName businessRole = resolveBusinessRoleWithCache(principal.userId(), businessId);
+        if (businessRole == RoleName.ROLE_OWNER || businessRole == RoleName.ROLE_BUSINESS_MANAGER) return true;
 
         return RoleName.ROLE_MANAGER.name().equals(
                 resolveBusinessMemberRoleWithCache(principal.userId(), businessId));
     }
 
     /**
-     * Kiểm tra user có phải OWNER của business không.
+     * Kiểm tra user có phải OWNER của business không — CHỈ owner thật, KHÔNG gồm BUSINESS_MANAGER
+     * (trợ lý bị loại khỏi các thao tác owner-only: subscription, hồ sơ business, quản lý trợ lý).
      */
     public boolean isOwner(Long businessId, Authentication authentication) {
         if (authentication == null) return false;
         if (isSuperAdmin(authentication)) return true;
         UserPrincipal principal = extractPrincipal(authentication);
         if (principal == null) return false;
-        return isOwnerWithCache(principal.userId(), businessId);
+        return resolveBusinessRoleWithCache(principal.userId(), businessId) == RoleName.ROLE_OWNER;
     }
 
     /**
@@ -98,30 +101,34 @@ public class BusinessAccessEvaluator {
     }
 
     /**
-     * Kiểm tra OWNER với Redis cache. Cache chỉ lưu kết quả positive (có OWNER role).
-     * Kết quả negative không cache — DB call mỗi request, nhưng non-owner hiếm khi gọi
-     * catalog endpoint nên không thành vấn đề.
+     * Resolve business-scoped role (OWNER hoặc BUSINESS_MANAGER) của user với Redis cache.
+     * Cache lưu tên role thật tại {@code business:role:{userId}:{businessId}} — dùng chung với
+     * {@link StoreAccessEvaluator}, nên phải ghi đúng tên role để phân biệt OWNER (được quản trị
+     * business) vs BUSINESS_MANAGER (trợ lý, chỉ vận hành). Kết quả negative không cache.
      */
-    private boolean isOwnerWithCache(Long userId, Long businessId) {
+    private RoleName resolveBusinessRoleWithCache(Long userId, Long businessId) {
         String key = businessRoleCacheKey(userId, businessId);
 
         try {
-            if (redisTemplate.opsForValue().get(key) != null) return true;
+            String cached = redisTemplate.opsForValue().get(key);
+            if (cached != null) return RoleName.valueOf(cached);
         } catch (Exception ignored) {
             // Redis down — tiếp tục xuống DB
         }
 
-        boolean isOwner = userRoleRepository.findActiveBusinessRole(userId, businessId).isPresent();
+        RoleName role = userRoleRepository.findActiveBusinessRole(userId, businessId)
+                .map(ur -> ur.getRole().getName())
+                .orElse(null);
 
-        if (isOwner) {
+        if (role != null) {
             try {
-                redisTemplate.opsForValue().set(key, RoleName.ROLE_OWNER.name(), cacheTtlSeconds, TimeUnit.SECONDS);
+                redisTemplate.opsForValue().set(key, role.name(), cacheTtlSeconds, TimeUnit.SECONDS);
             } catch (Exception ignored) {
                 // Redis down — bỏ qua
             }
         }
 
-        return isOwner;
+        return role;
     }
 
     /**

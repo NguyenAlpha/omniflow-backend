@@ -2,12 +2,14 @@ package com.quiktech.backend.service;
 
 import com.quiktech.backend.dto.response.common.ErrorCode;
 import com.quiktech.backend.entity.Subscription;
+import com.quiktech.backend.entity.enums.RoleName;
 import com.quiktech.backend.exception.ResourceNotFoundException;
 import com.quiktech.backend.exception.SubscriptionLimitExceededException;
 import com.quiktech.backend.repository.ProductRepository;
 import com.quiktech.backend.repository.StoreMemberRepository;
 import com.quiktech.backend.repository.StoreRepository;
 import com.quiktech.backend.repository.SubscriptionRepository;
+import com.quiktech.backend.repository.UserRoleRepository;
 import com.quiktech.backend.repository.WarehouseRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -22,6 +24,7 @@ public class SubscriptionLimitService {
     private final StoreRepository storeRepository;
     private final ProductRepository productRepository;
     private final StoreMemberRepository storeMemberRepository;
+    private final UserRoleRepository userRoleRepository;
     private final WarehouseRepository warehouseRepository;
 
     // ── Check limit tạo resource ──────────────────────────────────────────────
@@ -56,7 +59,9 @@ public class SubscriptionLimitService {
     public void checkStaffLimit(Long businessId) {
         Subscription sub = getSubscriptionForUpdate(businessId);
         if (sub.getMaxStaff() == null) return;
-        long count = storeMemberRepository.countByBusinessId(businessId);
+        // Nhân sự = store member + trợ lý cấp business (BUSINESS_MANAGER); OWNER không tính
+        long count = storeMemberRepository.countByBusinessId(businessId)
+                + userRoleRepository.countActiveByBusinessAndRole(businessId, RoleName.ROLE_BUSINESS_MANAGER);
         if (count >= sub.getMaxStaff()) {
             throw new SubscriptionLimitExceededException("Staff limit reached for your current plan");
         }
