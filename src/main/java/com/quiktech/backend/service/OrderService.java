@@ -102,8 +102,8 @@ public class OrderService {
             throw new IllegalArgumentException("Walk-in customer orders must be fully paid");
         }
 
-        String paymentMethod = (request.paymentMethod() != null && !request.paymentMethod().isBlank())
-                ? request.paymentMethod() : "CASH";
+        String paymentMethod = request.paymentMethod() != null
+                ? request.paymentMethod().name() : "CASH";
 
         order.setSubtotal(subtotal);
         order.setTotalAmount(totalAmount);

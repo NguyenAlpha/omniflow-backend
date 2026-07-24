@@ -240,7 +240,7 @@ Tạo đơn nhập hàng mới. Chỉ **OWNER** hoặc **MANAGER** của store m
 | `supplierPublicId` | UUID | ✅ | |
 | `warehousePublicId` | UUID | ✅ | |
 | `paidAmount` | number | ❌ | Tối thiểu `0.00`, mặc định `0` |
-| `paymentMethod` | string | ❌ | `CASH` hoặc `TRANSFER`, mặc định `CASH` |
+| `paymentMethod` | string | ❌ | Một trong `CASH`, `BANK_TRANSFER`, `CREDIT_CARD`, `DEBIT_CARD`, `MOBILE_PAYMENT`, `OTHER`; mặc định `CASH` |
 | `note` | string | ❌ | |
 | `items` | array | ✅ | Ít nhất 1 phần tử |
 | `items[].productPublicId` | UUID | ✅ | |

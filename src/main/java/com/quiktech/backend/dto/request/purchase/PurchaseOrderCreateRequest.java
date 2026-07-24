@@ -1,5 +1,6 @@
 package com.quiktech.backend.dto.request.purchase;
 
+import com.quiktech.backend.entity.enums.PaymentMethod;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.NotEmpty;
@@ -12,7 +13,7 @@ public record PurchaseOrderCreateRequest(
     @NotNull UUID supplierPublicId,
     @NotNull UUID warehousePublicId,
     @DecimalMin("0.00") BigDecimal paidAmount,
-    String paymentMethod,
+    PaymentMethod paymentMethod,
     String note,
     @NotEmpty List<@Valid PurchaseOrderItemRequest> items
 ) {

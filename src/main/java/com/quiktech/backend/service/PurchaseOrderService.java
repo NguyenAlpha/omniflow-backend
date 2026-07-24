@@ -122,8 +122,8 @@ public class PurchaseOrderService {
         if (paidAmt.compareTo(totalAmount) > 0) {
             throw new IllegalArgumentException("Paid amount cannot exceed total amount");
         }
-        String paymentMethod = (request.paymentMethod() != null && !request.paymentMethod().isBlank())
-                ? request.paymentMethod() : "CASH";
+        String paymentMethod = request.paymentMethod() != null
+                ? request.paymentMethod().name() : "CASH";
 
         po.setTotalAmount(totalAmount);
         po.setPaidAmount(paidAmt);

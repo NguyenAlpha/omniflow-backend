@@ -37,6 +37,7 @@ Tuy nhiên có 3 nhóm rủi ro chính (tại thời điểm review 2026-07-04):
 - **Tác động:** Client gửi `CREDIT_CARD` (hợp lệ theo API contract) → INSERT vi phạm CHECK → PSQLException → HTTP 500 lúc runtime. Ngoài ra `orders.payment_method` và `purchase_orders.payment_method` lại **không có CHECK nào** → cùng một khái niệm nhưng 3 mức enforcement khác nhau.
 - **Đề xuất:** Chọn một nguồn sự thật: hoặc thu hẹp enum Java về 2 giá trị đang hỗ trợ, hoặc migration mở rộng CHECK. Đồng thời thêm CHECK tương tự cho `orders`/`purchase_orders` (hoặc bỏ hẳn để thống nhất).
 - **Trạng thái (2026-07-08):** ✅ **Đã xử lý** (`6aed30d`) — `chk_payments_method` mở rộng thành 6 giá trị khớp enum Java: `CASH, BANK_TRANSFER, CREDIT_CARD, DEBIT_CARD, MOBILE_PAYMENT, OTHER`. ⚠️ Còn mở: `orders.payment_method` / `purchase_orders.payment_method` vẫn chưa có CHECK (String tự do, docs API PURCHASE_ORDER.md còn ghi giá trị `TRANSFER` không thuộc enum).
+- **Trạng thái (2026-07-24):** ✅ **Đóng nốt phần còn mở** — V10 thêm `chk_orders_payment_method` và `chk_po_payment_method` (cùng 6 giá trị enum). Đồng thời `OrderCreateRequest`/`PurchaseOrderCreateRequest` đổi field `paymentMethod` từ `String` → enum `PaymentMethod` (giống `PaymentCreateRequest`) nên input sai bị chặn ở boundary trả 400 thay vì 500; CHECK là backstop. `PURCHASE_ORDER.md` sửa lại liệt kê đủ 6 giá trị (bỏ `TRANSFER`).
 
 ### [HIGH] Index khai báo trong entity không tồn tại trong DB — `sync_change_log` hoàn toàn không có index
 - **Vị trí:** `SyncChangeLog.java:9-12` (khai báo `idx_sync_log_store_id`, `idx_sync_log_version`) ↔ `V1__initial_schema.sql:541-551` (không tạo index nào cho bảng này); tương tự: `Payment.java:11` (`idx_payments_store_id` — V1 chỉ có index customer/supplier), `OrderItem.java:15` (`idx_order_items_store_id`), `InventoryTransaction.java:11` (`idx_inventory_tx_warehouse_id`), `PurchaseOrder.java:16` (`idx_purchase_orders_warehouse_id`), `ReturnOrderItem.java:10` (`idx_return_order_items_product_id`), `Store.java:10-11` (`idx_stores_name`, `idx_stores_deleted_at`), `Customer.java:13`/`Supplier.java:13` (`idx_customers_code`/`idx_suppliers_code`), `User.java:13-16`, `SubscriptionInvoice.java:14`
@@ -166,7 +167,7 @@ Nền tảng schema tốt (7.5/10 tại thời điểm review), các nguyên t�
 
 **Còn mở (theo dõi tiếp):**
 
-1. `orders.payment_method` / `purchase_orders.payment_method` vẫn là String không CHECK — 3 mức enforcement khác nhau cho cùng khái niệm; docs API PURCHASE_ORDER.md còn ghi giá trị `TRANSFER` không thuộc enum `PaymentMethod`.
+1. ~~`orders.payment_method` / `purchase_orders.payment_method` vẫn là String không CHECK~~ — ✅ đóng 2026-07-24 (V10 + DTO nhận enum `PaymentMethod`; PURCHASE_ORDER.md sửa đủ 6 giá trị). Xem dòng Trạng thái mục CRITICAL.
 2. Convention team "migration không DROP bảng dữ liệu nghiệp vụ" — chưa ghi thành văn bản quy trình.
 3. Index FK phụ (`created_by`, `last_modified_by_user`...) — giữ nguyên chờ query thực tế (đúng đề xuất gốc).
 4. `chk_payments_reference` — giữ nguyên có chủ đích (payment nội bộ hợp lệ).
