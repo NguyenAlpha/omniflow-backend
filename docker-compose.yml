@@ -11,5 +11,11 @@ services:
     volumes:
       - quik-tech_data:/var/lib/postgresql/data
 
+  redis:
+    image: redis:7-alpine
+    container_name: quik-tech-redis
+    ports:
+      - "6379:6379"
+
 volumes:
   quik-tech_data:
