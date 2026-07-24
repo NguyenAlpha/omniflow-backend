@@ -210,6 +210,11 @@ public class PaymentService {
         // xóa payment và cộng ngược debtBalance của customer/supplier tenant khác
         Payment payment = paymentRepository.findByPublicIdAndStoreId(publicId, storeId)
                 .orElseThrow(() -> new ResourceNotFoundException(ErrorCode.PAYMENT_NOT_FOUND, "Payment not found"));
+        // Payment âm là bản ghi hoàn tiền (đơn trả hàng) — lúc tạo không đụng công nợ theo
+        // amount này, nên đảo ngược ở đây sẽ sai lệch debtBalance. Chặn xóa trực tiếp.
+        if (payment.getAmount().compareTo(BigDecimal.ZERO) < 0) {
+            throw new IllegalArgumentException("Cannot delete a refund payment. Cancel the related return order instead");
+        }
         // Reverse the debt adjustment made when payment was created
         if (payment.getCustomer() != null) {
             Customer customer = payment.getCustomer();
