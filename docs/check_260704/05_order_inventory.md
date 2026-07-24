@@ -104,12 +104,21 @@ Về chống oversell: không dùng pessimistic lock hay atomic UPDATE, nhưng `
 - **Tác động:** Doanh thu âm, công nợ âm, báo cáo tài chính sai.
 - **Đề xuất:** Validate `discountType` PERCENT → `0 ≤ discount ≤ 100`; sau khi tính, assert `lineTotal ≥ 0` và `totalAmount ≥ 0` (ném `IllegalArgumentException`). Đồng thời validate `discountType` bằng enum thay vì `DiscountType.valueOf(String)` tự do (chuỗi lạ hiện ném IllegalArgumentException 400 — chấp nhận được nhưng nên dùng `@Pattern` hoặc enum trong DTO).
 
+> **Trạng thái (2026-07-24): Đã xử lý** — commit `d11013f`. `computeLineTotal`/`computeDiscount`
+> validate PERCENT ≤ 100 (`validatePercent`); assert `lineTotal ≥ 0` và `totalAmount ≥ 0`, vượt
+> thì ném `IllegalArgumentException` (400). `discountType` vẫn qua `DiscountType.valueOf` (chuỗi
+> lạ → 400) — chưa đổi sang enum trong DTO, chấp nhận ở giai đoạn này.
+
 ### [HIGH] Điều chỉnh kho thủ công: DTO không validate, cho phép kho âm
 
 - **Vị trí:** `InventoryService.java:56-101` (adjust); `dto\request\inventory\InventoryAdjustRequest.java` (không có annotation nào)
 - **Mô tả:** `productPublicId`/`warehousePublicId`/`quantity` đều có thể null → NPE 500 tại `previousQuantity.add(request.quantity())`. `quantity` là delta có thể âm và **không kiểm tra kết quả ≥ 0** → tồn kho âm không giới hạn (khác với transfer đã có check đủ hàng). Điểm cộng: có `@Auditable` + ghi `InventoryTransaction type=ADJUSTMENT`, nên audit trail đầy đủ.
 - **Tác động:** Tồn kho âm phá vỡ invariant của toàn hệ thống (deduct/transfer đều giả định quantity ≥ 0), `total_stock` của Product âm.
 - **Đề xuất:** Thêm `@NotNull` cho 3 field; trong service, nếu `previousQuantity.add(quantity) < 0` thì ném `IllegalArgumentException` (hoặc yêu cầu lý do đặc biệt nếu nghiệp vụ thực sự cần kho âm).
+
+> **Trạng thái (2026-07-24): Đã xử lý** — commit `83eed8b`. `InventoryAdjustRequest` thêm
+> `@NotNull` cho `productPublicId`/`warehousePublicId`/`quantity`; `adjust()` chặn khi
+> `previousQuantity + quantity < 0` (400). Không mở đường kho âm — nghiệp vụ hiện không cần.
 
 ### [HIGH] Hoàn tiền đơn trả không được ghi nhận vào Payment — sổ tiền lệch với thực tế
 
@@ -126,6 +135,12 @@ Về chống oversell: không dùng pessimistic lock hay atomic UPDATE, nhưng `
 > doanh thu vẫn chưa trừ hàng trả — cần quyết định nghiệp vụ riêng). Lưu ý edge case:
 > `PaymentService.delete()` nếu xóa một Payment hoàn tiền (amount âm, có customer) sẽ đảo nợ sai
 > vì khoản hoàn không đụng công nợ lúc tạo — cân nhắc chặn xóa Payment có amount < 0.
+
+> **Cập nhật (2026-07-24):** hai mục "chưa làm" đã hoàn tất. Chặn xóa Payment `amount < 0` —
+> commit `bc1a30f` (`PaymentService.delete` ném 400, hướng dẫn hủy đơn trả liên quan thay thế).
+> Trường `Order.refundedAmount` — commit `0d10421`: cộng dồn khi đơn trả COMPLETED,
+> `mv_monthly_revenue` (migration V11) tính `SUM(total_amount - refunded_amount)` nên doanh thu
+> thuần đã trừ đúng phần hàng trả.
 
 ### [MEDIUM] Hủy đơn PENDING đã thu tiền một phần — tiền đã thu biến mất khỏi sổ
 
@@ -172,17 +187,35 @@ Về chống oversell: không dùng pessimistic lock hay atomic UPDATE, nhưng `
 - **Tác động:** `total_stock` sai lệch vĩnh viễn sau khi xóa kho còn hàng; cờ isActive vô nghĩa.
 - **Đề xuất:** Chặn xóa khi `SUM(quantity) > 0` trong kho (yêu cầu transfer hết trước); check `isActive` (và `deletedAt`) khi resolve warehouse trong các flow ghi.
 
+> **Trạng thái (2026-07-24): Đã xử lý** — commit `83eed8b` (kho) + `d11013f` (order/PO).
+> `WarehouseService.delete` chặn khi `SUM(quantity) > 0` (`InventoryRepository.sumQuantityByWarehouseId`).
+> Enforce `isActive`: chặn tạo đơn bán/nhập hàng và chuyển hàng **vào** kho inactive (chuyển RA
+> vẫn cho để rút hàng trước khi xóa). `deletedAt` đã tự loại nhờ `@SQLRestriction("deleted_at IS NULL")`
+> trên entity Warehouse nên resolve không bao giờ lấy được kho đã xóa — không cần check tay.
+
 ### [LOW] Mã đơn sinh ngẫu nhiên 6 ký tự, không có unique constraint
 
 - **Vị trí:** `OrderService.java:300`, `PurchaseOrderService.java:81`; cột `orderCode` trong `Order.java:33-34` / `PurchaseOrder.java` không `unique`
 - **Mô tả:** `UUID.randomUUID().substring(0,6)` cho không gian ~16.7M giá trị; theo birthday paradox, xác suất trùng đáng kể sau vài nghìn đơn, và DB không có constraint nào chặn (check `findByStoreIdAndOrderCode` mà `ORDER_LIFECYCLE.md` mô tả không tồn tại trong code create). Hai đơn trùng mã gây nhầm lẫn chứng từ (note của Payment/InventoryTransaction tham chiếu theo orderCode).
 - **Đề xuất:** Unique constraint `(store_id, order_code)` + retry khi trùng, hoặc sequence theo store.
 
+> **Trạng thái (2026-07-24): Đã xử lý** — commit `d11013f`. Unique constraint
+> `(store_id, order_code)` **đã tồn tại sẵn** trong V1 (`ux_orders_store_code`,
+> `ux_po_store_code`) — nhận định "DB không có constraint" ở trên là sai, chỉ tầng ứng dụng thiếu
+> check. Thêm `generateUniqueOrderCode` (Order + PurchaseOrder) tra DB trước khi dùng (tối đa 5
+> lần), constraint DB làm backstop cho race TOCTOU. Không cần migration.
+
 ### [LOW] `OrderRepository.search` so sánh status (String) với cột enum
 
 - **Vị trí:** `OrderRepository.java` — `search(...)` nhận `@Param("status") String status` so với `o.status` kiểu `OrderStatus`; `OrderService.list:51` truyền String thô từ query param
 - **Mô tả:** Dựa vào coercion của Hibernate 6; status không hợp lệ (vd "FOO") không bị reject sớm mà lặng lẽ trả kết quả rỗng hoặc lỗi runtime tùy phiên bản. `findByStoreAndStatus`/`countByStoreIdAndStatus` cũng nhận String tương tự.
 - **Đề xuất:** Đổi tham số sang `OrderStatus` (PurchaseOrderController đã làm đúng với `PurchaseOrderStatus`).
+
+> **Trạng thái (2026-07-24): Đã xử lý** — commit `d11013f`. `OrderRepository.search` +
+> `OrderController.list` + `OrderService.list` đổi param `String` → `OrderStatus`; Spring
+> auto-convert query param, giá trị lạ → 400 (mẫu của `PurchaseOrderController`).
+> `findByStoreAndStatus`/`countByStoreIdAndStatus` (String) giữ nguyên vì không có caller
+> (dead code — không sửa theo nguyên tắc surgical).
 
 ### [LOW] Payment cho đơn PENDING bị dồn thành 1 bản ghi khi complete
 
