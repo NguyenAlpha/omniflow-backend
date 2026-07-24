@@ -80,6 +80,41 @@ Lấy thông tin profile của người dùng hiện tại.
 
 ---
 
+## GET `/api/users/lookup`
+
+Tra cứu user theo `username` (khớp chính xác) để lấy `userId` — dùng khi owner thêm
+thành viên business/store. Chỉ cần đăng nhập (thao tác thêm thành viên mới là owner-only).
+
+### Query parameters
+
+| Parameter | Type | Bắt buộc | Mô tả |
+|:----------|:-----|:--------:|:-------|
+| `username` | string | ✅ | Username cần tra (khớp chính xác) |
+
+### Response `200 OK`
+
+```json
+{
+  "success": true,
+  "data": {
+    "userId": 6,
+    "username": "vo.em",
+    "fullName": "Võ Thị Em",
+    "isActive": true
+  },
+  "error": null
+}
+```
+
+### Lỗi
+
+| HTTP | `error.code` | Nguyên nhân |
+|:----:|:------------|:-----------|
+| 401 | `UNAUTHORIZED` | Không có hoặc JWT hết hạn |
+| 404 | `USER_NOT_FOUND` | Không có user nào khớp username |
+
+---
+
 ## PATCH `/api/users/me`
 
 Cập nhật thông tin profile của người dùng hiện tại.

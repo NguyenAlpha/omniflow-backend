@@ -4,6 +4,7 @@ import com.quiktech.backend.dto.request.user.ChangePasswordRequest;
 import com.quiktech.backend.dto.request.user.UpdateProfileRequest;
 import com.quiktech.backend.dto.response.auth.UserSummaryResponse;
 import com.quiktech.backend.dto.response.common.ApiResult;
+import com.quiktech.backend.dto.response.user.UserLookupResponse;
 import com.quiktech.backend.security.UserPrincipal;
 import com.quiktech.backend.service.UserService;
 import jakarta.validation.Valid;
@@ -23,6 +24,15 @@ public class UserController {
     public ResponseEntity<ApiResult<UserSummaryResponse>> getProfile(
             @AuthenticationPrincipal UserPrincipal currentUser) {
         return ResponseEntity.ok(ApiResult.ok(userService.getProfile(currentUser)));
+    }
+
+    /**
+     * Tra cứu user theo username để lấy userId khi thêm thành viên (business/store).
+     * Chỉ cần đăng nhập; thao tác thêm thành viên mới là owner-only.
+     */
+    @GetMapping("/lookup")
+    public ResponseEntity<ApiResult<UserLookupResponse>> lookupByUsername(@RequestParam String username) {
+        return ResponseEntity.ok(ApiResult.ok(userService.lookupByUsername(username)));
     }
 
     @PatchMapping("/me")

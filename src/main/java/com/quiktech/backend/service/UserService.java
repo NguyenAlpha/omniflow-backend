@@ -7,6 +7,7 @@ import com.quiktech.backend.dto.response.auth.UserSummaryResponse;
 import com.quiktech.backend.dto.response.common.ErrorCode;
 import com.quiktech.backend.dto.response.common.PagedResult;
 import com.quiktech.backend.dto.response.user.UserAdminResponse;
+import com.quiktech.backend.dto.response.user.UserLookupResponse;
 import com.quiktech.backend.entity.User;
 import com.quiktech.backend.entity.UserRole;
 import com.quiktech.backend.exception.ResourceNotFoundException;
@@ -78,6 +79,17 @@ public class UserService {
         // refresh token cũ (lý do khiến user đổi mật khẩu) thì phiên đó bị cắt ngay,
         // không thể tự gia hạn tiếp. Access token cũ vẫn sống tối đa jwt.expiration.
         refreshTokenService.revokeAll(user.getId());
+    }
+
+    /**
+     * Tra cứu user theo username (khớp chính xác) để owner lấy userId khi thêm thành viên.
+     * Chỉ khớp user còn sống (@SQLRestriction lọc deleted). Không tìm thấy → 404.
+     */
+    @Transactional(readOnly = true)
+    public UserLookupResponse lookupByUsername(String username) {
+        User user = userRepository.findByUsername(username)
+                .orElseThrow(() -> new ResourceNotFoundException(ErrorCode.USER_NOT_FOUND, "User not found"));
+        return new UserLookupResponse(user.getId(), user.getUsername(), user.getFullName(), user.getIsActive());
     }
 
     // === Admin ===
