@@ -45,14 +45,13 @@ public class OrderService {
     private final UserRepository userRepository;
 
     @Transactional(readOnly = true)
-    public PagedResult<OrderResponse> list(Long storeId, String orderCode, String status, LocalDate from, LocalDate to, UUID customerPublicId, Pageable pageable, UserPrincipal currentUser) {
+    public PagedResult<OrderResponse> list(Long storeId, String orderCode, OrderStatus status, LocalDate from, LocalDate to, UUID customerPublicId, Pageable pageable, UserPrincipal currentUser) {
         findStoreOrThrow(storeId);
         String codeFilter = (orderCode != null && !orderCode.isBlank()) ? "%" + orderCode.toLowerCase() + "%" : null;
-        String statusFilter = (status != null && !status.isBlank()) ? status : null;
         Instant fromInstant = from != null ? from.atStartOfDay(ZoneOffset.UTC).toInstant() : Instant.EPOCH;
         Instant toInstant = to != null ? to.plusDays(1).atStartOfDay(ZoneOffset.UTC).toInstant() : Instant.parse("9999-12-31T00:00:00Z");
         return PagedResult.of(
-                orderRepository.search(storeId, statusFilter, codeFilter, customerPublicId, fromInstant, toInstant, pageable)
+                orderRepository.search(storeId, status, codeFilter, customerPublicId, fromInstant, toInstant, pageable)
                         .map(o -> toResponse(o, List.of()))
         );
     }
@@ -90,6 +89,10 @@ public class OrderService {
         BigDecimal discountAmt = computeDiscount(subtotal, request.discount(), request.discountType());
         BigDecimal totalAmount = subtotal.subtract(discountAmt).add(request.tax())
                 .setScale(2, RoundingMode.HALF_UP);
+        // Giảm giá cấp đơn lớn hơn tiền hàng → tổng âm, chặn để báo cáo không nhận số âm
+        if (totalAmount.compareTo(BigDecimal.ZERO) < 0) {
+            throw new IllegalArgumentException("Total amount cannot be negative — order discount exceeds subtotal");
+        }
 
         BigDecimal paidAmt = request.paidAmount() != null ? request.paidAmount() : BigDecimal.ZERO;
         if (paidAmt.compareTo(totalAmount) > 0) {
@@ -295,16 +298,31 @@ public class OrderService {
                 .orElseThrow(() -> new ResourceNotFoundException(ErrorCode.CUSTOMER_NOT_FOUND, "Customer not found"));
     }
 
+    // Mã 6 hex ngẫu nhiên có thể trùng (birthday) — check DB trước; unique (store_id, order_code) là backstop
+    private String generateUniqueOrderCode(Long storeId) {
+        for (int attempt = 0; attempt < 5; attempt++) {
+            String code = "ORD-" + UUID.randomUUID().toString().replace("-", "").substring(0, 6).toUpperCase();
+            if (orderRepository.findByStoreIdAndOrderCode(storeId, code).isEmpty()) {
+                return code;
+            }
+        }
+        throw new IllegalStateException("Could not generate a unique order code after 5 attempts");
+    }
+
     private Warehouse resolveWarehouse(Long storeId, UUID warehousePublicId) {
-        return warehouseRepository.findByPublicIdAndStoreId(warehousePublicId, storeId)
+        Warehouse warehouse = warehouseRepository.findByPublicIdAndStoreId(warehousePublicId, storeId)
                 .orElseThrow(() -> new ResourceNotFoundException(ErrorCode.WAREHOUSE_NOT_FOUND, "Warehouse not found"));
+        if (!warehouse.getIsActive()) {
+            throw new IllegalArgumentException("Warehouse is inactive");
+        }
+        return warehouse;
     }
 
     private Order buildOrderShell(Store store, Customer customer, Warehouse warehouse,
             OrderCreateRequest request, User userRef) {
         return Order.builder()
                 .store(store)
-                .orderCode("ORD-" + UUID.randomUUID().toString().replace("-", "").substring(0, 6).toUpperCase())
+                .orderCode(generateUniqueOrderCode(store.getId()))
                 .customer(customer)
                 .warehouse(warehouse)
                 .status(OrderStatus.PENDING)
@@ -373,19 +391,34 @@ public class OrderService {
     private BigDecimal computeLineTotal(BigDecimal unitPrice, BigDecimal quantity,
             BigDecimal discount, String discountType) {
         BigDecimal base = unitPrice.multiply(quantity);
+        BigDecimal lineTotal;
         if ("PERCENT".equals(discountType)) {
-            return base.multiply(BigDecimal.ONE.subtract(discount.divide(BigDecimal.valueOf(100), 10, RoundingMode.HALF_UP)))
+            validatePercent(discount);
+            lineTotal = base.multiply(BigDecimal.ONE.subtract(discount.divide(BigDecimal.valueOf(100), 10, RoundingMode.HALF_UP)))
                     .setScale(2, RoundingMode.HALF_UP);
+        } else {
+            lineTotal = base.subtract(discount).setScale(2, RoundingMode.HALF_UP);
         }
-        return base.subtract(discount).setScale(2, RoundingMode.HALF_UP);
+        // Giảm giá FIXED lớn hơn tiền hàng → dòng âm, chặn để không lọt doanh thu/công nợ âm
+        if (lineTotal.compareTo(BigDecimal.ZERO) < 0) {
+            throw new IllegalArgumentException("Line total cannot be negative — discount exceeds line amount");
+        }
+        return lineTotal;
     }
 
     private BigDecimal computeDiscount(BigDecimal subtotal, BigDecimal discount, String discountType) {
         if ("PERCENT".equals(discountType)) {
+            validatePercent(discount);
             return subtotal.multiply(discount.divide(BigDecimal.valueOf(100), 10, RoundingMode.HALF_UP))
                     .setScale(2, RoundingMode.HALF_UP);
         }
         return discount.setScale(2, RoundingMode.HALF_UP);
+    }
+
+    private void validatePercent(BigDecimal discount) {
+        if (discount.compareTo(BigDecimal.valueOf(100)) > 0) {
+            throw new IllegalArgumentException("Percent discount cannot exceed 100");
+        }
     }
 
     private Store findStoreOrThrow(Long storeId) {

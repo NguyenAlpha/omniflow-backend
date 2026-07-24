@@ -5,6 +5,7 @@ import com.quiktech.backend.dto.request.order.OrderPayRequest;
 import com.quiktech.backend.dto.response.common.ApiResult;
 import com.quiktech.backend.dto.response.common.PagedResult;
 import com.quiktech.backend.dto.response.order.OrderResponse;
+import com.quiktech.backend.entity.enums.OrderStatus;
 import com.quiktech.backend.security.UserPrincipal;
 import com.quiktech.backend.service.OrderService;
 import jakarta.validation.Valid;
@@ -36,7 +37,7 @@ public class OrderController {
     public ResponseEntity<ApiResult<PagedResult<OrderResponse>>> list(
             @PathVariable Long storeId,
             @RequestParam(required = false) String orderCode,
-            @RequestParam(required = false) String status,
+            @RequestParam(required = false) OrderStatus status,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to,
             @RequestParam(required = false) UUID customerPublicId,

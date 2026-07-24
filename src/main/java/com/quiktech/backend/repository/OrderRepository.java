@@ -1,6 +1,7 @@
 package com.quiktech.backend.repository;
 
 import com.quiktech.backend.entity.Order;
+import com.quiktech.backend.entity.enums.OrderStatus;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -102,7 +103,7 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
         """)
     Page<Order> search(
         @Param("storeId") Long storeId,
-        @Param("status") String status,
+        @Param("status") OrderStatus status,
         @Param("orderCode") String orderCode,
         @Param("customerPublicId") UUID customerPublicId,
         @Param("fromDate") Instant fromDate,

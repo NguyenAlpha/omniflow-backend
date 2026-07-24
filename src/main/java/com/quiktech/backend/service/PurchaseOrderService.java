@@ -72,6 +72,9 @@ public class PurchaseOrderService {
 
         Warehouse warehouse = warehouseRepository.findByPublicIdAndStoreId(request.warehousePublicId(), storeId)
                 .orElseThrow(() -> new ResourceNotFoundException(ErrorCode.WAREHOUSE_NOT_FOUND, "Warehouse not found"));
+        if (!warehouse.getIsActive()) {
+            throw new IllegalArgumentException("Warehouse is inactive");
+        }
 
         User userRef = userRepository.getReferenceById(currentUser.userId());
 
@@ -80,7 +83,7 @@ public class PurchaseOrderService {
 
         PurchaseOrder po = PurchaseOrder.builder()
                 .store(store)
-                .orderCode("PO-" + UUID.randomUUID().toString().replace("-", "").substring(0, 6).toUpperCase())
+                .orderCode(generateUniqueOrderCode(store.getId()))
                 .supplier(supplier)
                 .warehouse(warehouse)
                 .status(PurchaseOrderStatus.PENDING)
@@ -273,6 +276,17 @@ public class PurchaseOrderService {
     private Store findStoreOrThrow(Long storeId) {
         return storeRepository.findById(storeId)
                 .orElseThrow(() -> new ResourceNotFoundException(ErrorCode.STORE_NOT_FOUND, "Store not found"));
+    }
+
+    // Mã 6 hex ngẫu nhiên có thể trùng (birthday) — check DB trước; unique (store_id, order_code) là backstop
+    private String generateUniqueOrderCode(Long storeId) {
+        for (int attempt = 0; attempt < 5; attempt++) {
+            String code = "PO-" + UUID.randomUUID().toString().replace("-", "").substring(0, 6).toUpperCase();
+            if (purchaseOrderRepository.findByStoreIdAndOrderCode(storeId, code).isEmpty()) {
+                return code;
+            }
+        }
+        throw new IllegalStateException("Could not generate a unique order code after 5 attempts");
     }
 
     private PurchaseOrderResponse toResponse(PurchaseOrder po, List<PurchaseOrderItem> items) {
