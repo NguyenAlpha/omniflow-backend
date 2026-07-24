@@ -187,18 +187,21 @@ public class ReturnOrderService {
         Customer customer = originalOrder.getCustomer();
         BigDecimal refund = returnOrder.getTotalRefund();
         if (refund.compareTo(BigDecimal.ZERO) > 0) {
+            // Cộng dồn khoản hoàn vào đơn gốc để báo cáo doanh thu trừ đi phần đã trả
+            originalOrder.setRefundedAmount(originalOrder.getRefundedAmount().add(refund));
+
             // Chỉ trừ nợ đúng phần còn nợ trên đơn gốc; phần vượt là hoàn tiền mặt/chuyển khoản
             BigDecimal appliedToDebt = BigDecimal.ZERO;
             if (customer != null && originalOrder.getDebtAmount().compareTo(BigDecimal.ZERO) > 0) {
                 appliedToDebt = refund.min(originalOrder.getDebtAmount());
                 originalOrder.setDebtAmount(originalOrder.getDebtAmount().subtract(appliedToDebt));
-                originalOrder.setLastModifiedAt(Instant.now());
-                originalOrder.setUpdatedAt(Instant.now());
-                orderRepository.save(originalOrder);
 
                 customer.setDebtBalance(customer.getDebtBalance().subtract(appliedToDebt));
                 customerRepository.save(customer);
             }
+            originalOrder.setLastModifiedAt(Instant.now());
+            originalOrder.setUpdatedAt(Instant.now());
+            orderRepository.save(originalOrder);
 
             // Ghi nhận phần hoàn tiền thực chi bằng Payment âm — supplier IS NULL nên rơi vào
             // nhóm INCOME của sổ quỹ, sumIncome tự trừ đi khoản hoàn

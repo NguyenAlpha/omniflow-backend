@@ -72,6 +72,11 @@ public class Order {
     @Column(nullable = false, precision = 15, scale = 2)
     private BigDecimal debtAmount = BigDecimal.ZERO;
 
+    // Tổng đã hoàn qua các đơn trả COMPLETED — trừ khỏi doanh thu thuần
+    @Builder.Default
+    @Column(nullable = false, precision = 15, scale = 2)
+    private BigDecimal refundedAmount = BigDecimal.ZERO;
+
     @Builder.Default
     @Column(nullable = false, length = 20)
     private String paymentMethod = "CASH";
