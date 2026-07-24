@@ -47,6 +47,14 @@ public interface InventoryRepository extends JpaRepository<Inventory, Long> {
 
     long countByStoreIdAndDeletedAtIsNull(Long storeId);
 
+    // Tổng tồn kho còn lại của một kho — chặn xóa kho khi vẫn còn hàng
+    @Query("""
+        SELECT COALESCE(SUM(i.quantity), 0) FROM Inventory i
+        WHERE i.warehouse.id = :warehouseId
+        AND i.deletedAt IS NULL
+    """)
+    java.math.BigDecimal sumQuantityByWarehouseId(@Param("warehouseId") Long warehouseId);
+
     // Total stock by product
     @Query("""
         SELECT SUM(i.quantity) FROM Inventory i

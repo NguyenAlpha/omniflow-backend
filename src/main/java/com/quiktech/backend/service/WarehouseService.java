@@ -7,6 +7,7 @@ import com.quiktech.backend.entity.Store;
 import com.quiktech.backend.entity.User;
 import com.quiktech.backend.entity.Warehouse;
 import com.quiktech.backend.exception.ResourceNotFoundException;
+import com.quiktech.backend.repository.InventoryRepository;
 import com.quiktech.backend.repository.StoreRepository;
 import com.quiktech.backend.repository.UserRepository;
 import com.quiktech.backend.repository.WarehouseRepository;
@@ -15,6 +16,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
@@ -26,6 +28,7 @@ public class WarehouseService {
     private final WarehouseRepository warehouseRepository;
     private final StoreRepository storeRepository;
     private final UserRepository userRepository;
+    private final InventoryRepository inventoryRepository;
     private final SubscriptionLimitService subscriptionLimitService;
 
     @Transactional(readOnly = true)
@@ -89,6 +92,10 @@ public class WarehouseService {
     public void delete(Long storeId, UUID publicId, UserPrincipal currentUser) {
         findStoreOrThrow(storeId);
         Warehouse warehouse = findWarehouseOrThrow(storeId, publicId);
+        // Xóa kho còn hàng để lại tồn kho "ma" (vẫn cộng vào total_stock nhưng không bán được)
+        if (inventoryRepository.sumQuantityByWarehouseId(warehouse.getId()).compareTo(BigDecimal.ZERO) > 0) {
+            throw new IllegalArgumentException("Cannot delete a warehouse that still has stock. Transfer stock out first");
+        }
         warehouse.setDeletedAt(Instant.now());
         warehouseRepository.save(warehouse);
     }

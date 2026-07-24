@@ -81,7 +81,12 @@ public class InventoryService {
                         .build());
 
         BigDecimal previousQuantity = inv.getQuantity();
-        inv.setQuantity(previousQuantity.add(request.quantity()));
+        BigDecimal newQuantity = previousQuantity.add(request.quantity());
+        // Delta âm không được đẩy tồn kho xuống dưới 0 — kho âm phá invariant của deduct/transfer
+        if (newQuantity.compareTo(BigDecimal.ZERO) < 0) {
+            throw new IllegalArgumentException("Adjustment would result in negative stock");
+        }
+        inv.setQuantity(newQuantity);
         inv.setLastModifiedAt(Instant.now());
         inv.setUpdatedAt(Instant.now());
         inv.setLastModifiedByUser(userRef);
@@ -121,6 +126,10 @@ public class InventoryService {
 
         Warehouse toWarehouse = warehouseRepository.findByPublicIdAndStoreId(request.toWarehousePublicId(), storeId)
                 .orElseThrow(() -> new ResourceNotFoundException(ErrorCode.WAREHOUSE_NOT_FOUND, "Destination warehouse not found"));
+        // Không chuyển hàng vào kho inactive; chuyển RA vẫn cho phép để rút hàng trước khi xóa kho
+        if (!toWarehouse.getIsActive()) {
+            throw new IllegalArgumentException("Destination warehouse is inactive");
+        }
 
         User userRef = userRepository.getReferenceById(currentUser.userId());
 
