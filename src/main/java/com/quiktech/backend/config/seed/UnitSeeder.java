@@ -20,7 +20,8 @@ public class UnitSeeder implements ApplicationRunner {
 
     private final UnitRepository unitRepository;
 
-    @Value("${unit.seed.enabled:false}")
+    // Chạy khi SEED_ENABLED=true VÀ unit.seed.enabled=true
+    @Value("#{${seed.enabled:false} and ${unit.seed.enabled:false}}")
     private boolean enabled;
 
     @Override

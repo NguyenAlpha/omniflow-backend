@@ -34,7 +34,8 @@ public class BusinessSeeder implements ApplicationRunner {
     private final RoleRepository roleRepository;
     private final SubscriptionRepository subscriptionRepository;
 
-    @Value("${business.seed.enabled:false}")
+    // Chạy khi SEED_ENABLED=true VÀ business.seed.enabled=true
+    @Value("#{${seed.enabled:false} and ${business.seed.enabled:false}}")
     private boolean enabled;
 
     @Override

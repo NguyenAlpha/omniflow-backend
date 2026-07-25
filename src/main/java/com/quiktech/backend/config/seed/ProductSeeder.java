@@ -29,7 +29,8 @@ public class ProductSeeder implements ApplicationRunner {
     private final CategoryRepository categoryRepository;
     private final UnitRepository unitRepository;
 
-    @Value("${product.seed.enabled:false}")
+    // Chạy khi SEED_ENABLED=true VÀ product.seed.enabled=true
+    @Value("#{${seed.enabled:false} and ${product.seed.enabled:false}}")
     private boolean enabled;
 
     @Override

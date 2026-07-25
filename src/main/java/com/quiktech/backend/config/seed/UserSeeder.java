@@ -19,7 +19,8 @@ public class UserSeeder implements ApplicationRunner {
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
 
-    @Value("${user.seed.enabled:false}")
+    // Chạy khi SEED_ENABLED=true VÀ user.seed.enabled=true
+    @Value("#{${seed.enabled:false} and ${user.seed.enabled:false}}")
     private boolean enabled;
 
     @Override

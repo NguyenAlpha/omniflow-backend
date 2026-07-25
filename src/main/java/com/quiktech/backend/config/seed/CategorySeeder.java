@@ -24,7 +24,8 @@ public class CategorySeeder implements ApplicationRunner {
     private final BusinessRepository businessRepository;
     private final UserRepository userRepository;
 
-    @Value("${category.seed.enabled:false}")
+    // Chạy khi SEED_ENABLED=true VÀ category.seed.enabled=true
+    @Value("#{${seed.enabled:false} and ${category.seed.enabled:false}}")
     private boolean enabled;
 
     @Override

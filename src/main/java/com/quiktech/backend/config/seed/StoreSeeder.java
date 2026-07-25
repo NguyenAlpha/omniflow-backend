@@ -20,7 +20,8 @@ public class StoreSeeder implements ApplicationRunner {
     private final StoreRepository storeRepository;
     private final BusinessRepository businessRepository;
 
-    @Value("${store.seed.enabled:false}")
+    // Chạy khi SEED_ENABLED=true VÀ store.seed.enabled=true
+    @Value("#{${seed.enabled:false} and ${store.seed.enabled:false}}")
     private boolean enabled;
 
     @Override

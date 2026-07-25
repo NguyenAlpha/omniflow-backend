@@ -21,7 +21,8 @@ public class WarehouseSeeder implements ApplicationRunner {
     private final WarehouseRepository warehouseRepository;
     private final StoreRepository storeRepository;
 
-    @Value("${warehouse.seed.enabled:false}")
+    // Chạy khi SEED_ENABLED=true VÀ warehouse.seed.enabled=true
+    @Value("#{${seed.enabled:false} and ${warehouse.seed.enabled:false}}")
     private boolean enabled;
 
     @Override
