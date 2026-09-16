@@ -46,7 +46,7 @@ public class EmailService {
                   <tr><td style="padding:8px;border:1px solid #ddd"><strong>Hết hạn</strong></td>
                       <td style="padding:8px;border:1px solid #ddd">%s</td></tr>
                 </table>
-                <p>Cảm ơn bạn đã sử dụng dịch vụ QuikTech!</p>
+                <p>Cảm ơn bạn đã sử dụng dịch vụ QuikTech POS!</p>
                 </body></html>
                 """.formatted(businessName, plan.name(), amount.toPlainString(), formatDate(expiresAt));
 

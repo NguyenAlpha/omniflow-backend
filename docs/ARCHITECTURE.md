@@ -3,11 +3,11 @@
 ## 1. Cấu trúc Package
 
 - **Group ID:** `com.quiktech`
-- **Artifact ID:** `quik-tech`
-- **Base Package:** `com.quiktech.backend`
+- **Artifact ID:** `quiktech-pos`
+- **Base Package:** `com.quiktech.pos`
 
 ```
-com.quiktech.backend
+com.quiktech.pos
 ├── config/
 │   ├── ApplicationConfig.java       — auth beans; UserDetailsService chỉ dùng cho login
 │   ├── SecurityConfig.java          — JWT filter chain, method security (@EnableMethodSecurity)

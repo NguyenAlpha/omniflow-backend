@@ -1,4 +1,4 @@
-# Vòng đời hệ thống QuikTech
+# Vòng đời hệ thống QuikTech POS
 
 ---
 

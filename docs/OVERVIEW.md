@@ -1,8 +1,8 @@
-# Project QuikTech — POS & Inventory System
+# Project QuikTech POS — POS & Inventory System
 
 ## 1. Tổng quan dự án
 
-**QuikTech** là hệ thống quản lý bán hàng, kho vận, thống kê đa tenant (multi-tenant B2B SaaS),
+**QuikTech POS** là hệ thống quản lý bán hàng, kho vận, thống kê đa tenant (multi-tenant B2B SaaS),
 tập trung vào tính chính xác dữ liệu tài chính, phân quyền theo vai trò,
 và khả năng sync offline (sync chưa triển khai ngay).
 

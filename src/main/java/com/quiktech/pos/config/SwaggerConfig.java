@@ -15,7 +15,7 @@ public class SwaggerConfig {
     public OpenAPI openAPI() {
         final String schemeName = "bearerAuth";
         return new OpenAPI()
-                .info(new Info().title("QuikTech API").version("1.0"))
+                .info(new Info().title("QuikTech POS API").version("1.0"))
                 .addSecurityItem(new SecurityRequirement().addList(schemeName))
                 .components(new Components()
                         .addSecuritySchemes(schemeName,

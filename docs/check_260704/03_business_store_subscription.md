@@ -144,7 +144,7 @@ Các vấn đề cache đã nêu ở phần 02 (`business:role`/`business:member
   2. Email cảnh báo hết hạn gửi **lặp lại mỗi ngày** trong suốt 7 ngày cuối (`findExpiringSoon` không có cờ đã-gửi) — spam 7 email/subscription.
   3. `checkStaffLimit` đếm cả member `isActive=false` (chỉ filter `deletedAt`) — member bị tạm khóa vẫn chiếm quota; chấp nhận được nhưng nên ghi rõ trong docs.
   4. `STORE_MEMBER_LIFECYCLE.md:162` tham chiếu `BUSINESS_MEMBER_LIFECYCLE.md` — file không tồn tại trong `api/docs/`.
-  5. `LIFECYCLE.md` tiêu đề "hệ thống OmniFlow" — tên sản phẩm cũ/khác, không khớp QuikTech.
+  5. `LIFECYCLE.md` tiêu đề "hệ thống OmniFlow" — tên sản phẩm cũ/khác, không khớp QuikTech POS.
   6. `BusinessMember` được ghi khi tạo business nhưng không nơi nào trong module dùng cho authorization (chỉ `UserRole`) — hai bảng có thể lệch nhau mà không ai phát hiện (dead-ish data path, đúng rule "mention, don't delete").
 - Tác động: Nhỏ, chủ yếu chất lượng dữ liệu/docs/UX email.
 - Đề xuất: Sửa lần lượt: set/loại bỏ `pendingBillingCycle`; thêm cờ `expiryWarningSentAt`; cập nhật docs; tạo hoặc bỏ tham chiếu `BUSINESS_MEMBER_LIFECYCLE.md`; thống nhất tên sản phẩm.
@@ -153,7 +153,7 @@ Các vấn đề cache đã nêu ở phần 02 (`business:role`/`business:member
   2. Email spam: thêm cột `expiry_warning_sent_at` (V10) + filter trong `findExpiringSoon`, reset khi kích hoạt chu kỳ mới — `de4c8d4`.
   3. Staff quota đếm cả inactive: ghi rõ trong `FEATURES.md` mục 5 — `de4c8d4`.
   4. Tham chiếu `BUSINESS_MEMBER_LIFECYCLE.md` chết: đã thay bằng mô tả inline trong `STORE_MEMBER_LIFECYCLE.md` — `ef50a96`.
-  5. Tên "OmniFlow" trong `LIFECYCLE.md`: đổi thành QuikTech — `de4c8d4`.
+  5. Tên "OmniFlow" trong `LIFECYCLE.md`: đổi thành QuikTech POS — `de4c8d4`.
   6. `BusinessMember` dead-ish: **chưa xử lý** (đúng rule "mention, don't delete") — cần quyết định riêng: dùng cho authorization hay bỏ bảng.
 
 ## 4. Điểm tốt

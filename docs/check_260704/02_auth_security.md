@@ -4,7 +4,7 @@
 
 ## 1. Phạm vi đã kiểm tra (liệt kê file)
 
-> Lưu ý: package thực tế là `com.quiktech.backend` (không phải `com.quiktech.api`).
+> Lưu ý: package thực tế là `com.quiktech.pos` (không phải `com.quiktech.api`).
 
 - `api/src/main/java/com/quiktech/backend/controller/AuthController.java`
 - `api/src/main/java/com/quiktech/backend/service/AuthService.java`
