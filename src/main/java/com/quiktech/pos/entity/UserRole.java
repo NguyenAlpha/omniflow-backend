@@ -1,0 +1,67 @@
+package com.quiktech.pos.entity;
+
+import lombok.*;
+import jakarta.persistence.*;
+import org.hibernate.annotations.SQLRestriction;
+import java.time.Instant;
+
+@Entity
+@Table(name = "user_roles", indexes = {
+    @Index(name = "idx_user_roles_user_id", columnList = "user_id"),
+    @Index(name = "idx_user_roles_role_id", columnList = "role_id"),
+    @Index(name = "idx_user_roles_business_id", columnList = "business_id"),
+    @Index(name = "idx_user_roles_store_id", columnList = "store_id")
+})
+@SQLRestriction("deleted_at IS NULL")
+@Getter
+@Setter
+@NoArgsConstructor
+@AllArgsConstructor
+@Builder
+public class UserRole {
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    @ManyToOne(optional = false)
+    @JoinColumn(name = "user_id", nullable = false)
+    private User user;
+
+    @ManyToOne(optional = false)
+    @JoinColumn(name = "role_id", nullable = false)
+    private Role role;
+
+    // NULL/NULL = global; business_id only = OWNER; store_id only = MANAGER/STAFF
+    @ManyToOne
+    @JoinColumn(name = "business_id")
+    private Business business;
+
+    @ManyToOne
+    @JoinColumn(name = "store_id")
+    private Store store;
+
+    @ManyToOne
+    @JoinColumn(name = "granted_by")
+    private User grantedBy;
+
+    @Builder.Default
+    @Column(nullable = false)
+    private Boolean isActive = true;
+
+    @Builder.Default
+    @Column(nullable = false, columnDefinition = "TIMESTAMPTZ")
+    private Instant createdAt = Instant.now();
+
+    @Builder.Default
+    @Column(nullable = false, columnDefinition = "TIMESTAMPTZ")
+    private Instant updatedAt = Instant.now();
+
+    @Column(columnDefinition = "TIMESTAMPTZ")
+    private Instant deletedAt;
+
+    @PreUpdate
+    void onUpdate() {
+        updatedAt = Instant.now();
+    }
+}

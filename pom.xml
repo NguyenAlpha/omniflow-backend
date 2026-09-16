@@ -9,10 +9,10 @@
 		<relativePath/> <!-- lookup parent from repository -->
 	</parent>
 	<groupId>com.quiktech</groupId>
-	<artifactId>quik-tech</artifactId>
+	<artifactId>quiktech-pos</artifactId>
 	<version>0.0.1-SNAPSHOT</version>
-	<name/>
-	<description/>
+	<name>QuikTech POS</name>
+	<description>Point of sale and inventory management system</description>
 	<url/>
 	<licenses>
 		<license/>

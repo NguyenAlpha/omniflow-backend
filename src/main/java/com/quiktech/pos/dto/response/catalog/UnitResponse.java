@@ -1,0 +1,16 @@
+package com.quiktech.pos.dto.response.catalog;
+
+import java.time.Instant;
+import java.util.UUID;
+
+public record UnitResponse(
+    Long id,
+    UUID publicId,
+    Long businessId,
+    String name,
+    String abbreviation,
+    Long syncVersion,
+    Instant lastModifiedAt
+) {
+}
+

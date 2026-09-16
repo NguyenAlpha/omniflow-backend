@@ -1,0 +1,45 @@
+package com.quiktech.pos.config.seed;
+
+import com.quiktech.pos.entity.User;
+import com.quiktech.pos.repository.UserRepository;
+import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.ApplicationArguments;
+import org.springframework.boot.ApplicationRunner;
+import org.springframework.core.annotation.Order;
+import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.stereotype.Component;
+import org.springframework.transaction.annotation.Transactional;
+
+@Component
+@Order(1)
+@RequiredArgsConstructor
+public class UserSeeder implements ApplicationRunner {
+
+    private final UserRepository userRepository;
+    private final PasswordEncoder passwordEncoder;
+
+    // Chạy khi SEED_ENABLED=true VÀ user.seed.enabled=true
+    @Value("#{${seed.enabled:false} and ${user.seed.enabled:false}}")
+    private boolean enabled;
+
+    @Override
+    @Transactional
+    public void run(ApplicationArguments args) {
+        if (!enabled) return;
+
+        seedUser("user1", "u1@u.com", "User One");
+        seedUser("user2", "u2@u.com", "User Two");
+        seedUser("user3", "u3@u.com", "User Three");
+    }
+
+    private void seedUser(String username, String email, String fullName) {
+        userRepository.findByUsername(username)
+                .orElseGet(() -> userRepository.save(User.builder()
+                        .username(username)
+                        .email(email)
+                        .passwordHash(passwordEncoder.encode("password"))
+                        .fullName(fullName)
+                        .build()));
+    }
+}
