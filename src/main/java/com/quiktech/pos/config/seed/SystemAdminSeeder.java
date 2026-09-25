@@ -17,6 +17,10 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
 
+/**
+ * SystemAdminSeeder được Spring chạy mỗi lần ứng dụng khởi động xong (sau khi ApplicationContext được tạo)
+ * vì class này implement ApplicationRunner
+ */
 @Component
 @RequiredArgsConstructor
 public class SystemAdminSeeder implements ApplicationRunner {

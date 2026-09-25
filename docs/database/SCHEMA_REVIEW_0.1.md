@@ -1,4 +1,4 @@
-# Đánh giá Schema Database — OmniFlow
+# Đánh giá Schema Database — QuickTech POS
 
 > **Vai trò đánh giá:** Database Architect Senior, 10+ năm kinh nghiệm production
 > **Ngày đánh giá:** 2026-05-06

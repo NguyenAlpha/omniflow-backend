@@ -1,4 +1,4 @@
-# Đánh giá Query-Friendliness 1.0 — OmniFlow
+# Đánh giá Query-Friendliness 1.0 — QuickTech POS
 
 > **Vai trò đánh giá:** Database Architect chuyên PostgreSQL + Spring Data JPA
 > **Ngày đánh giá:** 2026-05-06
