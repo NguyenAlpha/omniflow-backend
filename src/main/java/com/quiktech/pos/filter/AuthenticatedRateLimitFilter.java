@@ -49,8 +49,23 @@ public class AuthenticatedRateLimitFilter extends OncePerRequestFilter {
 
     @Value("${rate-limit.api.user.window-seconds:60}")
     private int windowSeconds;
+    @Value("${rate-limit.import-products.user.max-requests:5}")
+    private int importProductsMaxRequests;
+    @Value("${rate-limit.import-products.user.window-seconds:600}")
+    private int importProductsWindowSeconds;
+    @Value("${rate-limit.export.user.max-requests:10}")
+    private int exportMaxRequests;
+    @Value("${rate-limit.export.user.window-seconds:600}")
+    private int exportWindowSeconds;
+    @Value("${rate-limit.change-password.user.max-requests:5}")
+    private int changePasswordMaxRequests;
+    @Value("${rate-limit.change-password.user.window-seconds:600}")
+    private int changePasswordWindowSeconds;
 
-    private BucketConfiguration config;
+    private BucketConfiguration apiConfig;
+    private BucketConfiguration importProductsConfig;
+    private BucketConfiguration exportConfig;
+    private BucketConfiguration changePasswordConfig;
 
     public AuthenticatedRateLimitFilter(LettuceBasedProxyManager<byte[]> rateLimitProxyManager) {
         this.rateLimitProxyManager = rateLimitProxyManager;
@@ -58,10 +73,17 @@ public class AuthenticatedRateLimitFilter extends OncePerRequestFilter {
 
     @PostConstruct
     void initBucketConfig() {
-        config = BucketConfiguration.builder()
+        apiConfig = bucketConfig(maxRequests, windowSeconds);
+        importProductsConfig = bucketConfig(importProductsMaxRequests, importProductsWindowSeconds);
+        exportConfig = bucketConfig(exportMaxRequests, exportWindowSeconds);
+        changePasswordConfig = bucketConfig(changePasswordMaxRequests, changePasswordWindowSeconds);
+    }
+
+    private BucketConfiguration bucketConfig(int capacity, int refillSeconds) {
+        return BucketConfiguration.builder()
                 .addLimit(Bandwidth.builder()
-                        .capacity(maxRequests)
-                        .refillIntervally(maxRequests, Duration.ofSeconds(windowSeconds))
+                        .capacity(capacity)
+                        .refillIntervally(capacity, Duration.ofSeconds(refillSeconds))
                         .build())
                 .build();
     }
@@ -81,11 +103,12 @@ public class AuthenticatedRateLimitFilter extends OncePerRequestFilter {
             return;
         }
 
-        String bucketKey = "rl:user:api:" + principal.userId();
+        RateLimitRule rule = resolveRule(request);
+        String bucketKey = "rl:user:" + rule.name() + ":" + principal.userId();
         ConsumptionProbe probe = null;
         try {
             Bucket bucket = rateLimitProxyManager.builder().build(
-                    bucketKey.getBytes(StandardCharsets.UTF_8), () -> config);
+                    bucketKey.getBytes(StandardCharsets.UTF_8), () -> rule.config());
             probe = bucket.tryConsumeAndReturnRemaining(1);
         } catch (Exception e) {
             // Redis unavailable must not turn every authenticated API request into a 500.
@@ -103,5 +126,24 @@ public class AuthenticatedRateLimitFilter extends OncePerRequestFilter {
         }
 
         chain.doFilter(request, response);
+    }
+
+    private RateLimitRule resolveRule(HttpServletRequest request) {
+        String path = PATH_HELPER.getPathWithinApplication(request);
+        String method = request.getMethod();
+
+        if ("POST".equals(method) && path.matches("^/api/businesses/[^/]+/products/import$")) {
+            return new RateLimitRule("import-products", importProductsConfig);
+        }
+        if ("GET".equals(method) && path.matches("^/api/stores/[^/]+/export/.+$")) {
+            return new RateLimitRule("export", exportConfig);
+        }
+        if ("PATCH".equals(method) && "/api/users/me/password".equals(path)) {
+            return new RateLimitRule("change-password", changePasswordConfig);
+        }
+        return new RateLimitRule("api", apiConfig);
+    }
+
+    private record RateLimitRule(String name, BucketConfiguration config) {
     }
 }

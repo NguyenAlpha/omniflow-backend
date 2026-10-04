@@ -46,6 +46,10 @@ public class RateLimitFilter extends OncePerRequestFilter {
     private int refreshMaxRequests;
     @Value("${rate-limit.refresh.window-seconds:60}")
     private int refreshWindowSeconds;
+    @Value("${rate-limit.api.ip.max-requests:1200}")
+    private int apiIpMaxRequests;
+    @Value("${rate-limit.api.ip.window-seconds:60}")
+    private int apiIpWindowSeconds;
 
     /**
      * Danh sách IP proxy tin cậy (comma-separated). Chỉ khi remoteAddr nằm trong danh
@@ -66,6 +70,7 @@ public class RateLimitFilter extends OncePerRequestFilter {
     private BucketConfiguration loginConfig;
     private BucketConfiguration registerConfig;
     private BucketConfiguration refreshConfig;
+    private BucketConfiguration apiIpConfig;
 
     // JSON response cố định khớp với format ApiResult của codebase:
     // {"success":false,"data":null,"error":{"code":"RATE_LIMIT_EXCEEDED","message":"...","field":null}}
@@ -94,13 +99,20 @@ public class RateLimitFilter extends OncePerRequestFilter {
                         .refillIntervally(refreshMaxRequests, Duration.ofSeconds(refreshWindowSeconds))
                         .build())
                 .build();
+
+        apiIpConfig = BucketConfiguration.builder()
+                .addLimit(Bandwidth.builder()
+                        .capacity(apiIpMaxRequests)
+                        .refillIntervally(apiIpMaxRequests, Duration.ofSeconds(apiIpWindowSeconds))
+                        .build())
+                .build();
     }
 
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain chain)
             throws ServletException, IOException {
 
-        if (!"POST".equals(request.getMethod())) {
+        if ("OPTIONS".equals(request.getMethod())) {
             chain.doFilter(request, response);
             return;
         }
@@ -112,15 +124,20 @@ public class RateLimitFilter extends OncePerRequestFilter {
         String bucketKey = null;
         BucketConfiguration config = null;
 
-        if ("/api/auth/login".equals(path)) {
+        if ("POST".equals(request.getMethod()) && "/api/auth/login".equals(path)) {
             bucketKey = "rl:login:" + ip;
             config = loginConfig;
-        } else if ("/api/auth/register".equals(path)) {
+        } else if ("POST".equals(request.getMethod()) && "/api/auth/register".equals(path)) {
             bucketKey = "rl:register:" + ip;
             config = registerConfig;
-        } else if ("/api/auth/refresh".equals(path)) {
+        } else if ("POST".equals(request.getMethod()) && "/api/auth/refresh".equals(path)) {
             bucketKey = "rl:refresh:" + ip;
             config = refreshConfig;
+        } else if (path.startsWith("/api/")) {
+            // Coarse per-IP ceiling for every application API request. Authenticated
+            // traffic receives a second, fairer per-user limit after JWT validation.
+            bucketKey = "rl:ip:api:" + ip;
+            config = apiIpConfig;
         }
 
         if (bucketKey != null) {
