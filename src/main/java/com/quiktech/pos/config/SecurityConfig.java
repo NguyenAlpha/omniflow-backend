@@ -2,6 +2,8 @@ package com.quiktech.pos.config;
 
 import com.quiktech.pos.security.StoreAccessEvaluator;
 import com.quiktech.pos.security.UserPrincipalConverter;
+import com.quiktech.pos.filter.AuthenticatedRateLimitFilter;
+import io.github.bucket4j.redis.lettuce.cas.LettuceBasedProxyManager;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -13,7 +15,9 @@ import org.springframework.security.config.annotation.web.configuration.EnableWe
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.oauth2.jwt.Jwt;
+import org.springframework.security.oauth2.server.resource.web.authentication.BearerTokenAuthenticationFilter;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.boot.web.servlet.FilterRegistrationBean;
 
 import org.springframework.http.MediaType;
 
@@ -62,7 +66,8 @@ public class SecurityConfig {
      * Thứ tự các bước cấu hình phản ánh thứ tự xử lý thực tế của Spring Security.
      */
     @Bean
-    public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
+    public SecurityFilterChain securityFilterChain(HttpSecurity http,
+                                                   AuthenticatedRateLimitFilter authenticatedRateLimitFilter) throws Exception {
         return http
                 // CORS bật để cho phép frontend (ví dụ: localhost:3000) gọi API
                 .cors(cors -> {})
@@ -103,6 +108,28 @@ public class SecurityConfig {
                         .jwt(jwt -> jwt.jwtAuthenticationConverter(jwtAuthConverter))
                 )
 
+                // Phải chạy sau BearerTokenAuthenticationFilter để quota theo userId đã
+                // được xác thực, không theo IP dùng chung của nhiều máy trong một store.
+                .addFilterAfter(authenticatedRateLimitFilter, BearerTokenAuthenticationFilter.class)
+
                 .build();
+    }
+
+    /**
+     * Filter này chỉ thuộc Spring Security filter chain. Disable container registration
+     * để nó không chạy thêm lần nữa trước khi JWT được xác thực.
+     */
+    @Bean
+    public static FilterRegistrationBean<AuthenticatedRateLimitFilter> authenticatedRateLimitFilterRegistration(
+            AuthenticatedRateLimitFilter filter) {
+        FilterRegistrationBean<AuthenticatedRateLimitFilter> registration = new FilterRegistrationBean<>(filter);
+        registration.setEnabled(false);
+        return registration;
+    }
+
+    @Bean
+    public AuthenticatedRateLimitFilter authenticatedRateLimitFilter(
+            LettuceBasedProxyManager<byte[]> rateLimitProxyManager) {
+        return new AuthenticatedRateLimitFilter(rateLimitProxyManager);
     }
 }
