@@ -13,16 +13,13 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.http.MediaType;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.filter.OncePerRequestFilter;
 import org.springframework.web.util.UrlPathHelper;
 
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
 import java.time.Duration;
-import java.util.concurrent.TimeUnit;
 
 /**
  * Rate limit cho request API đã được Spring Security xác thực.
@@ -39,9 +36,6 @@ import java.util.concurrent.TimeUnit;
 public class AuthenticatedRateLimitFilter extends OncePerRequestFilter {
 
     private static final UrlPathHelper PATH_HELPER = UrlPathHelper.defaultInstance;
-    private static final String RATE_LIMIT_BODY = """
-            {"success":false,"data":null,"error":{"code":"RATE_LIMIT_EXCEEDED","message":"Too many requests. Please try again later.","field":null}}""";
-
     private final LettuceBasedProxyManager<byte[]> rateLimitProxyManager;
 
     @Value("${rate-limit.api.user.max-requests:300}")
@@ -108,7 +102,7 @@ public class AuthenticatedRateLimitFilter extends OncePerRequestFilter {
         ConsumptionProbe probe = null;
         try {
             Bucket bucket = rateLimitProxyManager.builder().build(
-                    bucketKey.getBytes(StandardCharsets.UTF_8), () -> rule.config());
+                    bucketKey.getBytes(java.nio.charset.StandardCharsets.UTF_8), () -> rule.config());
             probe = bucket.tryConsumeAndReturnRemaining(1);
         } catch (Exception e) {
             // Redis unavailable must not turn every authenticated API request into a 500.
@@ -116,12 +110,7 @@ public class AuthenticatedRateLimitFilter extends OncePerRequestFilter {
         }
 
         if (probe != null && !probe.isConsumed()) {
-            long retryAfter = TimeUnit.NANOSECONDS.toSeconds(probe.getNanosToWaitForRefill()) + 1;
-            response.setStatus(429);
-            response.setHeader("Retry-After", String.valueOf(retryAfter));
-            response.setContentType(MediaType.APPLICATION_JSON_VALUE);
-            response.setCharacterEncoding(StandardCharsets.UTF_8.name());
-            response.getWriter().write(RATE_LIMIT_BODY);
+            RateLimitResponseWriter.write(response, probe, rule.limit());
             return;
         }
 
@@ -133,17 +122,17 @@ public class AuthenticatedRateLimitFilter extends OncePerRequestFilter {
         String method = request.getMethod();
 
         if ("POST".equals(method) && path.matches("^/api/businesses/[^/]+/products/import$")) {
-            return new RateLimitRule("import-products", importProductsConfig);
+            return new RateLimitRule("import-products", importProductsConfig, importProductsMaxRequests);
         }
         if ("GET".equals(method) && path.matches("^/api/stores/[^/]+/export/.+$")) {
-            return new RateLimitRule("export", exportConfig);
+            return new RateLimitRule("export", exportConfig, exportMaxRequests);
         }
         if ("PATCH".equals(method) && "/api/users/me/password".equals(path)) {
-            return new RateLimitRule("change-password", changePasswordConfig);
+            return new RateLimitRule("change-password", changePasswordConfig, changePasswordMaxRequests);
         }
-        return new RateLimitRule("api", apiConfig);
+        return new RateLimitRule("api", apiConfig, maxRequests);
     }
 
-    private record RateLimitRule(String name, BucketConfiguration config) {
+    private record RateLimitRule(String name, BucketConfiguration config, int limit) {
     }
 }

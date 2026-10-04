@@ -16,15 +16,12 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
-import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 import org.springframework.web.util.UrlPathHelper;
 
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
 import java.time.Duration;
-import java.util.concurrent.TimeUnit;
 
 @Slf4j
 @Component
@@ -63,11 +60,6 @@ public class RateLimitFilter extends OncePerRequestFilter {
     private BucketConfiguration registerConfig;
     private BucketConfiguration refreshConfig;
     private BucketConfiguration apiIpConfig;
-
-    // JSON response cố định khớp với format ApiResult của codebase:
-    // {"success":false,"data":null,"error":{"code":"RATE_LIMIT_EXCEEDED","message":"...","field":null}}
-    private static final String RATE_LIMIT_BODY = """
-            {"success":false,"data":null,"error":{"code":"RATE_LIMIT_EXCEEDED","message":"Too many requests. Please try again later.","field":null}}""";
 
     @PostConstruct
     void initBucketConfigs() {
@@ -115,21 +107,26 @@ public class RateLimitFilter extends OncePerRequestFilter {
         String ip = clientIpResolver.resolve(request);
         String bucketKey = null;
         BucketConfiguration config = null;
+        int limit = 0;
 
         if ("POST".equals(request.getMethod()) && "/api/auth/login".equals(path)) {
             bucketKey = "rl:login:" + ip;
             config = loginConfig;
+            limit = loginMaxRequests;
         } else if ("POST".equals(request.getMethod()) && "/api/auth/register".equals(path)) {
             bucketKey = "rl:register:" + ip;
             config = registerConfig;
+            limit = registerMaxRequests;
         } else if ("POST".equals(request.getMethod()) && "/api/auth/refresh".equals(path)) {
             bucketKey = "rl:refresh:" + ip;
             config = refreshConfig;
+            limit = refreshMaxRequests;
         } else if (path.startsWith("/api/")) {
             // Coarse per-IP ceiling for every application API request. Authenticated
             // traffic receives a second, fairer per-user limit after JWT validation.
             bucketKey = "rl:ip:api:" + ip;
             config = apiIpConfig;
+            limit = apiIpMaxRequests;
         }
 
         if (bucketKey != null) {
@@ -138,7 +135,7 @@ public class RateLimitFilter extends OncePerRequestFilter {
             // toàn bộ login/register trả 500 (mất chức năng đăng nhập thay vì mất rate limit).
             ConsumptionProbe probe = null;
             try {
-                byte[] key = bucketKey.getBytes(StandardCharsets.UTF_8);
+                byte[] key = bucketKey.getBytes(java.nio.charset.StandardCharsets.UTF_8);
                 final BucketConfiguration finalConfig = config;
                 Bucket bucket = rateLimitProxyManager.builder().build(key, () -> finalConfig);
                 probe = bucket.tryConsumeAndReturnRemaining(1);
@@ -147,12 +144,7 @@ public class RateLimitFilter extends OncePerRequestFilter {
             }
 
             if (probe != null && !probe.isConsumed()) {
-                long retryAfter = TimeUnit.NANOSECONDS.toSeconds(probe.getNanosToWaitForRefill()) + 1;
-                response.setStatus(429);
-                response.setHeader("Retry-After", String.valueOf(retryAfter));
-                response.setContentType(MediaType.APPLICATION_JSON_VALUE);
-                response.setCharacterEncoding(StandardCharsets.UTF_8.name());
-                response.getWriter().write(RATE_LIMIT_BODY);
+                RateLimitResponseWriter.write(response, probe, limit);
                 return;
             }
         }
