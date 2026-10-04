@@ -17,8 +17,10 @@ final class RateLimitResponseWriter {
     private RateLimitResponseWriter() {
     }
 
-    static void write(HttpServletResponse response, ConsumptionProbe probe, int limit) throws IOException {
-        long retryAfter = TimeUnit.NANOSECONDS.toSeconds(probe.getNanosToWaitForRefill()) + 1;
+    static void write(HttpServletResponse response, ConsumptionProbe probe, long limit) throws IOException {
+        long nanos = probe.getNanosToWaitForRefill();
+        long retryAfter = Math.max(1, TimeUnit.NANOSECONDS.toSeconds(nanos)
+                + (nanos % TimeUnit.SECONDS.toNanos(1) == 0 ? 0 : 1));
 
         response.setStatus(429);
         response.setHeader("Retry-After", String.valueOf(retryAfter));

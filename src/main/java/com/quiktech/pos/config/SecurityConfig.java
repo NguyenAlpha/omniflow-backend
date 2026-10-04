@@ -3,8 +3,7 @@ package com.quiktech.pos.config;
 import com.quiktech.pos.security.StoreAccessEvaluator;
 import com.quiktech.pos.security.UserPrincipalConverter;
 import com.quiktech.pos.filter.AuthenticatedRateLimitFilter;
-import com.quiktech.pos.filter.RateLimitMetrics;
-import io.github.bucket4j.redis.lettuce.cas.LettuceBasedProxyManager;
+import com.quiktech.pos.filter.RateLimitService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -70,8 +69,7 @@ public class SecurityConfig {
     public SecurityFilterChain securityFilterChain(HttpSecurity http,
                                                    AuthenticatedRateLimitFilter authenticatedRateLimitFilter) throws Exception {
         return http
-                // CORS bật để cho phép frontend (ví dụ: localhost:3000) gọi API
-                .cors(cors -> {})
+                .cors(AbstractHttpConfigurer::disable)
                 // CSRF không cần thiết với stateless JWT — không có cookie session để exploit
                 .csrf(AbstractHttpConfigurer::disable)
 
@@ -129,9 +127,7 @@ public class SecurityConfig {
     }
 
     @Bean
-    public AuthenticatedRateLimitFilter authenticatedRateLimitFilter(
-            LettuceBasedProxyManager<byte[]> rateLimitProxyManager,
-            RateLimitMetrics rateLimitMetrics) {
-        return new AuthenticatedRateLimitFilter(rateLimitProxyManager, rateLimitMetrics);
+    public AuthenticatedRateLimitFilter authenticatedRateLimitFilter(RateLimitService rateLimitService) {
+        return new AuthenticatedRateLimitFilter(rateLimitService);
     }
 }

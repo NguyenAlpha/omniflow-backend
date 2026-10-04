@@ -83,6 +83,8 @@ com.quiktech.pos
 HTTP Request
     ↓
 [ Filter Layer ]
+    CorsFilter                     — CORS trước limiter, expose header 429
+        ↓
     RateLimitFilter                — quota IP: auth endpoints + trần /api/**
     BearerTokenAuthenticationFilter  — validate JWT signature/expiry (Spring built-in, 0 DB call)
     UserPrincipalConverter           — convert Jwt claims → UserPrincipal, set SecurityContext

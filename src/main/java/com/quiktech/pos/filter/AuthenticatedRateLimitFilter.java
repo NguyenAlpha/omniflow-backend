@@ -2,16 +2,12 @@ package com.quiktech.pos.filter;
 
 import com.quiktech.pos.security.UserPrincipal;
 import io.github.bucket4j.Bandwidth;
-import io.github.bucket4j.Bucket;
 import io.github.bucket4j.BucketConfiguration;
-import io.github.bucket4j.ConsumptionProbe;
-import io.github.bucket4j.redis.lettuce.cas.LettuceBasedProxyManager;
 import jakarta.annotation.PostConstruct;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
-import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -32,12 +28,10 @@ import java.time.Duration;
  * <p>Không đánh rate limit request chưa xác thực tại đây. Chúng được xử lý bởi
  * {@link RateLimitFilter}, chạy ở lớp servlet trước Spring Security.
  */
-@Slf4j
 public class AuthenticatedRateLimitFilter extends OncePerRequestFilter {
 
     private static final UrlPathHelper PATH_HELPER = UrlPathHelper.defaultInstance;
-    private final LettuceBasedProxyManager<byte[]> rateLimitProxyManager;
-    private final RateLimitMetrics rateLimitMetrics;
+    private final RateLimitService rateLimitService;
 
     @Value("${rate-limit.api.user.max-requests:300}")
     private int maxRequests;
@@ -62,10 +56,8 @@ public class AuthenticatedRateLimitFilter extends OncePerRequestFilter {
     private BucketConfiguration exportConfig;
     private BucketConfiguration changePasswordConfig;
 
-    public AuthenticatedRateLimitFilter(LettuceBasedProxyManager<byte[]> rateLimitProxyManager,
-                                        RateLimitMetrics rateLimitMetrics) {
-        this.rateLimitProxyManager = rateLimitProxyManager;
-        this.rateLimitMetrics = rateLimitMetrics;
+    public AuthenticatedRateLimitFilter(RateLimitService rateLimitService) {
+        this.rateLimitService = rateLimitService;
     }
 
     @PostConstruct
@@ -102,24 +94,10 @@ public class AuthenticatedRateLimitFilter extends OncePerRequestFilter {
 
         RateLimitRule rule = resolveRule(request);
         String bucketKey = "rl:user:" + rule.name() + ":" + principal.userId();
-        ConsumptionProbe probe = null;
-        try {
-            Bucket bucket = rateLimitProxyManager.builder().build(
-                    bucketKey.getBytes(java.nio.charset.StandardCharsets.UTF_8), () -> rule.config());
-            probe = bucket.tryConsumeAndReturnRemaining(1);
-        } catch (Exception e) {
-            // Redis unavailable must not turn every authenticated API request into a 500.
-            log.warn("Authenticated rate limit check failed — failing open for userId={}", principal.userId(), e);
-            rateLimitMetrics.record("user", rule.name(), "error");
-        }
-
-        if (probe != null && !probe.isConsumed()) {
-            rateLimitMetrics.record("user", rule.name(), "blocked");
-            RateLimitResponseWriter.write(response, probe, rule.limit());
+        RateLimitService.Decision decision = rateLimitService.check(bucketKey, rule.config(), "user", rule.name());
+        if (decision != null && !decision.probe().isConsumed()) {
+            RateLimitResponseWriter.write(response, decision.probe(), decision.limit());
             return;
-        }
-        if (probe != null) {
-            rateLimitMetrics.record("user", rule.name(), "allowed");
         }
 
         chain.doFilter(request, response);
@@ -130,17 +108,17 @@ public class AuthenticatedRateLimitFilter extends OncePerRequestFilter {
         String method = request.getMethod();
 
         if ("POST".equals(method) && path.matches("^/api/businesses/[^/]+/products/import$")) {
-            return new RateLimitRule("import-products", importProductsConfig, importProductsMaxRequests);
+            return new RateLimitRule("import-products", importProductsConfig);
         }
-        if ("GET".equals(method) && path.matches("^/api/stores/[^/]+/export/.+$")) {
-            return new RateLimitRule("export", exportConfig, exportMaxRequests);
+        if (("GET".equals(method) || "HEAD".equals(method)) && path.matches("^/api/stores/[^/]+/export/.+$")) {
+            return new RateLimitRule("export", exportConfig);
         }
         if ("PATCH".equals(method) && "/api/users/me/password".equals(path)) {
-            return new RateLimitRule("change-password", changePasswordConfig, changePasswordMaxRequests);
+            return new RateLimitRule("change-password", changePasswordConfig);
         }
-        return new RateLimitRule("api", apiConfig, maxRequests);
+        return new RateLimitRule("api", apiConfig);
     }
 
-    private record RateLimitRule(String name, BucketConfiguration config, int limit) {
+    private record RateLimitRule(String name, BucketConfiguration config) {
     }
 }

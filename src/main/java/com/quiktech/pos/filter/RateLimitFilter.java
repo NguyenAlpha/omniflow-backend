@@ -3,16 +3,12 @@ package com.quiktech.pos.filter;
 import com.quiktech.pos.security.ClientIpResolver;
 import io.github.bucket4j.Bandwidth;
 import io.github.bucket4j.BucketConfiguration;
-import io.github.bucket4j.ConsumptionProbe;
-import io.github.bucket4j.Bucket;
-import io.github.bucket4j.redis.lettuce.cas.LettuceBasedProxyManager;
 import jakarta.annotation.PostConstruct;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
@@ -23,15 +19,13 @@ import org.springframework.web.util.UrlPathHelper;
 import java.io.IOException;
 import java.time.Duration;
 
-@Slf4j
 @Component
-@Order(Ordered.HIGHEST_PRECEDENCE)
+@Order(Ordered.HIGHEST_PRECEDENCE + 1)
 @RequiredArgsConstructor
 public class RateLimitFilter extends OncePerRequestFilter {
 
-    private final LettuceBasedProxyManager<byte[]> rateLimitProxyManager;
+    private final RateLimitService rateLimitService;
     private final ClientIpResolver clientIpResolver;
-    private final RateLimitMetrics rateLimitMetrics;
 
     @Value("${rate-limit.login.max-requests:10}")
     private int loginMaxRequests;
@@ -109,54 +103,32 @@ public class RateLimitFilter extends OncePerRequestFilter {
         String bucketKey = null;
         BucketConfiguration config = null;
         String policy = null;
-        int limit = 0;
 
         if ("POST".equals(request.getMethod()) && "/api/auth/login".equals(path)) {
             bucketKey = "rl:login:" + ip;
             config = loginConfig;
             policy = "login";
-            limit = loginMaxRequests;
         } else if ("POST".equals(request.getMethod()) && "/api/auth/register".equals(path)) {
             bucketKey = "rl:register:" + ip;
             config = registerConfig;
             policy = "register";
-            limit = registerMaxRequests;
         } else if ("POST".equals(request.getMethod()) && "/api/auth/refresh".equals(path)) {
             bucketKey = "rl:refresh:" + ip;
             config = refreshConfig;
             policy = "refresh";
-            limit = refreshMaxRequests;
         } else if (path.startsWith("/api/")) {
             // Coarse per-IP ceiling for every application API request. Authenticated
             // traffic receives a second, fairer per-user limit after JWT validation.
             bucketKey = "rl:ip:api:" + ip;
             config = apiIpConfig;
             policy = "api";
-            limit = apiIpMaxRequests;
         }
 
         if (bucketKey != null) {
-            // Fail-open khi Redis lỗi: log warning và cho request đi qua — nhất quán với
-            // graceful degradation của các evaluator. Không try-catch thì Redis down làm
-            // toàn bộ login/register trả 500 (mất chức năng đăng nhập thay vì mất rate limit).
-            ConsumptionProbe probe = null;
-            try {
-                byte[] key = bucketKey.getBytes(java.nio.charset.StandardCharsets.UTF_8);
-                final BucketConfiguration finalConfig = config;
-                Bucket bucket = rateLimitProxyManager.builder().build(key, () -> finalConfig);
-                probe = bucket.tryConsumeAndReturnRemaining(1);
-            } catch (Exception e) {
-                log.warn("Rate limit check failed (Redis unavailable?) — failing open for {}", bucketKey, e);
-                rateLimitMetrics.record("ip", policy, "error");
-            }
-
-            if (probe != null && !probe.isConsumed()) {
-                rateLimitMetrics.record("ip", policy, "blocked");
-                RateLimitResponseWriter.write(response, probe, limit);
+            RateLimitService.Decision decision = rateLimitService.check(bucketKey, config, "ip", policy);
+            if (decision != null && !decision.probe().isConsumed()) {
+                RateLimitResponseWriter.write(response, decision.probe(), decision.limit());
                 return;
-            }
-            if (probe != null) {
-                rateLimitMetrics.record("ip", policy, "allowed");
             }
         }
 

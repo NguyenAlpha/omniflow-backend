@@ -186,4 +186,35 @@
 		</plugins>
 	</build>
 
+	<profiles>
+		<profile>
+			<id>rate-limit-tests</id>
+			<build>
+				<plugins>
+					<plugin>
+						<groupId>org.apache.maven.plugins</groupId>
+						<artifactId>maven-compiler-plugin</artifactId>
+						<configuration>
+							<testIncludes>
+								<testInclude>com/quiktech/pos/filter/RateLimit*Test.java</testInclude>
+								<testInclude>com/quiktech/pos/security/ClientIpResolverTest.java</testInclude>
+								<testInclude>com/quiktech/pos/support/InMemoryRateLimitRedis.java</testInclude>
+							</testIncludes>
+						</configuration>
+					</plugin>
+					<plugin>
+						<groupId>org.apache.maven.plugins</groupId>
+						<artifactId>maven-surefire-plugin</artifactId>
+						<configuration>
+							<includes>
+								<include>**/RateLimit*Test.java</include>
+								<include>**/ClientIpResolverTest.java</include>
+							</includes>
+						</configuration>
+					</plugin>
+				</plugins>
+			</build>
+		</profile>
+	</profiles>
+
 </project>

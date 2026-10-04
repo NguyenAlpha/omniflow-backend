@@ -103,6 +103,8 @@ Rate limit có hai lớp, dùng chung Redis nên quota vẫn đúng khi chạy n
 ```text
 Request
   ↓
+CorsFilter (servlet filter, xử lý CORS trước limiter)
+  ↓
 RateLimitFilter (trước Spring Security)
   ├── login/register/refresh: quota theo IP, chống brute-force
   └── mọi /api/** khác: trần IP rộng, chống flood thô
@@ -122,21 +124,29 @@ AuthenticatedRateLimitFilter
 | Mọi `/api/**` | IP | 1.200/phút |
 | API đã xác thực | `userId` | 300/phút |
 | Import sản phẩm | `userId` | 5/10 phút |
-| Export file | `userId` | 10/10 phút |
+| Export file (`GET` và `HEAD` dùng chung quota) | `userId` | 10/10 phút |
 | Đổi mật khẩu | `userId` | 5/10 phút |
 
 Khi hết quota, API trả `429` với envelope `RATE_LIMIT_EXCEEDED`, kèm `Retry-After`,
-`RateLimit-Limit`, `RateLimit-Remaining`, và `RateLimit-Reset`. Client không tự retry
-các request ghi dữ liệu hoặc export.
+`RateLimit-Limit`, `RateLimit-Remaining`, và `RateLimit-Reset`. Các header này được
+expose qua CORS; response theo IP cũng được xử lý CORS trước khi trả về. Client
+không nên tự retry các request ghi dữ liệu hoặc export.
 
 `rate-limit.trusted-proxies` chỉ chứa IP kết nối trực tiếp của Nginx/load balancer.
 Chỉ trong trường hợp đó mới dùng `X-Forwarded-For`; client gọi thẳng không thể giả IP.
 Các biến môi trường có thể override được liệt kê trong [`.env.example`](../.env.example).
 
-Nếu Redis không khả dụng, limiter fail-open để không làm toàn bộ POS lỗi 500. Vì vậy
-production vẫn nên có giới hạn thô ở reverse proxy/CDN/WAF trước khi request đến Spring.
+Kiểm tra quota có timeout mặc định 200 ms. Nếu Redis lỗi/timeout, limiter fail-open
+và bỏ qua kiểm tra trên instance đó trong 5 giây trước khi thử lại. Điều này không
+đảm bảo startup khi Redis down hoặc bảo vệ các Redis consumer khác. Production
+vẫn nên có giới hạn thô ở reverse proxy/CDN/WAF trước khi request đến Spring.
 Prometheus có metric `rate_limit_requests_total` với tags giới hạn `scope`, `policy`,
-`outcome`; không có userId, IP hoặc URL động.
+`outcome` (`allowed`, `blocked`, `error`, `bypassed`); không có userId, IP hoặc URL động.
+
+Khi đổi quota/window phải tăng `RATE_LIMIT_CONFIG_VERSION`; rollback cũng dùng
+version mới lớn hơn. Bucket đang tồn tại được cập nhật theo tỷ lệ token còn lại,
+instance cũ không downgrade bucket mới. Xem [RATE_LIMITING.md](RATE_LIMITING.md)
+cho hướng dẫn deploy và chạy test.
 
 ---
 
