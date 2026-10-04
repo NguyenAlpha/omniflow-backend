@@ -96,7 +96,51 @@ Luồng xử lý mỗi request:
 
 ---
 
-## 5. BusinessAccessEvaluator — Catalog endpoints
+## 5. Rate limiting — Bucket4j + Redis
+
+Rate limit có hai lớp, dùng chung Redis nên quota vẫn đúng khi chạy nhiều instance backend:
+
+```text
+Request
+  ↓
+RateLimitFilter (trước Spring Security)
+  ├── login/register/refresh: quota theo IP, chống brute-force
+  └── mọi /api/** khác: trần IP rộng, chống flood thô
+  ↓
+BearerTokenAuthenticationFilter → JWT → UserPrincipal
+  ↓
+AuthenticatedRateLimitFilter
+  ├── quota mặc định theo userId
+  └── quota riêng cho import, export, đổi mật khẩu
+```
+
+| Policy | Key | Mặc định |
+|---|---|---:|
+| Login | IP | 10/phút |
+| Register | IP | 5/phút |
+| Refresh | IP | 20/phút |
+| Mọi `/api/**` | IP | 1.200/phút |
+| API đã xác thực | `userId` | 300/phút |
+| Import sản phẩm | `userId` | 5/10 phút |
+| Export file | `userId` | 10/10 phút |
+| Đổi mật khẩu | `userId` | 5/10 phút |
+
+Khi hết quota, API trả `429` với envelope `RATE_LIMIT_EXCEEDED`, kèm `Retry-After`,
+`RateLimit-Limit`, `RateLimit-Remaining`, và `RateLimit-Reset`. Client không tự retry
+các request ghi dữ liệu hoặc export.
+
+`rate-limit.trusted-proxies` chỉ chứa IP kết nối trực tiếp của Nginx/load balancer.
+Chỉ trong trường hợp đó mới dùng `X-Forwarded-For`; client gọi thẳng không thể giả IP.
+Các biến môi trường có thể override được liệt kê trong [`.env.example`](../.env.example).
+
+Nếu Redis không khả dụng, limiter fail-open để không làm toàn bộ POS lỗi 500. Vì vậy
+production vẫn nên có giới hạn thô ở reverse proxy/CDN/WAF trước khi request đến Spring.
+Prometheus có metric `rate_limit_requests_total` với tags giới hạn `scope`, `policy`,
+`outcome`; không có userId, IP hoặc URL động.
+
+---
+
+## 6. BusinessAccessEvaluator — Catalog endpoints
 
 Bean name `"businessAccess"`, dùng cho mọi endpoint thuộc catalog (product, category, unit, customer, supplier).
 

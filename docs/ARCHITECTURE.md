@@ -83,8 +83,10 @@ com.quiktech.pos
 HTTP Request
     ↓
 [ Filter Layer ]
+    RateLimitFilter                — quota IP: auth endpoints + trần /api/**
     BearerTokenAuthenticationFilter  — validate JWT signature/expiry (Spring built-in, 0 DB call)
     UserPrincipalConverter           — convert Jwt claims → UserPrincipal, set SecurityContext
+    AuthenticatedRateLimitFilter     — quota userId, import/export/password có policy riêng
     ↓
 [ Security Layer ]
     @PreAuthorize           — kiểm tra quyền store-scoped qua StoreAccessEvaluator
