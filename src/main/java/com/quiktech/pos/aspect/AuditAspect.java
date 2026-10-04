@@ -2,6 +2,7 @@ package com.quiktech.pos.aspect;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.quiktech.pos.annotation.Auditable;
+import com.quiktech.pos.security.ClientIpResolver;
 import com.quiktech.pos.security.UserPrincipal;
 import com.quiktech.pos.service.AuditService;
 import jakarta.servlet.http.HttpServletRequest;
@@ -28,6 +29,7 @@ public class AuditAspect {
 
     private final AuditService auditService;
     private final ObjectMapper objectMapper;
+    private final ClientIpResolver clientIpResolver;
 
     @AfterReturning("@annotation(auditable)")
     public void audit(JoinPoint joinPoint, Auditable auditable) {
@@ -97,10 +99,7 @@ public class AuditAspect {
             var attrs = RequestContextHolder.getRequestAttributes();
             if (attrs instanceof ServletRequestAttributes sra) {
                 HttpServletRequest req = sra.getRequest();
-                String forwarded = req.getHeader("X-Forwarded-For");
-                return forwarded != null && !forwarded.isBlank()
-                        ? forwarded.split(",")[0].trim()
-                        : req.getRemoteAddr();
+                return clientIpResolver.resolve(req);
             }
         } catch (Exception ignored) {}
         return null;

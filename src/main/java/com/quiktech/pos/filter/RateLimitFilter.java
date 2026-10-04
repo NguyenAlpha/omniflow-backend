@@ -1,5 +1,6 @@
 package com.quiktech.pos.filter;
 
+import com.quiktech.pos.security.ClientIpResolver;
 import io.github.bucket4j.Bandwidth;
 import io.github.bucket4j.BucketConfiguration;
 import io.github.bucket4j.ConsumptionProbe;
@@ -23,7 +24,6 @@ import org.springframework.web.util.UrlPathHelper;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
-import java.util.Set;
 import java.util.concurrent.TimeUnit;
 
 @Slf4j
@@ -33,6 +33,7 @@ import java.util.concurrent.TimeUnit;
 public class RateLimitFilter extends OncePerRequestFilter {
 
     private final LettuceBasedProxyManager<byte[]> rateLimitProxyManager;
+    private final ClientIpResolver clientIpResolver;
 
     @Value("${rate-limit.login.max-requests:10}")
     private int loginMaxRequests;
@@ -50,15 +51,6 @@ public class RateLimitFilter extends OncePerRequestFilter {
     private int apiIpMaxRequests;
     @Value("${rate-limit.api.ip.window-seconds:60}")
     private int apiIpWindowSeconds;
-
-    /**
-     * Danh sách IP proxy tin cậy (comma-separated). Chỉ khi remoteAddr nằm trong danh
-     * sách này thì header X-Forwarded-For mới được dùng để lấy IP client — client tự
-     * gửi X-Forwarded-For giả sẽ bị bỏ qua (chống bypass rate limit bằng spoof IP).
-     * Mặc định rỗng = không tin proxy nào, luôn dùng remoteAddr.
-     */
-    @Value("${rate-limit.trusted-proxies:}")
-    private Set<String> trustedProxies;
 
     /**
      * Decode path trước khi so khớp — so sánh URI thô bằng endsWith có thể bị bypass
@@ -120,7 +112,7 @@ public class RateLimitFilter extends OncePerRequestFilter {
         // Path đã decode + bỏ context path — so khớp bằng equals, không dùng endsWith
         // trên URI thô (bypass được bằng URL-encoding)
         String path = PATH_HELPER.getPathWithinApplication(request);
-        String ip = extractIp(request);
+        String ip = clientIpResolver.resolve(request);
         String bucketKey = null;
         BucketConfiguration config = null;
 
@@ -168,24 +160,4 @@ public class RateLimitFilter extends OncePerRequestFilter {
         chain.doFilter(request, response);
     }
 
-    /**
-     * Lấy IP client làm rate-limit key.
-     *
-     * <p>X-Forwarded-For chỉ được tin khi kết nối đến trực tiếp từ proxy trong
-     * {@code rate-limit.trusted-proxies} — client gọi thẳng có thể tự đặt header này
-     * để đổi bucket mỗi request (bypass hoàn toàn rate limit). Khi tin proxy, lấy
-     * entry CUỐI của danh sách (entry do proxy tin cậy append = IP kết nối thật);
-     * các entry trước đó do client/proxy lạ tự khai, không kiểm chứng được.
-     */
-    private String extractIp(HttpServletRequest request) {
-        String remoteAddr = request.getRemoteAddr();
-        if (trustedProxies.contains(remoteAddr)) {
-            String forwarded = request.getHeader("X-Forwarded-For");
-            if (forwarded != null && !forwarded.isBlank()) {
-                String[] hops = forwarded.split(",");
-                return hops[hops.length - 1].trim();
-            }
-        }
-        return remoteAddr;
-    }
 }
