@@ -37,6 +37,7 @@ public class AuthenticatedRateLimitFilter extends OncePerRequestFilter {
 
     private static final UrlPathHelper PATH_HELPER = UrlPathHelper.defaultInstance;
     private final LettuceBasedProxyManager<byte[]> rateLimitProxyManager;
+    private final RateLimitMetrics rateLimitMetrics;
 
     @Value("${rate-limit.api.user.max-requests:300}")
     private int maxRequests;
@@ -61,8 +62,10 @@ public class AuthenticatedRateLimitFilter extends OncePerRequestFilter {
     private BucketConfiguration exportConfig;
     private BucketConfiguration changePasswordConfig;
 
-    public AuthenticatedRateLimitFilter(LettuceBasedProxyManager<byte[]> rateLimitProxyManager) {
+    public AuthenticatedRateLimitFilter(LettuceBasedProxyManager<byte[]> rateLimitProxyManager,
+                                        RateLimitMetrics rateLimitMetrics) {
         this.rateLimitProxyManager = rateLimitProxyManager;
+        this.rateLimitMetrics = rateLimitMetrics;
     }
 
     @PostConstruct
@@ -107,11 +110,16 @@ public class AuthenticatedRateLimitFilter extends OncePerRequestFilter {
         } catch (Exception e) {
             // Redis unavailable must not turn every authenticated API request into a 500.
             log.warn("Authenticated rate limit check failed — failing open for userId={}", principal.userId(), e);
+            rateLimitMetrics.record("user", rule.name(), "error");
         }
 
         if (probe != null && !probe.isConsumed()) {
+            rateLimitMetrics.record("user", rule.name(), "blocked");
             RateLimitResponseWriter.write(response, probe, rule.limit());
             return;
+        }
+        if (probe != null) {
+            rateLimitMetrics.record("user", rule.name(), "allowed");
         }
 
         chain.doFilter(request, response);

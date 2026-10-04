@@ -3,6 +3,7 @@ package com.quiktech.pos.config;
 import com.quiktech.pos.security.StoreAccessEvaluator;
 import com.quiktech.pos.security.UserPrincipalConverter;
 import com.quiktech.pos.filter.AuthenticatedRateLimitFilter;
+import com.quiktech.pos.filter.RateLimitMetrics;
 import io.github.bucket4j.redis.lettuce.cas.LettuceBasedProxyManager;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
@@ -129,7 +130,8 @@ public class SecurityConfig {
 
     @Bean
     public AuthenticatedRateLimitFilter authenticatedRateLimitFilter(
-            LettuceBasedProxyManager<byte[]> rateLimitProxyManager) {
-        return new AuthenticatedRateLimitFilter(rateLimitProxyManager);
+            LettuceBasedProxyManager<byte[]> rateLimitProxyManager,
+            RateLimitMetrics rateLimitMetrics) {
+        return new AuthenticatedRateLimitFilter(rateLimitProxyManager, rateLimitMetrics);
     }
 }

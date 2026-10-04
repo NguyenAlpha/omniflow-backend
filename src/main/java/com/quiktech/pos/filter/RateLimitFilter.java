@@ -31,6 +31,7 @@ public class RateLimitFilter extends OncePerRequestFilter {
 
     private final LettuceBasedProxyManager<byte[]> rateLimitProxyManager;
     private final ClientIpResolver clientIpResolver;
+    private final RateLimitMetrics rateLimitMetrics;
 
     @Value("${rate-limit.login.max-requests:10}")
     private int loginMaxRequests;
@@ -107,25 +108,30 @@ public class RateLimitFilter extends OncePerRequestFilter {
         String ip = clientIpResolver.resolve(request);
         String bucketKey = null;
         BucketConfiguration config = null;
+        String policy = null;
         int limit = 0;
 
         if ("POST".equals(request.getMethod()) && "/api/auth/login".equals(path)) {
             bucketKey = "rl:login:" + ip;
             config = loginConfig;
+            policy = "login";
             limit = loginMaxRequests;
         } else if ("POST".equals(request.getMethod()) && "/api/auth/register".equals(path)) {
             bucketKey = "rl:register:" + ip;
             config = registerConfig;
+            policy = "register";
             limit = registerMaxRequests;
         } else if ("POST".equals(request.getMethod()) && "/api/auth/refresh".equals(path)) {
             bucketKey = "rl:refresh:" + ip;
             config = refreshConfig;
+            policy = "refresh";
             limit = refreshMaxRequests;
         } else if (path.startsWith("/api/")) {
             // Coarse per-IP ceiling for every application API request. Authenticated
             // traffic receives a second, fairer per-user limit after JWT validation.
             bucketKey = "rl:ip:api:" + ip;
             config = apiIpConfig;
+            policy = "api";
             limit = apiIpMaxRequests;
         }
 
@@ -141,11 +147,16 @@ public class RateLimitFilter extends OncePerRequestFilter {
                 probe = bucket.tryConsumeAndReturnRemaining(1);
             } catch (Exception e) {
                 log.warn("Rate limit check failed (Redis unavailable?) — failing open for {}", bucketKey, e);
+                rateLimitMetrics.record("ip", policy, "error");
             }
 
             if (probe != null && !probe.isConsumed()) {
+                rateLimitMetrics.record("ip", policy, "blocked");
                 RateLimitResponseWriter.write(response, probe, limit);
                 return;
+            }
+            if (probe != null) {
+                rateLimitMetrics.record("ip", policy, "allowed");
             }
         }
 
