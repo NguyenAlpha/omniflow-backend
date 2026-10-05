@@ -43,6 +43,7 @@ và khả năng sync offline (sync chưa triển khai ngay).
 |:-----------------------------------------|:-------------------------------------------------|
 | [ARCHITECTURE.md](ARCHITECTURE.md)       | Cấu trúc package, layer design, dependencies     |
 | [SECURITY.md](SECURITY.md)               | Hybrid JWT + Redis RBAC, cách dùng @PreAuthorize |
+| [DEPLOYMENT.md](DEPLOYMENT.md)           | Build, cấu hình, deploy, health check và rollback |
 | [API](api)                               | Tất cả endpoints, access level                   |
 | [SUBSCRIPTION.md](api/SUBSCRIPTION.md)  | Luồng nâng cấp gói, invoice, xác nhận CK        |
 | [DEVELOPER_GUIDE.md](DEVELOPER_GUIDE.md) | Conventions: JPA, query pattern, naming          |
