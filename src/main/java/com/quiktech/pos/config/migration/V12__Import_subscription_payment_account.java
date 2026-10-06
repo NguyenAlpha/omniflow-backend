@@ -17,8 +17,9 @@ public class V12__Import_subscription_payment_account extends BaseJavaMigration 
     @Override
     public void migrate(Context context) throws Exception {
         var legacy = new Properties();
-        try (var input = new ClassPathResource("db/legacy-subscription-bank.properties").getInputStream()) {
-            legacy.load(input);
+        var resource = new ClassPathResource("db/legacy-subscription-bank.properties");
+        if (resource.exists()) {
+            try (var input = resource.getInputStream()) { legacy.load(input); }
         }
         String bank = value(legacy, "bank-name");
         String number = value(legacy, "account-number");

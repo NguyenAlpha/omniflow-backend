@@ -56,13 +56,16 @@ V11 creates account/settings tables and snapshot columns. V12 is a Spring-manage
 Flyway Java migration, executed once and tracked in flyway_schema_history. It
 imports the old `subscription.payment.*` configuration and selects that account.
 External property/environment overrides take precedence during this one import.
-The previous checked-in defaults are preserved in
-`src/main/resources/db/legacy-subscription-bank.properties` solely as import data.
-These keys are removed from application.properties and never read by runtime
-payment services after migration. Subsequent restarts do not reset UI changes.
+The optional local file `src/main/resources/db/legacy-subscription-bank.properties`
+can preserve the previous values solely as import data. It is gitignored like
+application.properties; use the adjacent `.example` template for other deployments.
+The current workspace's bank settings have been moved into this local import file.
+Remove the legacy keys from each deployment's application.properties after migration;
+runtime payment services never read them. Subsequent restarts do not reset UI changes.
 
 Before first deployment, ensure the old receiving details are correct for the
-environment. Explicit blank bank/name/holder values skip the import, leaving setup
+environment. New installations without legacy configuration, or explicit blank
+bank/name/holder values, skip the import, leaving setup
 to the admin UI. V12 attaches the imported details only to existing PENDING invoices,
 matching the destination the old checkout would show at migration time. Finished
 invoices retain null snapshots because their historical destination cannot be
