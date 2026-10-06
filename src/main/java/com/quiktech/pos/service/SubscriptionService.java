@@ -41,6 +41,7 @@ public class SubscriptionService {
     private final SubscriptionRepository subscriptionRepository;
     private final SubscriptionInvoiceRepository invoiceRepository;
     private final EmailService emailService;
+    private final AdminAuditService adminAuditService;
 
     @Value("${subscription.payment.bank-name:}")
     private String bankName;
@@ -217,7 +218,14 @@ public class SubscriptionService {
     @PreAuthorize("hasRole('ROLE_SUPER_ADMIN')")
     @Transactional
     public SubscriptionResponse changePlan(Long businessId, SubscriptionPlan newPlan, BillingCycle billingCycle) {
-        Subscription sub = getSubscription(businessId);
+        return changePlan(businessId, newPlan, billingCycle, null);
+    }
+
+    @PreAuthorize("hasRole('ROLE_SUPER_ADMIN')")
+    @Transactional
+    public SubscriptionResponse changePlan(Long businessId, SubscriptionPlan newPlan, BillingCycle billingCycle, String reason) {
+        Subscription sub = getSubscriptionForUpdate(businessId);
+        var before = toResponse(sub);
         PlanLimits limits = PlanLimits.valueOf(newPlan.name());
         Instant now = Instant.now();
 
@@ -249,7 +257,9 @@ public class SubscriptionService {
         // Chu kỳ mới bắt đầu — cho phép gửi lại email cảnh báo khi chu kỳ này sắp hết hạn
         sub.setExpiryWarningSentAt(null);
 
-        return toResponse(subscriptionRepository.save(sub));
+        var after = toResponse(subscriptionRepository.save(sub));
+        adminAuditService.record("ADMIN_PLAN_CHANGED", "SUBSCRIPTION", sub.getId(), businessId, reason, before, after);
+        return after;
     }
 
     @Transactional(readOnly = true)
@@ -298,7 +308,8 @@ public class SubscriptionService {
      */
     @Transactional
     public SubscriptionInvoiceResponse confirmInvoice(Long invoiceId, Long confirmedByUserId, String adminNote) {
-        SubscriptionInvoice invoice = getInvoiceById(invoiceId);
+        SubscriptionInvoice invoice = getInvoiceForUpdate(invoiceId);
+        var before = toInvoiceResponse(invoice);
 
         if (invoice.getStatus() == InvoiceStatus.PAID) {
             throw new IllegalArgumentException("Invoice is already paid");
@@ -327,7 +338,8 @@ public class SubscriptionService {
         invoiceRepository.save(invoice);
 
         // Cập nhật subscription sang plan mới
-        Subscription sub = getSubscription(invoice.getBusiness().getId());
+        Subscription sub = getSubscriptionForUpdate(invoice.getBusiness().getId());
+        var beforeSubscription = toResponse(sub);
         PlanLimits limits = PlanLimits.valueOf(invoice.getPlan().name());
         sub.setPlan(invoice.getPlan());
         sub.setStatus(SubscriptionStatus.ACTIVE);
@@ -341,6 +353,10 @@ public class SubscriptionService {
         // Chu kỳ mới bắt đầu — cho phép gửi lại email cảnh báo khi chu kỳ này sắp hết hạn
         sub.setExpiryWarningSentAt(null);
         subscriptionRepository.save(sub);
+
+        adminAuditService.record("ADMIN_INVOICE_CONFIRMED", "SUBSCRIPTION_INVOICE", invoiceId, invoice.getBusiness().getId(),
+                adminNote, java.util.Map.of("invoice", before, "subscription", beforeSubscription),
+                java.util.Map.of("invoice", toInvoiceResponse(invoice), "subscription", toResponse(sub)));
 
         emailService.sendInvoiceConfirmed(
                 invoice.getBusiness().getEmail(),
@@ -357,7 +373,8 @@ public class SubscriptionService {
      */
     @Transactional
     public SubscriptionInvoiceResponse rejectInvoice(Long invoiceId, String adminNote) {
-        SubscriptionInvoice invoice = getInvoiceById(invoiceId);
+        SubscriptionInvoice invoice = getInvoiceForUpdate(invoiceId);
+        var before = toInvoiceResponse(invoice);
 
         if (invoice.getStatus() == InvoiceStatus.PAID) {
             throw new IllegalArgumentException("Invoice is already paid");
@@ -369,6 +386,8 @@ public class SubscriptionService {
         invoice.setStatus(InvoiceStatus.FAILED);
         invoice.setAdminNote(adminNote);
         SubscriptionInvoice saved = invoiceRepository.save(invoice);
+        adminAuditService.record("ADMIN_INVOICE_REJECTED", "SUBSCRIPTION_INVOICE", invoiceId,
+                invoice.getBusiness().getId(), adminNote, before, toInvoiceResponse(saved));
 
         emailService.sendInvoiceRejected(
                 saved.getBusiness().getEmail(),
@@ -379,6 +398,16 @@ public class SubscriptionService {
     }
 
     // ── Private helpers ───────────────────────────────────────────────────────
+
+    private Subscription getSubscriptionForUpdate(Long businessId) {
+        return subscriptionRepository.findByBusinessIdForUpdate(businessId)
+                .orElseThrow(() -> new ResourceNotFoundException(ErrorCode.SUBSCRIPTION_NOT_FOUND, "Subscription not found"));
+    }
+
+    private SubscriptionInvoice getInvoiceForUpdate(Long invoiceId) {
+        return invoiceRepository.findByIdForUpdate(invoiceId)
+                .orElseThrow(() -> new ResourceNotFoundException(ErrorCode.INVOICE_NOT_FOUND, "Invoice not found"));
+    }
 
     private Subscription getSubscription(Long businessId) {
         return subscriptionRepository.findByBusinessId(businessId)

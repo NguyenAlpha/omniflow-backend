@@ -40,6 +40,7 @@ public class UserService {
     private final RefreshTokenService refreshTokenService;
     private final StoreAccessEvaluator storeAccessEvaluator;
     private final BusinessAccessEvaluator businessAccessEvaluator;
+    private final AdminAuditService adminAuditService;
 
     @Transactional(readOnly = true)
     public UserSummaryResponse getProfile(UserPrincipal currentUser) {
@@ -122,7 +123,8 @@ public class UserService {
 
     @Transactional
     public UserAdminResponse setUserStatus(Long userId, SetUserStatusRequest request) {
-        User user = findOrThrow(userId);
+        User user = findForUpdate(userId);
+        var before = auditState(user);
         user.setIsActive(request.isActive());
         user.setUpdatedAt(Instant.now());
         if (!request.isActive()) {
@@ -130,12 +132,20 @@ public class UserService {
             // vẫn giữ được phiên vô thời hạn qua vòng lặp refresh (CRITICAL #2).
             refreshTokenService.revokeAll(userId);
         }
-        return toAdminResponse(userRepository.save(user));
+        var result = toAdminResponse(userRepository.save(user));
+        adminAuditService.record("ADMIN_USER_STATUS_CHANGED", "USER", userId, null, request.reason(), before, auditState(user));
+        return result;
     }
 
     @Transactional
     public void deleteUser(Long userId) {
-        User user = findOrThrow(userId);
+        deleteUser(userId, null);
+    }
+
+    @Transactional
+    public void deleteUser(Long userId, String reason) {
+        User user = findForUpdate(userId);
+        var before = auditState(user);
         if (user.getDeletedAt() != null) {
             throw new IllegalArgumentException("User already deleted");
         }
@@ -148,6 +158,7 @@ public class UserService {
         user.setIsActive(false);
         user.setUpdatedAt(Instant.now());
         userRepository.save(user);
+        adminAuditService.record("ADMIN_USER_DELETED", "USER", userId, null, reason, before, auditState(user));
 
         // Soft-delete toàn bộ role — nếu không, role rác vẫn active trong DB và evaluator
         // (findActiveStoreRole/findActiveBusinessRole) vẫn cho user đã xóa pass phân quyền
@@ -185,6 +196,17 @@ public class UserService {
     private User findOrThrow(Long userId) {
         return userRepository.findById(userId)
                 .orElseThrow(() -> new ResourceNotFoundException(ErrorCode.USER_NOT_FOUND, "User not found: " + userId));
+    }
+
+    private User findForUpdate(Long userId) {
+        return userRepository.findByIdForUpdate(userId)
+                .orElseThrow(() -> new ResourceNotFoundException(ErrorCode.USER_NOT_FOUND, "User not found: " + userId));
+    }
+
+    private record UserAuditState(Long id, String username, Boolean isActive, Instant deletedAt) {}
+
+    private UserAuditState auditState(User user) {
+        return new UserAuditState(user.getId(), user.getUsername(), user.getIsActive(), user.getDeletedAt());
     }
 
     private UserSummaryResponse toResponse(User user) {

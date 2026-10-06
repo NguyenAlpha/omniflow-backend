@@ -1,6 +1,7 @@
 package com.quiktech.pos.controller;
 
 import com.quiktech.pos.dto.request.user.SetUserStatusRequest;
+import com.quiktech.pos.dto.request.user.DeleteUserRequest;
 import com.quiktech.pos.dto.request.user.UpdateProfileRequest;
 import com.quiktech.pos.dto.response.common.ApiResult;
 import com.quiktech.pos.dto.response.common.PagedResult;
@@ -43,8 +44,9 @@ public class AdminUserController {
     }
 
     @DeleteMapping("/{userId}")
-    public ResponseEntity<ApiResult<Void>> deleteUser(@PathVariable Long userId) {
-        userService.deleteUser(userId);
+    public ResponseEntity<ApiResult<Void>> deleteUser(@PathVariable Long userId,
+            @Valid @RequestBody(required = false) DeleteUserRequest request) {
+        userService.deleteUser(userId, request == null ? null : request.reason());
         return ResponseEntity.ok(ApiResult.ok());
     }
 }

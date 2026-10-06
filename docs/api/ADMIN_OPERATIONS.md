@@ -30,6 +30,44 @@ return 400 with `VALIDATION_ERROR`.
 `GET /api/admin/subscriptions/invoices/pending/count` returns the current numeric
 pending count. Both endpoints require SUPER_ADMIN.
 
+## Administrator audit
+
+`GET /api/admin/audit-logs?size=20` returns `{ content, nextCursor }`. Optional
+filters: `businessId`, `actorId`, `action` and `beforeId` (the previous response's
+`nextCursor`). IDs must be positive; size is 1–100. Results use descending ID
+keyset pagination. Only SUPER_ADMIN can read this endpoint.
+
+Recorded actions: `ADMIN_PLAN_CHANGED`, `ADMIN_INVOICE_CONFIRMED`,
+`ADMIN_INVOICE_REJECTED`, `ADMIN_USER_STATUS_CHANGED`, `ADMIN_USER_DELETED`.
+Entries include actor ID/name captured at the time, timestamp, entity, business,
+reason and before/after snapshots. Invoice confirmation includes both invoice and
+subscription changes. User snapshots contain only ID, username, active state and
+deletion timestamp. Passwords, tokens and whole user entities are never serialized.
+
+Plan/status requests accept optional `reason` (max 500 characters). DELETE user
+accepts an optional JSON body `{ "reason": "..." }`; existing body-less requests
+remain supported. Invoice reasons use the existing `adminNote` field.
+
+The service writes synchronously into the existing `audit_logs` table within the
+mutation transaction (`MANDATORY` propagation). Failed writes roll back the
+mutation. No schema migration or historical backfill is needed. The generic async
+audit logger remains separate. Audit coverage starts after this version is deployed;
+it covers the five actions listed above, not every system/merchant operation.
+Invoice, subscription override and account status/delete mutations lock their
+target rows to serialize concurrent administrator changes.
+
+Run `node scripts/check-admin-audit-rollback.mjs` with admin credentials in the
+environment to exercise a real PostgreSQL insert failure and transaction rollback.
+This script is fixed to isolated port 8081/database `quiktech_admin_checks` and the
+local `quiktech-pos-db` container. It installs a temporary check constraint targeting
+one unique reason, removes it in `finally`, and soft-deletes its synthetic user.
+
+Validated on 2026-10-06 against PostgreSQL: actor/reason/before-after snapshots,
+normal-user 403, invalid filters/oversized reasons 400, cursor boundaries, no audit
+for failed actions, concurrent confirmation applying exactly once, and complete
+subscription rollback on forced audit-insert failure. The temporary constraint
+was removed after verification. No real business records were changed.
+
 ## Live verification (2026-10-06)
 
 The web repository contains `scripts/check-admin-live.mjs`. Set `ADMIN_USERNAME`
