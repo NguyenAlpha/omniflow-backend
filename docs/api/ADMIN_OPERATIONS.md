@@ -17,6 +17,19 @@ are scoped to the requested business and exclude soft-deleted records. Missing
 businesses return 404; non-administrators return 403. Invoice history remains at
 `GET /api/businesses/{businessId}/subscription/invoices?page=0&size=20`.
 
+## Invoice history and pending count
+
+`GET /api/admin/subscriptions/invoices` accepts optional `status` (PENDING, PAID,
+FAILED), positive `businessId`, `q` (at most 100 characters), and pageable `page` /
+`size`. Search matches business names/transfer references case-insensitively or
+exact numeric invoice/business IDs. `%` and `_` are literal search characters.
+Results use the existing invoice DTO and Spring Page envelope, sorted by
+`createdAt DESC, id DESC`; page size is capped at 100. Invalid parameter types
+return 400 with `VALIDATION_ERROR`.
+
+`GET /api/admin/subscriptions/invoices/pending/count` returns the current numeric
+pending count. Both endpoints require SUPER_ADMIN.
+
 ## Live verification (2026-10-06)
 
 The web repository contains `scripts/check-admin-live.mjs`. Set `ADMIN_USERNAME`

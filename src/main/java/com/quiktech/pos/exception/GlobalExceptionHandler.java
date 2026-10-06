@@ -14,10 +14,17 @@ import org.springframework.web.bind.MethodArgumentNotValidException;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 
 @Slf4j
 @RestControllerAdvice
 public class GlobalExceptionHandler {
+
+    @ExceptionHandler(MethodArgumentTypeMismatchException.class)
+    public ResponseEntity<ApiResult<?>> handleParameterType(MethodArgumentTypeMismatchException ex) {
+        return ResponseEntity.badRequest().body(ApiResult.fail(
+                ErrorDetail.of(ErrorCode.VALIDATION_ERROR, "Invalid parameter value", ex.getName())));
+    }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)
     public ResponseEntity<ApiResult<?>> handleValidation(MethodArgumentNotValidException ex) {

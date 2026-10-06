@@ -20,6 +20,9 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
+import jakarta.persistence.criteria.Predicate;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -28,6 +31,8 @@ import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
+import java.util.ArrayList;
+import java.util.Locale;
 
 @Service
 @RequiredArgsConstructor
@@ -251,6 +256,41 @@ public class SubscriptionService {
     public Page<SubscriptionInvoiceResponse> listPendingInvoices(Pageable pageable) {
         return invoiceRepository.findByStatusOrderByCreatedAtDesc(InvoiceStatus.PENDING, pageable)
                 .map(this::toInvoiceResponse);
+    }
+
+    @Transactional(readOnly = true)
+    public long countPendingInvoices() {
+        return invoiceRepository.countByStatus(InvoiceStatus.PENDING);
+    }
+
+    @Transactional(readOnly = true)
+    public Page<SubscriptionInvoiceResponse> searchInvoices(InvoiceStatus status, Long businessId, String query, Pageable pageable) {
+        String search = query == null ? "" : query.trim();
+        if (search.length() > 100 || (businessId != null && businessId <= 0)) {
+            throw new IllegalArgumentException("Invalid invoice search");
+        }
+        var ordered = PageRequest.of(pageable.getPageNumber(), Math.min(pageable.getPageSize(), 100),
+                Sort.by(Sort.Direction.DESC, "createdAt", "id"));
+        return invoiceRepository.findAll((root, criteria, cb) -> {
+            List<Predicate> filters = new ArrayList<>();
+            if (status != null) filters.add(cb.equal(root.get("status"), status));
+            if (businessId != null) filters.add(cb.equal(root.get("business").get("id"), businessId));
+            if (!search.isEmpty()) {
+                String pattern = "%" + search.toLowerCase(Locale.ROOT).replace("!", "!!").replace("%", "!%").replace("_", "!_") + "%";
+                List<Predicate> matches = new ArrayList<>();
+                matches.add(cb.like(cb.lower(root.get("business").get("name")), pattern, '!'));
+                matches.add(cb.like(cb.lower(root.get("bankTransferRef")), pattern, '!'));
+                try {
+                    Long id = Long.valueOf(search);
+                    matches.add(cb.equal(root.get("id"), id));
+                    matches.add(cb.equal(root.get("business").get("id"), id));
+                } catch (NumberFormatException ignored) {
+                    // Text searches still match business names and transfer references.
+                }
+                filters.add(cb.or(matches.toArray(Predicate[]::new)));
+            }
+            return cb.and(filters.toArray(Predicate[]::new));
+        }, ordered).map(this::toInvoiceResponse);
     }
 
     /**

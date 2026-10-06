@@ -5,6 +5,7 @@ import com.quiktech.pos.entity.enums.InvoiceStatus;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -16,7 +17,7 @@ import java.util.List;
 import java.util.Optional;
 
 @Repository
-public interface SubscriptionInvoiceRepository extends JpaRepository<SubscriptionInvoice, Long> {
+public interface SubscriptionInvoiceRepository extends JpaRepository<SubscriptionInvoice, Long>, JpaSpecificationExecutor<SubscriptionInvoice> {
 
     // Business owner: danh sách invoice theo business, mới nhất trước
     Page<SubscriptionInvoice> findByBusinessIdOrderByCreatedAtDesc(Long businessId, Pageable pageable);
