@@ -76,6 +76,12 @@ public class StoreService {
     }
 
     @Transactional(readOnly = true)
+    public List<StoreResponse> getBusinessStores(Long businessId) {
+        return storeRepository.findByBusinessIdAndDeletedAtIsNull(businessId).stream()
+                .map(this::toStoreResponse).toList();
+    }
+
+    @Transactional(readOnly = true)
     public List<StoreResponse> getStores(UserPrincipal currentUser) {
         boolean isAdmin = currentUser.hasRole(RoleName.ROLE_SUPER_ADMIN.name())
                 || currentUser.hasRole(RoleName.ROLE_SUPPORT.name());

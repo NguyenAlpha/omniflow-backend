@@ -10,6 +10,13 @@ The web client calls this before storing an admin login and when opening the
 admin panel. A normal user receives 403; a missing/invalid token receives 401.
 The server remains authoritative for every protected operation.
 
+## GET `/api/admin/businesses/{businessId}`
+
+Returns `{ business, subscription, stores }` using existing response DTOs. Stores
+are scoped to the requested business and exclude soft-deleted records. Missing
+businesses return 404; non-administrators return 403. Invoice history remains at
+`GET /api/businesses/{businessId}/subscription/invoices?page=0&size=20`.
+
 ## Live verification (2026-10-06)
 
 The web repository contains `scripts/check-admin-live.mjs`. Set `ADMIN_USERNAME`
