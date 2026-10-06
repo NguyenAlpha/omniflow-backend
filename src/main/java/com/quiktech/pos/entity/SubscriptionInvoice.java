@@ -50,6 +50,17 @@ public class SubscriptionInvoice {
     @Column(length = 100)
     private String bankTransferRef;
 
+    // Immutable receiving details copied at invoice creation; never resolve them from the current default.
+    private Long paymentAccountId;
+    @Column(length = 150)
+    private String paymentBankName;
+    @Column(length = 50)
+    private String paymentAccountNumber;
+    @Column(length = 150)
+    private String paymentAccountHolder;
+    @Column(length = 150)
+    private String paymentBranch;
+
     // ID của admin user đã xác nhận thanh toán
     @Column(name = "confirmed_by")
     private Long confirmedBy;

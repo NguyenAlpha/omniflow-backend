@@ -17,7 +17,6 @@ import com.quiktech.pos.exception.ResourceNotFoundException;
 import com.quiktech.pos.repository.SubscriptionInvoiceRepository;
 import com.quiktech.pos.repository.SubscriptionRepository;
 import lombok.RequiredArgsConstructor;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.PageRequest;
@@ -43,17 +42,7 @@ public class SubscriptionService {
     private final EmailService emailService;
     private final AdminAuditService adminAuditService;
 
-    @Value("${subscription.payment.bank-name:}")
-    private String bankName;
-
-    @Value("${subscription.payment.account-number:}")
-    private String bankAccountNumber;
-
-    @Value("${subscription.payment.account-holder:}")
-    private String bankAccountHolder;
-
-    @Value("${subscription.payment.branch:}")
-    private String bankBranch;
+    private final SubscriptionPaymentAccountService paymentAccounts;
 
     // ── Business owner ────────────────────────────────────────────────────────
 
@@ -155,9 +144,10 @@ public class SubscriptionService {
                 .periodEnd(periodEnd)
                 .build();
 
+        paymentAccounts.snapshotInto(invoice);
         SubscriptionInvoice saved = invoiceRepository.save(invoice);
         saved.setBankTransferRef(newPlan.name().toLowerCase() + " " + saved.getId());
-        return new UpgradeResponse(toInvoiceResponse(invoiceRepository.save(saved)), getBankInfo());
+        return new UpgradeResponse(toInvoiceResponse(invoiceRepository.save(saved)), invoiceBankInfo(saved));
     }
 
     /**
@@ -203,7 +193,12 @@ public class SubscriptionService {
 
     @Transactional(readOnly = true)
     public BankTransferInfoResponse getBankTransferInfo() {
-        return getBankInfo();
+        return paymentAccounts.currentBankInfo();
+    }
+
+    @Transactional(readOnly = true)
+    public BankTransferInfoResponse getInvoiceBankTransferInfo(Long businessId, Long invoiceId) {
+        return invoiceBankInfo(getInvoiceForBusiness(businessId, invoiceId));
     }
 
     // ── Admin ─────────────────────────────────────────────────────────────────
@@ -427,8 +422,10 @@ public class SubscriptionService {
         return invoice;
     }
 
-    private BankTransferInfoResponse getBankInfo() {
-        return new BankTransferInfoResponse(bankName, bankAccountNumber, bankAccountHolder, bankBranch);
+    private BankTransferInfoResponse invoiceBankInfo(SubscriptionInvoice invoice) {
+        if (invoice.getPaymentBankName() == null) return null;
+        return new BankTransferInfoResponse(invoice.getPaymentBankName(), invoice.getPaymentAccountNumber(),
+                invoice.getPaymentAccountHolder(), invoice.getPaymentBranch());
     }
 
     private SubscriptionResponse toResponse(Subscription sub) {
@@ -466,7 +463,9 @@ public class SubscriptionService {
                 invoice.getPaidAt(),
                 invoice.getConfirmedAt(),
                 invoice.getCreatedAt(),
-                invoice.getUpdatedAt()
+                invoice.getUpdatedAt(),
+                invoice.getPaymentAccountId(),
+                invoiceBankInfo(invoice)
         );
     }
 }

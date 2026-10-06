@@ -25,7 +25,9 @@ import java.util.Set;
 @RequiredArgsConstructor
 public class AdminAuditService {
     private static final Set<String> ACTIONS = Set.of("ADMIN_PLAN_CHANGED", "ADMIN_INVOICE_CONFIRMED",
-            "ADMIN_INVOICE_REJECTED", "ADMIN_USER_STATUS_CHANGED", "ADMIN_USER_DELETED");
+            "ADMIN_INVOICE_REJECTED", "ADMIN_USER_STATUS_CHANGED", "ADMIN_USER_DELETED",
+            "ADMIN_PAYMENT_ACCOUNT_CREATED", "ADMIN_PAYMENT_ACCOUNT_UPDATED",
+            "ADMIN_PAYMENT_ACCOUNT_ACTIVATED", "ADMIN_PAYMENT_ACCOUNT_ARCHIVED");
     private final AuditLogRepository repository;
     private final ObjectMapper mapper;
 

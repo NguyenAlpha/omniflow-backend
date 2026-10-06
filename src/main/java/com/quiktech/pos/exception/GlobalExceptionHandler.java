@@ -20,6 +20,12 @@ import org.springframework.web.method.annotation.MethodArgumentTypeMismatchExcep
 @RestControllerAdvice
 public class GlobalExceptionHandler {
 
+    @ExceptionHandler(PaymentAccountUnavailableException.class)
+    public ResponseEntity<ApiResult<?>> handlePaymentUnavailable(PaymentAccountUnavailableException ex) {
+        return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).body(
+                ApiResult.fail(ErrorDetail.of(ErrorCode.PAYMENT_ACCOUNT_UNAVAILABLE, ex.getMessage())));
+    }
+
     @ExceptionHandler(MethodArgumentTypeMismatchException.class)
     public ResponseEntity<ApiResult<?>> handleParameterType(MethodArgumentTypeMismatchException ex) {
         return ResponseEntity.badRequest().body(ApiResult.fail(

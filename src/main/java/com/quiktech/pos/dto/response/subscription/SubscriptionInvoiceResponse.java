@@ -21,6 +21,8 @@ public record SubscriptionInvoiceResponse(
         Instant paidAt,
         Instant confirmedAt,
         Instant createdAt,
-        Instant updatedAt
+        Instant updatedAt,
+        Long paymentAccountId,
+        BankTransferInfoResponse bankInfo
 ) {
 }

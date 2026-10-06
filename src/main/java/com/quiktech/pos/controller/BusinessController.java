@@ -129,8 +129,10 @@ public class BusinessController {
 
     @GetMapping("/{businessId}/subscription/bank-info")
     @PreAuthorize("@businessAccess.isOwner(#businessId, authentication)")
-    public ResponseEntity<ApiResult<BankTransferInfoResponse>> getBankInfo(@PathVariable Long businessId) {
-        return ResponseEntity.ok(ApiResult.ok(subscriptionService.getBankTransferInfo()));
+    public ResponseEntity<ApiResult<BankTransferInfoResponse>> getBankInfo(@PathVariable Long businessId,
+            @RequestParam(required = false) Long invoiceId) {
+        return ResponseEntity.ok(ApiResult.ok(invoiceId == null ? subscriptionService.getBankTransferInfo()
+                : subscriptionService.getInvoiceBankTransferInfo(businessId, invoiceId)));
     }
 
     @PatchMapping("/{businessId}")

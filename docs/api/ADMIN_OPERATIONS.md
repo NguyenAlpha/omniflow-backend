@@ -3,6 +3,10 @@
 All `/api/admin/**` endpoints require a valid JWT and `SUPER_ADMIN`. Responses
 use the existing `{ success, data, error }` envelope.
 
+Receiving-account administration and invoice snapshots are documented in
+[PAYMENT_ACCOUNTS.md](./PAYMENT_ACCOUNTS.md). Account mutations also appear in the
+administrator audit endpoint.
+
 ## GET `/api/admin/session`
 
 Returns the current `UserSummaryResponse` after checking the administrator role.

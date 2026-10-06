@@ -60,6 +60,8 @@ Lưu ý:
 | `amount` | number | Số tiền cần chuyển khoản (VND) |
 | `status` | string | `PENDING`, `PAID`, `FAILED` |
 | `bankTransferRef` | string \| null | Nội dung CK owner đã gửi lên |
+| `paymentAccountId` | number \| null | Tài khoản nhận tiền được chọn khi tạo hóa đơn |
+| `bankInfo` | BankTransferInfoResponse \| null | Bản sao thông tin nhận tiền của hóa đơn; không đổi khi admin chuyển tài khoản |
 | `adminNote` | string \| null | Ghi chú của admin khi confirm/reject |
 | `periodStart` | ISO 8601 | Ngày bắt đầu kỳ subscription |
 | `periodEnd` | ISO 8601 | Ngày kết thúc kỳ subscription |
@@ -303,7 +305,10 @@ Business owner huỷ invoice PENDING. Chỉ được phép khi invoice chưa đ�
 
 ## GET `/api/businesses/{businessId}/subscription/bank-info`
 
-Lấy thông tin tài khoản ngân hàng để hiển thị lại màn hình checkout (dùng khi user đóng modal rồi mở lại từ pending banner).
+Lấy thông tin nhận tiền từ database. Khi mở lại checkout, bắt buộc truyền query
+`invoiceId` để lấy thông tin đã lưu trên hóa đơn đó. Không truyền `invoiceId` sẽ
+trả tài khoản mặc định hiện tại, chỉ dùng cho xem trước/kiểm tra khả năng thanh toán.
+Xem [PAYMENT_ACCOUNTS.md](./PAYMENT_ACCOUNTS.md) về chuyển dữ liệu và quản lý tài khoản.
 
 **Quyền:** OWNER của business.
 
@@ -315,7 +320,8 @@ Lấy thông tin tài khoản ngân hàng để hiển thị lại màn hình ch
 
 ### Response `200 OK`
 
-Trả về `BankTransferInfoResponse`.
+Trả về `BankTransferInfoResponse` hoặc `null` khi chưa có tài khoản mặc định/hóa đơn
+không có dữ liệu lịch sử. Không dùng tài khoản hiện tại thay thế snapshot bị thiếu.
 
 ### Lỗi
 
