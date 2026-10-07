@@ -25,6 +25,7 @@ public class SubscriptionPaymentAccountService {
     private final SubscriptionPaymentAccountRepository accounts;
     private final SubscriptionPaymentSettingsRepository settings;
     private final AdminAuditService audit;
+    private final PaymentQrStorage qrStorage;
 
     @Transactional(readOnly = true)
     public List<PaymentAccountResponse> list() {
@@ -107,6 +108,7 @@ public class SubscriptionPaymentAccountService {
         invoice.setPaymentAccountNumber(account.getAccountNumber());
         invoice.setPaymentAccountHolder(account.getAccountHolder());
         invoice.setPaymentBranch(account.getBranch());
+        invoice.setPaymentQrImageKey(account.getQrImageKey());
     }
 
     private SubscriptionPaymentAccount editable(Long id, Long version) {
@@ -123,6 +125,11 @@ public class SubscriptionPaymentAccountService {
     }
 
     private void apply(SubscriptionPaymentAccount account, PaymentAccountRequest request) {
+        qrStorage.requireUploaded(request.qrImageKey());
+        if (request.qrImageKey() != null && !request.qrConfirmed()) {
+            throw new IllegalArgumentException("Confirm that the QR image belongs to this receiving account");
+        }
+        account.setQrImageKey(request.qrImageKey());
         account.setLabel(request.label().trim());
         account.setBankName(request.bankName().trim());
         account.setAccountNumber(request.accountNumber());
@@ -131,12 +138,15 @@ public class SubscriptionPaymentAccountService {
     }
 
     private BankTransferInfoResponse bankInfo(SubscriptionPaymentAccount a) {
-        return new BankTransferInfoResponse(a.getBankName(), a.getAccountNumber(), a.getAccountHolder(), a.getBranch());
+        // Availability has no invoice yet; QR payment instructions come from an invoice snapshot.
+        return new BankTransferInfoResponse(a.getBankName(), a.getAccountNumber(), a.getAccountHolder(), a.getBranch(),
+                null);
     }
 
     private PaymentAccountResponse response(SubscriptionPaymentAccount a, Long activeId) {
         return new PaymentAccountResponse(a.getId(), a.getLabel(), a.getBankName(), a.getAccountNumber(),
-                a.getAccountHolder(), a.getBranch(), Objects.equals(a.getId(), activeId), a.isArchived(),
+                a.getAccountHolder(), a.getBranch(), a.getQrImageKey(), PaymentQrStorage.adminUrl(a.getQrImageKey()),
+                Objects.equals(a.getId(), activeId), a.isArchived(),
                 a.getVersion(), a.getCreatedAt(), a.getUpdatedAt());
     }
 }

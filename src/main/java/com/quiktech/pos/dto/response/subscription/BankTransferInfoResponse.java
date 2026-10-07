@@ -4,6 +4,7 @@ public record BankTransferInfoResponse(
         String bankName,
         String accountNumber,
         String accountHolder,
-        String branch
+        String branch,
+        String qrImageUrl
 ) {
 }

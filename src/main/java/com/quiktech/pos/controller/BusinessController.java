@@ -17,6 +17,7 @@ import com.quiktech.pos.service.BusinessService;
 import com.quiktech.pos.service.SubscriptionService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.core.io.Resource;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.web.PageableDefault;
@@ -133,6 +134,13 @@ public class BusinessController {
             @RequestParam(required = false) Long invoiceId) {
         return ResponseEntity.ok(ApiResult.ok(invoiceId == null ? subscriptionService.getBankTransferInfo()
                 : subscriptionService.getInvoiceBankTransferInfo(businessId, invoiceId)));
+    }
+
+    @GetMapping("/{businessId}/subscription/invoices/{invoiceId}/qr")
+    @PreAuthorize("@businessAccess.isMember(#businessId, authentication)")
+    public ResponseEntity<Resource> getInvoiceQr(
+            @PathVariable Long businessId, @PathVariable Long invoiceId) {
+        return subscriptionService.getInvoiceQr(businessId, invoiceId);
     }
 
     @PatchMapping("/{businessId}")

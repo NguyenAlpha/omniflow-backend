@@ -17,6 +17,8 @@ import com.quiktech.pos.exception.ResourceNotFoundException;
 import com.quiktech.pos.repository.SubscriptionInvoiceRepository;
 import com.quiktech.pos.repository.SubscriptionRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.core.io.Resource;
+import org.springframework.http.ResponseEntity;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.PageRequest;
@@ -43,6 +45,7 @@ public class SubscriptionService {
     private final AdminAuditService adminAuditService;
 
     private final SubscriptionPaymentAccountService paymentAccounts;
+    private final PaymentQrStorage qrStorage;
 
     // ── Business owner ────────────────────────────────────────────────────────
 
@@ -199,6 +202,11 @@ public class SubscriptionService {
     @Transactional(readOnly = true)
     public BankTransferInfoResponse getInvoiceBankTransferInfo(Long businessId, Long invoiceId) {
         return invoiceBankInfo(getInvoiceForBusiness(businessId, invoiceId));
+    }
+
+    @Transactional(readOnly = true)
+    public ResponseEntity<Resource> getInvoiceQr(Long businessId, Long invoiceId) {
+        return qrStorage.image(getInvoiceForBusiness(businessId, invoiceId).getPaymentQrImageKey());
     }
 
     // ── Admin ─────────────────────────────────────────────────────────────────
@@ -425,7 +433,9 @@ public class SubscriptionService {
     private BankTransferInfoResponse invoiceBankInfo(SubscriptionInvoice invoice) {
         if (invoice.getPaymentBankName() == null) return null;
         return new BankTransferInfoResponse(invoice.getPaymentBankName(), invoice.getPaymentAccountNumber(),
-                invoice.getPaymentAccountHolder(), invoice.getPaymentBranch());
+                invoice.getPaymentAccountHolder(), invoice.getPaymentBranch(),
+                invoice.getPaymentQrImageKey() == null ? null : "/api/businesses/" + invoice.getBusiness().getId()
+                        + "/subscription/invoices/" + invoice.getId() + "/qr");
     }
 
     private SubscriptionResponse toResponse(Subscription sub) {

@@ -82,6 +82,15 @@ Thông tin tài khoản ngân hàng để business owner chuyển tiền.
 | `accountNumber` | string | Số tài khoản |
 | `accountHolder` | string | Tên chủ tài khoản |
 | `branch` | string | Chi nhánh |
+| `qrImageUrl` | string \| null | Đường dẫn API ảnh QR lưu trên hóa đơn; cần Bearer token để đọc |
+
+QR là ảnh admin tải lên cho tài khoản nhận tiền, được giữ nguyên theo hóa đơn.
+Thay/gỡ ảnh tài khoản không làm đổi QR của hóa đơn cũ. GET đường dẫn
+`/api/businesses/{businessId}/subscription/invoices/{invoiceId}/qr` trả PNG, yêu cầu
+thành viên business (hoặc SUPER_ADMIN) và kiểm tra hóa đơn thuộc business đó.
+Không có ảnh trả 404 `PAYMENT_QR_NOT_FOUND`. Bank-info không kèm invoiceId chỉ phục
+vụ kiểm tra tài khoản hiện tại, trả `qrImageUrl: null`; dùng snapshot hóa đơn khi
+thanh toán. Xem [PAYMENT_ACCOUNTS.md](PAYMENT_ACCOUNTS.md) về upload và lưu trữ.
 
 ---
 

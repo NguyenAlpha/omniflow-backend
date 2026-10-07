@@ -20,6 +20,8 @@ public class SubscriptionPaymentAccount {
     private String accountHolder;
     @Column(nullable = false, length = 150)
     private String branch = "";
+    @Column(length = 40)
+    private String qrImageKey;
     @Column(nullable = false)
     private boolean archived;
     @Version

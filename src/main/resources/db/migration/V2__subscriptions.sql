@@ -42,6 +42,7 @@ CREATE TABLE subscription_payment_accounts (
     account_number VARCHAR(50) NOT NULL,
     account_holder VARCHAR(150) NOT NULL,
     branch VARCHAR(150) NOT NULL DEFAULT '',
+    qr_image_key VARCHAR(40),
     archived BOOLEAN NOT NULL DEFAULT FALSE,
     version BIGINT NOT NULL DEFAULT 0,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -74,6 +75,7 @@ CREATE TABLE subscription_invoices (
     payment_account_number VARCHAR(50),
     payment_account_holder VARCHAR(150),
     payment_branch VARCHAR(150),
+    payment_qr_image_key VARCHAR(40),
     confirmed_by BIGINT,             -- admin user đã xác nhận thanh toán
     admin_note TEXT,                 -- ghi chú của admin khi confirm/reject
     confirmed_at TIMESTAMPTZ,        -- thời điểm admin xác nhận

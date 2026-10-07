@@ -60,6 +60,8 @@ public class SubscriptionInvoice {
     private String paymentAccountHolder;
     @Column(length = 150)
     private String paymentBranch;
+    @Column(length = 40)
+    private String paymentQrImageKey;
 
     // ID của admin user đã xác nhận thanh toán
     @Column(name = "confirmed_by")
