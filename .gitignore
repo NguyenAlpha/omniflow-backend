@@ -34,6 +34,5 @@ build/
 
 ### App config ###
 src/main/resources/application.properties
-src/main/resources/db/legacy-subscription-bank.properties
 .env
 /desktop.ini

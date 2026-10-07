@@ -1,10 +1,11 @@
 -- ============================================================================
 -- V2: Subscriptions & Billing
--- subscriptions, subscription_invoices
+-- subscriptions, subscription_invoices, subscription_payment_accounts, subscription_payment_settings
 --
 -- Baseline gộp: subscriptions đã có pending_plan/pending_billing_cycle (downgrade
 -- cuối chu kỳ) và expiry_warning_sent_at (chống spam email cảnh báo hết hạn).
--- subscription_invoices đã có các cột xác nhận chuyển khoản thủ công.
+-- subscription_invoices đã có các cột xác nhận chuyển khoản thủ công và snapshot
+-- tài khoản nhận tiền. Tài khoản được admin thiết lập trên web, không nhập từ ENV.
 -- ============================================================================
 
 -- ----------------------------------------------------------------------------
@@ -34,6 +35,26 @@ CREATE TABLE subscriptions (
     CONSTRAINT fk_subscriptions_business FOREIGN KEY (business_id) REFERENCES businesses(id)
 );
 
+CREATE TABLE subscription_payment_accounts (
+    id BIGSERIAL PRIMARY KEY,
+    label VARCHAR(100) NOT NULL,
+    bank_name VARCHAR(150) NOT NULL,
+    account_number VARCHAR(50) NOT NULL,
+    account_holder VARCHAR(150) NOT NULL,
+    branch VARCHAR(150) NOT NULL DEFAULT '',
+    archived BOOLEAN NOT NULL DEFAULT FALSE,
+    version BIGINT NOT NULL DEFAULT 0,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- A singleton pointer allows at most one default and provides a lock for switches/snapshots.
+CREATE TABLE subscription_payment_settings (
+    id INTEGER PRIMARY KEY CHECK (id = 1),
+    active_account_id BIGINT REFERENCES subscription_payment_accounts(id)
+);
+INSERT INTO subscription_payment_settings (id) VALUES (1);
+
 CREATE TABLE subscription_invoices (
     id BIGSERIAL PRIMARY KEY,
     business_id BIGINT NOT NULL,
@@ -47,6 +68,12 @@ CREATE TABLE subscription_invoices (
     paid_at TIMESTAMPTZ,
     -- Flow xác nhận chuyển khoản thủ công
     bank_transfer_ref VARCHAR(100),  -- mã/nội dung chuyển khoản do business owner gửi lên
+    -- Thông tin nhận tiền cố định tại thời điểm tạo hóa đơn.
+    payment_account_id BIGINT REFERENCES subscription_payment_accounts(id),
+    payment_bank_name VARCHAR(150),
+    payment_account_number VARCHAR(50),
+    payment_account_holder VARCHAR(150),
+    payment_branch VARCHAR(150),
     confirmed_by BIGINT,             -- admin user đã xác nhận thanh toán
     admin_note TEXT,                 -- ghi chú của admin khi confirm/reject
     confirmed_at TIMESTAMPTZ,        -- thời điểm admin xác nhận

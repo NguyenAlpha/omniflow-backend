@@ -1,7 +1,0 @@
-# Optional ONE-TIME V12 import. Copy to legacy-subscription-bank.properties before building.
-# Environment/application properties with these keys take precedence during migration.
-# Leave blank on a new installation; configure receiving accounts in the admin UI.
-subscription.payment.bank-name=
-subscription.payment.account-number=
-subscription.payment.account-holder=
-subscription.payment.branch=

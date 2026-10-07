@@ -50,27 +50,25 @@ New paid upgrade requests without an available account fail with 503 /
 `PAYMENT_ACCOUNT_UNAVAILABLE` and do not create an invoice. Free/downgrade/admin
 override operations do not require a receiving account.
 
-## Migration and rollout
+## Development baseline and setup
 
-V11 creates account/settings tables and snapshot columns. V12 is a Spring-managed
-Flyway Java migration, executed once and tracked in flyway_schema_history. It
-imports the old `subscription.payment.*` configuration and selects that account.
-External property/environment overrides take precedence during this one import.
-The optional local file `src/main/resources/db/legacy-subscription-bank.properties`
-can preserve the previous values solely as import data. It is gitignored like
-application.properties; use the adjacent `.example` template for other deployments.
-The current workspace's bank settings have been moved into this local import file.
-Remove the legacy keys from each deployment's application.properties after migration;
-runtime payment services never read them. Subsequent restarts do not reset UI changes.
+The account/settings tables and invoice snapshot columns are defined directly in
+`V2__subscriptions.sql`. This project is in development with a disposable database;
+the separate V11 schema migration and V12 Java import have been removed. No account
+is seeded or imported from ENV, application.properties or a legacy resource file.
+The settings singleton starts with `active_account_id = NULL`.
 
-Before first deployment, ensure the old receiving details are correct for the
-environment. New installations without legacy configuration, or explicit blank
-bank/name/holder values, skip the import, leaving setup
-to the admin UI. V12 attaches the imported details only to existing PENDING invoices,
-matching the destination the old checkout would show at migration time. Finished
-invoices retain null snapshots because their historical destination cannot be
-reconstructed. If import is skipped, old invoices also retain null snapshots;
-resolve those pending requests with the customer rather than guessing a bank.
+For an existing development database, recreate the database/volume before using
+this revised baseline; it is not an incremental upgrade of the old Flyway history.
+Clean the backend build output before rebuilding so a previously compiled V12
+class cannot remain on the classpath. Database reset and build execution are left
+to the developer; neither was performed as part of this change.
+
+After starting with the fresh schema, sign in as admin, open
+`/admin/payment-accounts`, add a receiving account and select **Use for new invoices**.
+Subscription payments become available after selection. All later changes happen
+on the web and remain in the database across restarts. Old `subscription.payment.*`
+configuration is unused and can be removed from local configuration.
 
 Deploy the backend before the frontend. The frontend must use invoice-specific
 details on reopen and must not display the old fixed `/qr.png` for arbitrary banks.
