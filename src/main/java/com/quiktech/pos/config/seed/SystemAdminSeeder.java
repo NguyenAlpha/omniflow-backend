@@ -8,6 +8,7 @@ import com.quiktech.pos.repository.RoleRepository;
 import com.quiktech.pos.repository.UserRepository;
 import com.quiktech.pos.repository.UserRoleRepository;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
@@ -23,6 +24,7 @@ import java.time.Instant;
  */
 @Component
 @RequiredArgsConstructor
+@Slf4j
 public class SystemAdminSeeder implements ApplicationRunner {
 
     private final UserRepository userRepository;
@@ -57,7 +59,12 @@ public class SystemAdminSeeder implements ApplicationRunner {
     @Override
     @Transactional
     public void run(ApplicationArguments args) {
-        if (!enabled) return;
+        if (!enabled) {
+            log.debug("System admin seeder is disabled");
+            return;
+        }
+
+        log.warn("System admin seeder is enabled");
 
         if (isBlank(username) || isBlank(email) || isBlank(password) || isBlank(fullName)) {
             throw new IllegalStateException("Admin seed requires username, email, password, and full-name");
@@ -70,26 +77,39 @@ public class SystemAdminSeeder implements ApplicationRunner {
             throw new IllegalStateException("Invalid admin.seed.role: " + role, ex);
         }
 
-        User user = userRepository.findByUsernameOrEmail(username, email)
-                .orElseGet(() -> userRepository.save(User.builder()
-                        .username(username)
-                        .email(email)
-                        .passwordHash(passwordEncoder.encode(password))
-                        .fullName(fullName)
-                        .phone(isBlank(phone) ? null : phone)
-                        .isActive(active)
-                        .createdAt(Instant.now())
-                        .updatedAt(Instant.now())
-                        .build()));
+        log.info("Starting system admin seed: username={}, role={}, active={}", username, roleName, active);
+
+        var existingUser = userRepository.findByUsernameOrEmail(username, email);
+        User user;
+        if (existingUser.isPresent()) {
+            user = existingUser.get();
+            log.info("System admin user already exists: userId={}, username={}",
+                    user.getId(), user.getUsername());
+        } else {
+            user = userRepository.save(User.builder()
+                    .username(username)
+                    .email(email)
+                    .passwordHash(passwordEncoder.encode(password))
+                    .fullName(fullName)
+                    .phone(isBlank(phone) ? null : phone)
+                    .isActive(active)
+                    .createdAt(Instant.now())
+                    .updatedAt(Instant.now())
+                    .build());
+            log.info("Created system admin user: userId={}, username={}",
+                    user.getId(), user.getUsername());
+        }
 
         if (userRoleRepository.existsByUserIdAndBusinessIsNullAndStoreIsNullAndDeletedAtIsNull(user.getId())) {
+            log.info("Skipping system role assignment because user already has one: userId={}, username={}",
+                    user.getId(), user.getUsername());
             return;
         }
 
         Role roleEntity = roleRepository.findByName(roleName)
                 .orElseThrow(() -> new IllegalStateException("Role not found in DB: " + roleName));
 
-        userRoleRepository.save(UserRole.builder()
+        UserRole userRole = userRoleRepository.save(UserRole.builder()
                 .user(user)
                 .role(roleEntity)
                 .business(null)
@@ -98,6 +118,10 @@ public class SystemAdminSeeder implements ApplicationRunner {
                 .createdAt(Instant.now())
                 .updatedAt(Instant.now())
                 .build());
+
+        log.info("Assigned system role: userId={}, username={}, userRoleId={}, role={}, active={}",
+                user.getId(), user.getUsername(), userRole.getId(), roleName, active);
+        log.info("System admin seed completed: username={}", user.getUsername());
     }
 
     private static boolean isBlank(String value) {
