@@ -3,14 +3,13 @@ package com.quiktech.pos.controller;
 import com.quiktech.pos.dto.response.common.ApiResult;
 import com.quiktech.pos.dto.response.notification.LowStockItemResponse;
 import com.quiktech.pos.dto.response.notification.NotificationSummaryResponse;
-import com.quiktech.pos.entity.enums.InvoiceStatus;
-import com.quiktech.pos.repository.InventoryRepository;
-import com.quiktech.pos.repository.StoreRepository;
-import com.quiktech.pos.repository.SubscriptionInvoiceRepository;
-import com.quiktech.pos.dto.response.common.ErrorCode;
-import com.quiktech.pos.exception.ResourceNotFoundException;
+import com.quiktech.pos.dto.response.notification.NotificationPageResponse;
+import com.quiktech.pos.service.NotificationService;
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.PositiveOrZero;
 import lombok.RequiredArgsConstructor;
-import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
@@ -18,41 +17,40 @@ import java.util.List;
 
 @RestController
 @RequestMapping("/api/stores/{storeId}/notifications")
+@PreAuthorize("@storeAccess.isMember(#storeId, authentication)")
 @RequiredArgsConstructor
 public class NotificationController {
 
-    private final InventoryRepository inventoryRepository;
-    private final SubscriptionInvoiceRepository invoiceRepository;
-    private final StoreRepository storeRepository;
+    private final NotificationService service;
 
     @GetMapping("/summary")
-    @PreAuthorize("@storeAccess.isMember(#storeId, authentication)")
-    public ResponseEntity<ApiResult<NotificationSummaryResponse>> summary(@PathVariable Long storeId) {
-        Long businessId = storeRepository.findBusinessIdByStoreId(storeId)
-                .orElseThrow(() -> new ResourceNotFoundException(ErrorCode.STORE_NOT_FOUND, "Store not found"));
-        // COUNT ở DB thay vì load toàn bộ entity (JOIN FETCH) rồi .size()
-        long lowStock = inventoryRepository.countLowStockItems(storeId);
-        long pendingInvoices = invoiceRepository.countByBusinessIdAndStatus(businessId, InvoiceStatus.PENDING);
-        return ResponseEntity.ok(ApiResult.ok(new NotificationSummaryResponse(lowStock, pendingInvoices)));
+    public ApiResult<NotificationSummaryResponse> summary(@PathVariable Long storeId, Authentication auth) {
+        return ApiResult.ok(service.summary(storeId, auth));
+    }
+
+    @GetMapping
+    public ApiResult<NotificationPageResponse> list(@PathVariable Long storeId, Authentication auth,
+            @RequestParam(required = false) Long cursor, @RequestParam(defaultValue = "20") int size,
+            @RequestParam(defaultValue = "false") boolean unreadOnly) {
+        return ApiResult.ok(service.list(storeId, auth, cursor, size, unreadOnly));
     }
 
     @GetMapping("/low-stock")
-    @PreAuthorize("@storeAccess.isMember(#storeId, authentication)")
-    public ResponseEntity<ApiResult<List<LowStockItemResponse>>> lowStock(@PathVariable Long storeId) {
-        Long businessId = storeRepository.findBusinessIdByStoreId(storeId)
-                .orElseThrow(() -> new ResourceNotFoundException(ErrorCode.STORE_NOT_FOUND, "Store not found"));
+    public ApiResult<List<LowStockItemResponse>> lowStock(@PathVariable Long storeId, Authentication auth) {
+        return ApiResult.ok(service.lowStock(storeId, auth));
+    }
 
-        List<LowStockItemResponse> items = inventoryRepository.findLowStockItems(storeId).stream()
-                .limit(10)
-                .map(inv -> new LowStockItemResponse(
-                        inv.getProduct().getName(),
-                        inv.getProduct().getSku(),
-                        inv.getQuantity(),
-                        inv.getProduct().getMinStockLevel(),
-                        inv.getWarehouse().getName()
-                ))
-                .toList();
+    @PostMapping("/{id}/read")
+    public ApiResult<Void> markRead(@PathVariable Long storeId, @PathVariable Long id, Authentication auth) {
+        service.markRead(storeId, id, auth);
+        return ApiResult.ok();
+    }
 
-        return ResponseEntity.ok(ApiResult.ok(items));
+    public record ReadAllRequest(@NotNull @PositiveOrZero Long throughId) {}
+
+    @PostMapping("/read-all")
+    public ApiResult<Void> markAllRead(@PathVariable Long storeId, @Valid @RequestBody ReadAllRequest request, Authentication auth) {
+        service.markAllRead(storeId, request.throughId(), auth);
+        return ApiResult.ok();
     }
 }

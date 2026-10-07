@@ -364,3 +364,14 @@ B2B khách hàng cần xuất báo cáo — không phải làm thủ công.
 - Ghi nhận thiết bị thực hiện thay đổi (`last_modified_by_device`) — phục vụ conflict detection
 - Soft delete thay vì hard delete — client offline nhận được tín hiệu "record đã bị xoá"
 - Conflict resolution: last-write-wins theo `sync_version` (chiến lược mặc định)
+
+## 26. Thông báo trong ứng dụng
+
+- Lưu sự kiện tồn kho thấp, thanh toán gói được duyệt/từ chối hoặc hết hạn chờ,
+  gói sắp hết hạn trong 7 ngày và gói đã hết hạn.
+- Lưu trạng thái đọc theo user; đọc tất cả theo mốc ID, phân trang cursor.
+- Cảnh báo tồn kho theo cửa hàng; thông báo gói chỉ cho OWNER của business.
+- Bộ thu thập chạy mỗi 60 giây, chống trùng bằng event key và khóa giao dịch;
+  số cảnh báo nghiệp vụ hiện tại tách riêng khỏi số thông báo chưa đọc.
+- API, giới hạn thu thập định kỳ và migration baseline V8 được mô tả tại
+  [api/NOTIFICATIONS.md](api/NOTIFICATIONS.md).

@@ -86,3 +86,29 @@ ALTER TABLE payments ADD CONSTRAINT chk_payments_method CHECK (payment_method IN
 ALTER TABLE payments ADD CONSTRAINT chk_payments_reference CHECK (customer_id IS NULL OR supplier_id IS NULL);
 
 ALTER TABLE sync_change_log ADD CONSTRAINT chk_sync_log_operation CHECK (operation IN ('INSERT', 'UPDATE', 'DELETE'));
+
+-- In-app notifications: shared events, individual read receipts. Development baseline.
+CREATE TABLE notifications (
+    id BIGSERIAL PRIMARY KEY,
+    business_id BIGINT NOT NULL REFERENCES businesses(id),
+    store_id BIGINT REFERENCES stores(id),
+    type VARCHAR(40) NOT NULL CHECK (type IN ('LOW_STOCK', 'INVOICE_PAID', 'INVOICE_FAILED', 'SUBSCRIPTION_EXPIRING', 'SUBSCRIPTION_EXPIRED')),
+    source_id BIGINT NOT NULL,
+    event_key VARCHAR(160) UNIQUE,
+    subject VARCHAR(250) NOT NULL,
+    detail TEXT,
+    target_path TEXT NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    resolved_at TIMESTAMPTZ,
+    CHECK ((type = 'LOW_STOCK' AND store_id IS NOT NULL) OR (type <> 'LOW_STOCK' AND store_id IS NULL))
+);
+CREATE INDEX idx_notifications_store ON notifications(store_id, id DESC);
+CREATE INDEX idx_notifications_business ON notifications(business_id, id DESC) WHERE store_id IS NULL;
+CREATE INDEX idx_notifications_active_stock ON notifications(source_id) WHERE type = 'LOW_STOCK' AND resolved_at IS NULL;
+
+CREATE TABLE notification_reads (
+    notification_id BIGINT NOT NULL REFERENCES notifications(id) ON DELETE CASCADE,
+    user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    read_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    PRIMARY KEY (user_id, notification_id)
+);
