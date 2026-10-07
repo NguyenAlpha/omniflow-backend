@@ -12,6 +12,8 @@ import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Instant;
+
 @Component
 @Order(3)
 @RequiredArgsConstructor
@@ -29,11 +31,11 @@ public class StoreSeeder implements ApplicationRunner {
     public void run(ApplicationArguments args) {
         if (!enabled) return;
 
-        seedStore("Business One", "Store One", "123 Đường A, Quận 1, TP.HCM", "0901000001", "store1@example.com");
-        seedStore("Business Two", "Store Two", "456 Đường B, Quận 2, TP.HCM", "0901000002", "store2@example.com");
+        seedStore("Business One", "Store One", "123 Đường A, Quận 1, TP.HCM", "0901000001", "store1@example.com", Instant.parse("2026-02-23T09:11:00Z"));
+        seedStore("Business Two", "Store Two", "456 Đường B, Quận 2, TP.HCM", "0901000002", "store2@example.com", Instant.parse("2026-03-17T11:23:00Z"));
     }
 
-    private void seedStore(String businessName, String storeName, String address, String phone, String email) {
+    private void seedStore(String businessName, String storeName, String address, String phone, String email, Instant created) {
         Business business = businessRepository.findByNameAndDeletedAtIsNull(businessName)
                 .orElseThrow(() -> new IllegalStateException("Business not found: " + businessName + " — run BusinessSeeder first"));
 
@@ -44,6 +46,8 @@ public class StoreSeeder implements ApplicationRunner {
                         .address(address)
                         .phone(phone)
                         .email(email)
+                        .createdAt(created)
+                        .updatedAt(created)
                         .build()));
     }
 }

@@ -43,17 +43,19 @@ public class BusinessSeeder implements ApplicationRunner {
     public void run(ApplicationArguments args) {
         if (!enabled) return;
 
-        seedBusiness("Business One", "user1");
-        seedBusiness("Business Two", "user2");
+        seedBusiness("Business One", "user1", Instant.parse("2026-02-22T11:20:00Z"));
+        seedBusiness("Business Two", "user2", Instant.parse("2026-03-15T09:36:00Z"));
     }
 
-    private void seedBusiness(String name, String ownerUsername) {
+    private void seedBusiness(String name, String ownerUsername, Instant createdAt) {
         User owner = userRepository.findByUsername(ownerUsername)
                 .orElseThrow(() -> new IllegalStateException("User not found: " + ownerUsername + " — run UserSeeder first"));
 
         Business business = businessRepository.findByNameAndDeletedAtIsNull(name)
                 .orElseGet(() -> businessRepository.save(Business.builder()
                         .name(name)
+                        .createdAt(createdAt)
+                        .updatedAt(createdAt)
                         .isActive(true)
                         .build()));
 
