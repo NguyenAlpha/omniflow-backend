@@ -4,6 +4,7 @@ import com.quiktech.pos.entity.Warehouse;
 import com.quiktech.pos.repository.StoreRepository;
 import com.quiktech.pos.repository.WarehouseRepository;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
@@ -16,6 +17,7 @@ import java.util.UUID;
 @Component
 @Order(4)
 @RequiredArgsConstructor
+@Slf4j
 public class WarehouseSeeder implements ApplicationRunner {
 
     private final WarehouseRepository warehouseRepository;
@@ -28,18 +30,24 @@ public class WarehouseSeeder implements ApplicationRunner {
     @Override
     @Transactional
     public void run(ApplicationArguments args) {
-        if (!enabled) return;
+        if (!enabled) {
+            log.debug("Warehouse seeder is disabled");
+            return;
+        }
 
-        seedWarehouse("Store One", "123 Đường A, Quận 1, TP.HCM");
-        seedWarehouse("Store Two", "456 Đường B, Quận 2, TP.HCM");
+        SeedSummary summary = new SeedSummary();
+
+        seedWarehouse(summary, "Store One", "123 Đường A, Quận 1, TP.HCM");
+        seedWarehouse(summary, "Store Two", "456 Đường B, Quận 2, TP.HCM");
+        summary.logAfterCommit(log, "Warehouse");
     }
 
-    private void seedWarehouse(String storeName, String address) {
+    private void seedWarehouse(SeedSummary summary, String storeName, String address) {
         var store = storeRepository.findByNameAndDeletedAtIsNull(storeName)
                 .orElseThrow(() -> new IllegalStateException("Store not found: " + storeName + " — run StoreSeeder first"));
 
-        warehouseRepository.findByStoreIdAndNameAndDeletedAtIsNull(store.getId(), "Kho chính")
-                .orElseGet(() -> warehouseRepository.save(Warehouse.builder()
+        summary.getOrCreate(warehouseRepository.findByStoreIdAndNameAndDeletedAtIsNull(store.getId(), "Kho chính"),
+                () -> warehouseRepository.save(Warehouse.builder()
                         .store(store)
                         .name("Kho chính")
                         .address(address)

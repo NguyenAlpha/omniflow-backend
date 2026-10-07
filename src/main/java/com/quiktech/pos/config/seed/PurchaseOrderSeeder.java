@@ -51,7 +51,10 @@ public class PurchaseOrderSeeder implements ApplicationRunner {
     @Override
     @Transactional
     public void run(ApplicationArguments args) {
-        if (!enabled) return;
+        if (!enabled) {
+            log.debug("Purchase order seeder is disabled");
+            return;
+        }
         seedAt(LocalDate.now(SEED_ZONE));
     }
 
@@ -73,8 +76,9 @@ public class PurchaseOrderSeeder implements ApplicationRunner {
         );
 
         Set<Long> affectedProducts = new HashSet<>();
-        int created = seedStore("Business One", "Store One", "user1", samples, from, availableDays, affectedProducts);
-        created += seedStore("Business Two", "Store Two", "user2", samples, from, availableDays, affectedProducts);
+        SeedSummary summary = new SeedSummary();
+        seedStore("Business One", "Store One", "user1", samples, from, availableDays, affectedProducts, summary);
+        seedStore("Business Two", "Store Two", "user2", samples, from, availableDays, affectedProducts, summary);
 
         // Flush inventory trước native query để totalStock đọc đúng số lượng vừa cộng.
         if (!affectedProducts.isEmpty()) {
@@ -82,23 +86,22 @@ public class PurchaseOrderSeeder implements ApplicationRunner {
             affectedProducts.forEach(productRepository::recalculateTotalStock);
         }
         purchaseOrderRepository.flush();
-        log.info("Purchase order seed completed: from={}, to={}, created={}, skipped={}",
-                from, to, created, samples.size() * 2 - created);
+        summary.logAfterCommit(log, "Purchase order", "from=" + from + ", to=" + to);
     }
 
-    private int seedStore(String businessName, String storeName, String username, List<Sample> samples,
-                          LocalDate from, long availableDays, Set<Long> affectedProducts) {
+    private void seedStore(String businessName, String storeName, String username, List<Sample> samples,
+                           LocalDate from, long availableDays, Set<Long> affectedProducts, SeedSummary summary) {
         Store store = storeRepository.findByNameAndDeletedAtIsNull(storeName)
                 .orElseThrow(() -> new IllegalStateException("Store not found: " + storeName + " — run StoreSeeder first"));
         if (!businessName.equals(store.getBusiness().getName())) {
             throw new IllegalStateException("Seed store does not belong to " + businessName + ": " + storeName);
         }
 
-        int created = 0;
         for (int i = 0; i < samples.size(); i++) {
             Sample sample = samples.get(i);
             // Check trước mọi side effect; giữ nguyên ngày và số tiền của đơn đã tồn tại.
             if (purchaseOrderRepository.findByStoreIdAndOrderCode(store.getId(), sample.code()).isPresent()) {
+                summary.record(false);
                 continue;
             }
 
@@ -120,9 +123,8 @@ public class PurchaseOrderSeeder implements ApplicationRunner {
                 case RECEIVED -> createdAt.plus(2, ChronoUnit.DAYS);
             };
             seedOrder(store, warehouse, supplier, user, sample, i, createdAt, eventAt, affectedProducts);
-            created++;
+            summary.record(true);
         }
-        return created;
     }
 
     private void seedOrder(Store store, Warehouse warehouse, Supplier supplier, User user, Sample sample,
@@ -154,16 +156,18 @@ public class PurchaseOrderSeeder implements ApplicationRunner {
         po.setPaidAmount(paid);
         po.setDebtAmount(total.subtract(paid));
         // Lưu trạng thái cuối ngay lần INSERT: tránh @PreUpdate ghi đè ngày lịch sử bằng now().
-        purchaseOrderRepository.save(po);
+        // save() có thể merge và trả về instance managed khác với po ban đầu.
+        // Các liên kết tạo tiếp phải dùng instance và items được trả về.
+        PurchaseOrder saved = purchaseOrderRepository.save(po);
 
         if (sample.status() != PurchaseOrderStatus.RECEIVED) return;
 
-        for (PurchaseOrderItem item : items) {
-            receiveItem(po, item, user, eventAt);
+        for (PurchaseOrderItem item : saved.getPurchaseOrderItems()) {
+            receiveItem(saved, item, user, eventAt);
             affectedProducts.add(item.getProduct().getId());
         }
-        if (po.getDebtAmount().signum() > 0) {
-            supplier.setDebtBalance(supplier.getDebtBalance().add(po.getDebtAmount()));
+        if (saved.getDebtAmount().signum() > 0) {
+            supplier.setDebtBalance(supplier.getDebtBalance().add(saved.getDebtAmount()));
             supplier.setLastModifiedByUser(user);
             supplier.setLastModifiedAt(Instant.now());
             supplierRepository.save(supplier);
@@ -171,7 +175,7 @@ public class PurchaseOrderSeeder implements ApplicationRunner {
         if (paid.signum() > 0) {
             paymentRepository.save(Payment.builder()
                     .store(store).supplier(supplier).amount(paid).paymentMethod(sample.paymentMethod())
-                    .note("Purchase order: " + po.getOrderCode())
+                    .note("Purchase order: " + saved.getOrderCode())
                     .publicId(UUID.randomUUID()).createdBy(user).lastModifiedByUser(user)
                     .createdAt(eventAt).updatedAt(eventAt).lastModifiedAt(eventAt)
                     .build());

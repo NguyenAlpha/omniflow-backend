@@ -30,24 +30,18 @@ public class UserSeeder implements ApplicationRunner {
     @Override
     @Transactional
     public void run(ApplicationArguments args) {
-        if (!enabled) return;
-
-        int createdCount = 0;
-        if (seedUser("user1", "u1@u.com", "User One", Instant.parse("2025-01-15T08:30:00Z"))) {
-            createdCount++;
-        }
-        if (seedUser("user2", "u2@u.com", "User Two", Instant.parse("2025-03-08T10:15:00Z"))) {
-            createdCount++;
-        }
-        if (seedUser("user3", "u3@u.com", "User Three", Instant.parse("2025-06-21T14:45:00Z"))) {
-            createdCount++;
-        }
-        if (seedUser("user4", "u4@u.com", "User Four", Instant.parse("2025-02-21T14:45:00Z"))) {
-            createdCount++;
+        if (!enabled) {
+            log.debug("User seeder is disabled");
+            return;
         }
 
-        int totalCount = 4;
-        log.info("User seed completed: created={}, skipped={}", createdCount, totalCount - createdCount);
+        SeedSummary summary = new SeedSummary();
+        summary.record(seedUser("user1", "u1@u.com", "User One", Instant.parse("2025-01-15T08:30:00Z")));
+        summary.record(seedUser("user2", "u2@u.com", "User Two", Instant.parse("2025-03-08T10:15:00Z")));
+        summary.record(seedUser("user3", "u3@u.com", "User Three", Instant.parse("2025-06-21T14:45:00Z")));
+        summary.record(seedUser("user4", "u4@u.com", "User Four", Instant.parse("2025-02-21T14:45:00Z")));
+
+        summary.logAfterCommit(log, "User");
     }
 
     private boolean seedUser(String username, String email, String fullName, Instant createdAt) {

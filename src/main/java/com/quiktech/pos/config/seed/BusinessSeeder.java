@@ -11,6 +11,7 @@ import com.quiktech.pos.entity.enums.SubscriptionPlan;
 import com.quiktech.pos.entity.enums.SubscriptionStatus;
 import com.quiktech.pos.repository.*;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
@@ -25,6 +26,7 @@ import java.util.UUID;
 @Component
 @Order(2)
 @RequiredArgsConstructor
+@Slf4j
 public class BusinessSeeder implements ApplicationRunner {
 
     private final BusinessRepository businessRepository;
@@ -41,18 +43,24 @@ public class BusinessSeeder implements ApplicationRunner {
     @Override
     @Transactional
     public void run(ApplicationArguments args) {
-        if (!enabled) return;
+        if (!enabled) {
+            log.debug("Business seeder is disabled");
+            return;
+        }
 
-        seedBusiness("Business One", "user1", Instant.parse("2026-02-22T11:20:00Z"));
-        seedBusiness("Business Two", "user2", Instant.parse("2026-03-15T09:36:00Z"));
+        SeedSummary summary = new SeedSummary();
+
+        seedBusiness(summary, "Business One", "user1", Instant.parse("2026-02-22T11:20:00Z"));
+        seedBusiness(summary, "Business Two", "user2", Instant.parse("2026-03-15T09:36:00Z"));
+        summary.logAfterCommit(log, "Business");
     }
 
-    private void seedBusiness(String name, String ownerUsername, Instant createdAt) {
+    private void seedBusiness(SeedSummary summary, String name, String ownerUsername, Instant createdAt) {
         User owner = userRepository.findByUsername(ownerUsername)
                 .orElseThrow(() -> new IllegalStateException("User not found: " + ownerUsername + " — run UserSeeder first"));
 
-        Business business = businessRepository.findByNameAndDeletedAtIsNull(name)
-                .orElseGet(() -> businessRepository.save(Business.builder()
+        Business business = summary.getOrCreate(businessRepository.findByNameAndDeletedAtIsNull(name),
+                () -> businessRepository.save(Business.builder()
                         .name(name)
                         .createdAt(createdAt)
                         .updatedAt(createdAt)

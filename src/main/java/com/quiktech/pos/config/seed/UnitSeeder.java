@@ -3,6 +3,7 @@ package com.quiktech.pos.config.seed;
 import com.quiktech.pos.entity.Unit;
 import com.quiktech.pos.repository.UnitRepository;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
@@ -16,6 +17,7 @@ import java.util.UUID;
 @Component
 @Order(1)
 @RequiredArgsConstructor
+@Slf4j
 public class UnitSeeder implements ApplicationRunner {
 
     private final UnitRepository unitRepository;
@@ -27,16 +29,26 @@ public class UnitSeeder implements ApplicationRunner {
     @Override
     @Transactional
     public void run(ApplicationArguments args) {
-        if (!enabled) return;
-        if (!unitRepository.findByBusinessIdIsNullAndDeletedAtIsNull().isEmpty()) return;
+        if (!enabled) {
+            log.debug("Unit seeder is disabled");
+            return;
+        }
 
-        unitRepository.saveAll(List.of(
+        SeedSummary summary = new SeedSummary();
+        List<Unit> samples = List.of(
                 Unit.builder().name("Cái").abbreviation("cái").publicId(UUID.randomUUID()).build(),
                 Unit.builder().name("Hộp").abbreviation("hộp").publicId(UUID.randomUUID()).build(),
                 Unit.builder().name("Bộ").abbreviation("bộ").publicId(UUID.randomUUID()).build(),
                 Unit.builder().name("Bao").abbreviation("bao").publicId(UUID.randomUUID()).build(),
                 Unit.builder().name("Chai").abbreviation("chai").publicId(UUID.randomUUID()).build(),
                 Unit.builder().name("Gói").abbreviation("gói").publicId(UUID.randomUUID()).build()
-        ));
+        );
+        // Giữ nguyên chính sách hiện tại: bỏ qua cả bộ mẫu nếu đã có unit hệ thống.
+        boolean skipped = !unitRepository.findByBusinessIdIsNullAndDeletedAtIsNull().isEmpty();
+        if (!skipped) {
+            unitRepository.saveAll(samples);
+        }
+        samples.forEach(unit -> summary.record(!skipped));
+        summary.logAfterCommit(log, "Unit");
     }
 }

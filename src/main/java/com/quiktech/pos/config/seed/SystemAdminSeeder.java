@@ -77,13 +77,14 @@ public class SystemAdminSeeder implements ApplicationRunner {
             throw new IllegalStateException("Invalid admin.seed.role: " + role, ex);
         }
 
-        log.info("Starting system admin seed: username={}, role={}, active={}", username, roleName, active);
+        log.debug("Starting system admin seed: username={}, role={}, active={}", username, roleName, active);
 
+        SeedSummary summary = new SeedSummary();
         var existingUser = userRepository.findByUsernameOrEmail(username, email);
         User user;
         if (existingUser.isPresent()) {
             user = existingUser.get();
-            log.info("System admin user already exists: userId={}, username={}",
+            log.debug("System admin user already exists: userId={}, username={}",
                     user.getId(), user.getUsername());
         } else {
             user = userRepository.save(User.builder()
@@ -96,13 +97,17 @@ public class SystemAdminSeeder implements ApplicationRunner {
                     .createdAt(Instant.now())
                     .updatedAt(Instant.now())
                     .build());
-            log.info("Created system admin user: userId={}, username={}",
+            log.debug("Created system admin user (pending commit): userId={}, username={}",
                     user.getId(), user.getUsername());
         }
 
+        summary.record(existingUser.isEmpty());
+
         if (userRoleRepository.existsByUserIdAndBusinessIsNullAndStoreIsNullAndDeletedAtIsNull(user.getId())) {
-            log.info("Skipping system role assignment because user already has one: userId={}, username={}",
+            log.debug("Skipping system role assignment because user already has one: userId={}, username={}",
                     user.getId(), user.getUsername());
+            summary.record(false);
+            summary.logAfterCommit(log, "System admin", "scope=users+roles");
             return;
         }
 
@@ -119,9 +124,10 @@ public class SystemAdminSeeder implements ApplicationRunner {
                 .updatedAt(Instant.now())
                 .build());
 
-        log.info("Assigned system role: userId={}, username={}, userRoleId={}, role={}, active={}",
+        log.debug("Assigned system role (pending commit): userId={}, username={}, userRoleId={}, role={}, active={}",
                 user.getId(), user.getUsername(), userRole.getId(), roleName, active);
-        log.info("System admin seed completed: username={}", user.getUsername());
+        summary.record(true);
+        summary.logAfterCommit(log, "System admin", "scope=users+roles");
     }
 
     private static boolean isBlank(String value) {

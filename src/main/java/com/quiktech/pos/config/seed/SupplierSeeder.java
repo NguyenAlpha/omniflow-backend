@@ -7,6 +7,7 @@ import com.quiktech.pos.repository.BusinessRepository;
 import com.quiktech.pos.repository.SupplierRepository;
 import com.quiktech.pos.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
@@ -19,6 +20,7 @@ import java.util.UUID;
 @Component
 @Order(3)
 @RequiredArgsConstructor
+@Slf4j
 public class SupplierSeeder implements ApplicationRunner {
 
     private final SupplierRepository supplierRepository;
@@ -32,24 +34,31 @@ public class SupplierSeeder implements ApplicationRunner {
     @Override
     @Transactional
     public void run(ApplicationArguments args) {
-        if (!enabled) return;
+        if (!enabled) {
+            log.debug("Supplier seeder is disabled");
+            return;
+        }
 
-        seedSupplier("Business One", "user1", "SUP-001", "Công ty Thực phẩm An Phát",
+        SeedSummary summary = new SeedSummary();
+
+        seedSupplier(summary, "Business One", "user1", "SUP-001", "Công ty Thực phẩm An Phát",
                 "0901000001", "anphat@example.com", "Quận 1, TP. Hồ Chí Minh");
-        seedSupplier("Business One", "user1", "SUP-002", "Nhà phân phối Đồ uống Việt",
+        seedSupplier(summary, "Business One", "user1", "SUP-002", "Nhà phân phối Đồ uống Việt",
                 "0901000002", "douongviet@example.com", "Quận Bình Thạnh, TP. Hồ Chí Minh");
-        seedSupplier("Business One", "user1", "SUP-003", "Nông sản Xanh",
+        seedSupplier(summary, "Business One", "user1", "SUP-003", "Nông sản Xanh",
                 "0901000003", "nongsanxanh@example.com", "TP. Thủ Đức, TP. Hồ Chí Minh");
 
-        seedSupplier("Business Two", "user2", "SUP-001", "Văn phòng phẩm Minh Long",
+        seedSupplier(summary, "Business Two", "user2", "SUP-001", "Văn phòng phẩm Minh Long",
                 "0902000001", "minhlong@example.com", "Quận Hải Châu, Đà Nẵng");
-        seedSupplier("Business Two", "user2", "SUP-002", "Thiết bị Công nghệ Sao Việt",
+        seedSupplier(summary, "Business Two", "user2", "SUP-002", "Thiết bị Công nghệ Sao Việt",
                 "0902000002", "saoviet@example.com", "Quận Thanh Khê, Đà Nẵng");
-        seedSupplier("Business Two", "user2", "SUP-003", "Điện máy Thành Công",
+        seedSupplier(summary, "Business Two", "user2", "SUP-003", "Điện máy Thành Công",
                 "0902000003", "thanhcong@example.com", "Quận Sơn Trà, Đà Nẵng");
+        summary.logAfterCommit(log, "Supplier");
     }
 
     private void seedSupplier(
+            SeedSummary summary,
             String businessName,
             String createdByUsername,
             String code,
@@ -66,8 +75,8 @@ public class SupplierSeeder implements ApplicationRunner {
                 .orElseThrow(() -> new IllegalStateException(
                         "User not found: " + createdByUsername + " — run UserSeeder first"));
 
-        supplierRepository.findByBusinessIdAndCodeAndDeletedAtIsNull(business.getId(), code)
-                .orElseGet(() -> supplierRepository.save(Supplier.builder()
+        summary.getOrCreate(supplierRepository.findByBusinessIdAndCodeAndDeletedAtIsNull(business.getId(), code),
+                () -> supplierRepository.save(Supplier.builder()
                         .business(business)
                         .code(code)
                         .name(name)
