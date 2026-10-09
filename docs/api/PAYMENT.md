@@ -24,7 +24,9 @@ Ghi nhận và tra cứu các giao dịch thu chi tại store. Tất cả endpoi
   "publicId": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
   "storeId": 1,
   "customerPublicId": "b2c3d4e5-...",
+  "customerName": "Nguyễn Văn An",
   "supplierPublicId": null,
+  "supplierName": null,
   "amount": 200000.00,
   "paymentMethod": "CASH",
   "note": "Khách trả nợ tháng 6",
@@ -38,6 +40,8 @@ Ghi nhận và tra cứu các giao dịch thu chi tại store. Tất cả endpoi
 > - `customerPublicId` có giá trị → **Thu vào** (khách hàng trả nợ cho store)
 > - `supplierPublicId` có giá trị → **Chi ra** (store trả nợ cho nhà cung cấp)
 > - Cả hai `null` → **Thu/chi nội bộ** (không liên kết đối tác)
+
+`customerName` và `supplierName` là tên đối tác tương ứng; field không áp dụng sẽ là `null`.
 
 ### Các giá trị `paymentMethod`
 
@@ -113,7 +117,9 @@ Tìm kiếm và lọc danh sách giao dịch. Yêu cầu user là **thành viên
         "publicId": "a1b2c3d4-...",
         "storeId": 1,
         "customerPublicId": "b2c3d4e5-...",
+        "customerName": "Nguyễn Văn An",
         "supplierPublicId": null,
+        "supplierName": null,
         "amount": 200000.00,
         "paymentMethod": "CASH",
         "note": "Khách trả nợ tháng 6",

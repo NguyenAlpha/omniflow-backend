@@ -237,7 +237,9 @@ public class PaymentService {
         return new PaymentResponse(
                 p.getId(), p.getPublicId(), p.getStore().getId(),
                 p.getCustomer() != null ? p.getCustomer().getPublicId() : null,
+                p.getCustomer() != null ? p.getCustomer().getName() : null,
                 p.getSupplier() != null ? p.getSupplier().getPublicId() : null,
+                p.getSupplier() != null ? p.getSupplier().getName() : null,
                 p.getAmount(), p.getPaymentMethod(), p.getNote(),
                 p.getSyncVersion(), p.getLastModifiedAt(),
                 p.getCreatedAt()
