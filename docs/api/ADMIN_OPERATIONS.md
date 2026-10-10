@@ -1,131 +1,133 @@
-# Admin operations
+# Thao tác quản trị (Admin operations)
 
-All `/api/admin/**` endpoints require a valid JWT and `SUPER_ADMIN`. Responses
-use the existing `{ success, data, error }` envelope.
+Mọi endpoint `/api/admin/**` đều yêu cầu JWT hợp lệ và quyền `SUPER_ADMIN`. Response
+dùng envelope `{ success, data, error }` hiện có.
 
-Receiving-account administration and invoice snapshots are documented in
-[PAYMENT_ACCOUNTS.md](./PAYMENT_ACCOUNTS.md). Account mutations also appear in the
-administrator audit endpoint.
+Phần quản trị tài khoản nhận tiền và snapshot trên hóa đơn được mô tả trong
+[PAYMENT_ACCOUNTS.md](./PAYMENT_ACCOUNTS.md). Các thao tác thay đổi tài khoản nhận tiền
+cũng xuất hiện trong endpoint audit của quản trị viên.
 
 ## GET `/api/admin/session`
 
-Returns the current `UserSummaryResponse` after checking the administrator role.
-The web client calls this before storing an admin login and when opening the
-admin panel. A normal user receives 403; a missing/invalid token receives 401.
-The server remains authoritative for every protected operation.
+Trả về `UserSummaryResponse` của người dùng hiện tại sau khi kiểm tra quyền quản trị.
+Web client gọi endpoint này trước khi lưu phiên đăng nhập admin và khi mở trang quản trị.
+Người dùng thường nhận 403; token thiếu/không hợp lệ nhận 401. Server vẫn là nơi quyết
+định cuối cùng cho mọi thao tác được bảo vệ.
 
 ## GET `/api/admin/businesses/{businessId}`
 
-Returns `{ business, subscription, stores }` using existing response DTOs. Stores
-are scoped to the requested business and exclude soft-deleted records. Missing
-businesses return 404; non-administrators return 403. Invoice history remains at
+Trả về `{ business, subscription, stores }` dùng các response DTO hiện có. Danh sách store
+chỉ thuộc business được yêu cầu và loại bỏ các bản ghi đã xóa mềm. Business không tồn tại
+trả 404; người không phải quản trị viên nhận 403. Lịch sử hóa đơn vẫn nằm ở
 `GET /api/businesses/{businessId}/subscription/invoices?page=0&size=20`.
 
-## Invoice history and pending count
+## Lịch sử hóa đơn và số hóa đơn chờ xử lý
 
-`GET /api/admin/subscriptions/invoices` accepts optional `status` (PENDING, PAID,
-FAILED), positive `businessId`, `q` (at most 100 characters), and pageable `page` /
-`size`. Search matches business names/transfer references case-insensitively or
-exact numeric invoice/business IDs. `%` and `_` are literal search characters.
-Results use the existing invoice DTO and Spring Page envelope, sorted by
-`createdAt DESC, id DESC`; page size is capped at 100. Invalid parameter types
-return 400 with `VALIDATION_ERROR`.
+`GET /api/admin/subscriptions/invoices` nhận các tham số tùy chọn `status` (PENDING, PAID,
+FAILED), `businessId` (số dương), `q` (tối đa 100 ký tự) và phân trang `page` / `size`.
+Tìm kiếm khớp tên business/mã tham chiếu chuyển khoản không phân biệt hoa thường, hoặc
+khớp chính xác ID hóa đơn/business dạng số. `%` và `_` được xem là ký tự thường khi tìm.
+Kết quả dùng invoice DTO hiện có trong envelope phân trang `PagedResult`
+(`content, page, size, totalElements, totalPages`), sắp xếp theo `createdAt DESC, id DESC`;
+kích thước trang tối đa 100. Tham số sai kiểu trả 400 với `VALIDATION_ERROR`.
 
-`GET /api/admin/subscriptions/invoices/pending/count` returns the current numeric
-pending count. Both endpoints require SUPER_ADMIN.
+`GET /api/admin/subscriptions/invoices/pending/count` trả về số hóa đơn đang chờ xử lý
+hiện tại. Cả hai endpoint đều yêu cầu SUPER_ADMIN.
 
-## Administrator audit
+## Audit quản trị viên
 
-`GET /api/admin/audit-logs?size=20` returns `{ content, nextCursor }`. Optional
-filters: `businessId`, `actorId`, `action` and `beforeId` (the previous response's
-`nextCursor`). IDs must be positive; size is 1–100. Results use descending ID
-keyset pagination. Only SUPER_ADMIN can read this endpoint.
+`GET /api/admin/audit-logs?size=20` trả về `{ content, nextCursor }`. Bộ lọc tùy chọn:
+`businessId`, `actorId`, `action` và `beforeId` (giá trị `nextCursor` của response trước).
+ID phải là số dương; `size` từ 1–100. Kết quả phân trang keyset theo ID giảm dần. Chỉ
+SUPER_ADMIN được đọc endpoint này.
 
-Recorded actions: `ADMIN_PLAN_CHANGED`, `ADMIN_INVOICE_CONFIRMED`,
-`ADMIN_INVOICE_REJECTED`, `ADMIN_USER_STATUS_CHANGED`, `ADMIN_USER_DELETED`.
-Entries include actor ID/name captured at the time, timestamp, entity, business,
-reason and before/after snapshots. Invoice confirmation includes both invoice and
-subscription changes. User snapshots contain only ID, username, active state and
-deletion timestamp. Passwords, tokens and whole user entities are never serialized.
+Các action được ghi lại: `ADMIN_PLAN_CHANGED`, `ADMIN_INVOICE_CONFIRMED`,
+`ADMIN_INVOICE_REJECTED`, `ADMIN_USER_STATUS_CHANGED`, `ADMIN_USER_DELETED`,
+`ADMIN_PLAN_CONFIG_UPDATED` (sửa giá/giới hạn gói) và các action tài khoản nhận tiền
+`ADMIN_PAYMENT_ACCOUNT_CREATED`, `ADMIN_PAYMENT_ACCOUNT_UPDATED`,
+`ADMIN_PAYMENT_ACCOUNT_ACTIVATED`, `ADMIN_PAYMENT_ACCOUNT_ARCHIVED`.
+Mỗi bản ghi gồm ID/tên người thực hiện tại thời điểm đó, thời gian, entity, business, lý do
+và snapshot trước/sau. Xác nhận hóa đơn ghi cả thay đổi của hóa đơn lẫn subscription.
+Snapshot user chỉ chứa ID, username, trạng thái active và thời điểm xóa. Mật khẩu, token và
+toàn bộ entity user không bao giờ được serialize.
 
-Plan/status requests accept optional `reason` (max 500 characters). DELETE user
-accepts an optional JSON body `{ "reason": "..." }`; existing body-less requests
-remain supported. Invoice reasons use the existing `adminNote` field.
+Request đổi gói/đổi trạng thái nhận `reason` tùy chọn (tối đa 500 ký tự). DELETE user nhận
+body JSON tùy chọn `{ "reason": "..." }`; các request không có body như trước vẫn được hỗ
+trợ. Lý do cho hóa đơn dùng trường `adminNote` hiện có.
 
-The service writes synchronously into the existing `audit_logs` table within the
-mutation transaction (`MANDATORY` propagation). Failed writes roll back the
-mutation. No schema migration or historical backfill is needed. The generic async
-audit logger remains separate. Audit coverage starts after this version is deployed;
-it covers the five actions listed above, not every system/merchant operation.
-Invoice, subscription override and account status/delete mutations lock their
-target rows to serialize concurrent administrator changes.
+Service ghi đồng bộ vào bảng `audit_logs` hiện có, trong cùng transaction với thao tác thay
+đổi (propagation `MANDATORY`). Ghi audit thất bại sẽ rollback thao tác. Không cần migration
+schema hay backfill dữ liệu cũ. Audit logger bất đồng bộ dùng chung vẫn tách riêng. Audit chỉ
+bắt đầu ghi sau khi phiên bản này được deploy, và chỉ bao gồm mười action liệt kê ở trên, không
+phải mọi thao tác của hệ thống/merchant. Các thao tác trên hóa đơn, override subscription và
+đổi trạng thái/xóa tài khoản đều khóa dòng dữ liệu đích để tuần tự hóa các thay đổi đồng thời
+của quản trị viên.
 
-Run `node scripts/check-admin-audit-rollback.mjs` with admin credentials in the
-environment to exercise a real PostgreSQL insert failure and transaction rollback.
-This script is fixed to isolated port 8081/database `quiktech_admin_checks` and the
-local `quiktech-pos-db` container. It installs a temporary check constraint targeting
-one unique reason, removes it in `finally`, and soft-deletes its synthetic user.
+Chạy `node scripts/check-admin-audit-rollback.mjs` với thông tin đăng nhập admin trong biến
+môi trường để kiểm tra một lần insert PostgreSQL thất bại thật và rollback transaction.
+Script này cố định dùng port riêng 8081/database `quiktech_admin_checks` và container local
+`quiktech-pos-db`. Nó tạo một check constraint tạm nhắm vào một `reason` duy nhất, gỡ bỏ
+constraint trong `finally`, và xóa mềm user giả lập mà nó tạo ra.
 
-Validated on 2026-10-06 against PostgreSQL: actor/reason/before-after snapshots,
-normal-user 403, invalid filters/oversized reasons 400, cursor boundaries, no audit
-for failed actions, concurrent confirmation applying exactly once, and complete
-subscription rollback on forced audit-insert failure. The temporary constraint
-was removed after verification. No real business records were changed.
+Đã kiểm chứng ngày 2026-10-06 trên PostgreSQL: snapshot người thực hiện/lý do/trước-sau,
+người dùng thường nhận 403, bộ lọc sai/lý do quá dài nhận 400, biên của cursor, không ghi
+audit cho thao tác thất bại, xác nhận đồng thời chỉ được áp dụng đúng một lần, và
+subscription được rollback hoàn toàn khi ép insert audit thất bại. Constraint tạm đã được gỡ
+sau khi kiểm chứng. Không có dữ liệu business thật nào bị thay đổi.
 
-## API traffic dashboard
+## Dashboard lưu lượng API
 
-Both endpoints require `SUPER_ADMIN`.
+Cả hai endpoint đều yêu cầu `SUPER_ADMIN`.
 
-### How traffic is recorded
+### Cách ghi nhận lưu lượng
 
-`ApiTrafficFilter` (outermost servlet filter, before rate limiting and Spring Security)
-measures every `/api/**` request except CORS preflight, so 401/429 responses are counted
-too. It records the Spring **route pattern** (e.g. `/api/stores/{storeId}/orders`) rather
-than the raw URL; requests rejected before reaching a controller are stored as
-`(unmatched)`. The business is taken from the `businessId`/`storeId` path variable
-(stores resolved to their business); `/api/admin/**` routes are not attributed to a
-business.
+`ApiTrafficFilter` (servlet filter ngoài cùng, chạy trước rate limiting và Spring Security)
+đo mọi request `/api/**` trừ CORS preflight, nên các response 401/429 cũng được đếm. Filter
+ghi **route pattern** của Spring (ví dụ `/api/stores/{storeId}/orders`) thay vì URL thô;
+request bị từ chối trước khi tới controller được lưu là `(unmatched)`. Business được lấy từ
+path variable `businessId`/`storeId` (store được quy về business của nó); các route
+`/api/admin/**` không được gán cho business nào.
 
-`ApiTrafficRecorder` aggregates in memory and once a minute UPSERTs completed minutes into
-`api_traffic_minutely` (kept 2 days), `api_traffic_hourly` and
-`api_traffic_business_hourly` (kept 30 days) — see V11. Upserts add to existing rows, so
-several instances can write the same bucket. A failed write is logged and dropped; it never
-affects the request. The current minute is not persisted yet, so the dashboard lags by
-about 1–2 minutes. Response time is counted in buckets (≤50, ≤100, ≤250, ≤500, ≤1000,
-≤2500, ≤5000, >5000 ms); p50/p95/p99 are the upper bound of the bucket holding the
-percentile, `null` above 5000 ms.
+`ApiTrafficRecorder` gộp số liệu trong bộ nhớ và mỗi phút UPSERT các phút đã kết thúc vào
+`api_traffic_minutely` (giữ 2 ngày), `api_traffic_hourly` và `api_traffic_business_hourly`
+(giữ 30 ngày) — xem V11. Upsert cộng dồn vào dòng có sẵn, nên nhiều instance có thể cùng
+ghi một bucket. Ghi thất bại thì chỉ log và bỏ qua, không bao giờ ảnh hưởng tới request.
+Phút hiện tại chưa được lưu, nên dashboard trễ khoảng 1–2 phút. Thời gian phản hồi được đếm
+theo bucket (≤50, ≤100, ≤250, ≤500, ≤1000, ≤2500, ≤5000, >5000 ms); p50/p95/p99 là cận trên
+của bucket chứa percentile đó, và là `null` nếu vượt 5000 ms.
 
 ### GET `/api/admin/traffic?range=1h|24h|7d|30d`
 
-Default `24h`. `1h`/`24h` read the minute table (points of 1 / 15 minutes); `7d`/`30d`
-read the hourly table (points of 2 / 6 hours). Returns `summary` (requests, average per
-minute, 5xx, 4xx, 429, avg/p50/p95/p99/max ms), `series` (zero-filled points with
-requests, 4xx, 5xx, avg and p95), `statuses` (count per HTTP status), `endpoints` (top 50
-by requests, with 4xx/5xx, avg, p95, max) and `businesses` (top 20 by requests; for `1h`
-and `24h` the window starts at the top of the hour). An unknown `range` returns 400
+Mặc định `24h`. `1h`/`24h` đọc bảng theo phút (mỗi điểm 1 / 15 phút); `7d`/`30d` đọc bảng
+theo giờ (mỗi điểm 2 / 6 giờ). Trả về `summary` (số request, trung bình mỗi phút, 5xx, 4xx,
+429, avg/p50/p95/p99/max ms), `series` (các điểm đã điền 0 cho khoảng trống, gồm request,
+4xx, 5xx, avg và p95), `statuses` (số lượng theo từng HTTP status), `endpoints` (top 50 theo
+số request, kèm 4xx/5xx, avg, p95, max) và `businesses` (top 20 theo số request; với `1h`
+và `24h` khoảng thời gian bắt đầu từ đầu giờ). `range` không hợp lệ trả 400
 `VALIDATION_ERROR`.
 
 ### GET `/api/admin/traffic/system`
 
-Live values of the instance that answered: overall health and per-component status
-(`db`, `redis`, …), uptime, heap used/max, process and machine CPU (0–1), live threads and
-Hikari pool active/idle/max/pending. Fields that cannot be measured are `null`. No history
-is kept; with several instances each call may hit a different one.
+Giá trị tức thời của instance đã trả lời request: tình trạng health tổng thể và trạng thái
+từng thành phần (`db`, `redis`, …), uptime, heap đã dùng/tối đa, CPU của process và của máy
+(0–1), số thread đang chạy và pool Hikari active/idle/max/pending. Các trường không đo được
+là `null`. Không lưu lịch sử; khi có nhiều instance, mỗi lần gọi có thể vào một instance
+khác nhau.
 
-## Live verification (2026-10-06)
+## Kiểm chứng thực tế (2026-10-06)
 
-The web repository contains `scripts/check-admin-live.mjs`. Set `ADMIN_USERNAME`
-and `ADMIN_PASSWORD` in the process environment, then run the script. Credentials
-and tokens are not printed or saved.
+Repository web có script `scripts/check-admin-live.mjs`. Đặt `ADMIN_USERNAME` và
+`ADMIN_PASSWORD` trong biến môi trường của process rồi chạy script. Thông tin đăng nhập và
+token không bị in ra hay lưu lại.
 
-Read-only checks against the existing local PostgreSQL/Redis backend passed.
-Mutation checks used a separate `quiktech_admin_checks` database, Redis DB 15 and
-HTTP port 8081, with demo seeding disabled. They covered normal-user 403, invoice
-confirm/reject, duplicate confirmation, required rejection note, Free/paid plan
-changes, and locking/unlocking/deleting a synthetic user.
+Các kiểm tra chỉ đọc trên backend PostgreSQL/Redis local hiện có đều đạt. Các kiểm tra có
+thay đổi dữ liệu dùng database riêng `quiktech_admin_checks`, Redis DB 15 và HTTP port 8081,
+tắt seed dữ liệu demo. Chúng bao gồm: người dùng thường nhận 403, xác nhận/từ chối hóa đơn,
+xác nhận trùng lặp, bắt buộc ghi chú khi từ chối, đổi gói Free/trả phí, và khóa/mở khóa/xóa
+một user giả lập.
 
-Startup: `mvnw.cmd -Dmaven.test.skip=true package`, then run the jar with the
-appropriate datasource, Redis database and port. The default full test compilation
-currently fails in pre-existing category/product/unit tests referencing old
-store-scoped repository methods; skipping compilation is for starting the local
-integration server, not a claim that those tests pass.
+Khởi động: `mvnw.cmd -Dmaven.test.skip=true package`, rồi chạy file jar với datasource,
+Redis database và port phù hợp. Tại thời điểm kiểm chứng, compile toàn bộ test bị lỗi do các
+test category/product/unit cũ tham chiếu tới các repository method theo store đã bị gỡ; việc
+bỏ qua compile test chỉ để khởi động server tích hợp local. Các test cũ đó đã được xóa sau
+đó (2026-10-10).
