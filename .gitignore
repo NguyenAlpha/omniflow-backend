@@ -37,3 +37,6 @@ src/main/resources/application.properties
 .env
 /desktop.ini
 /storage/
+
+### Runtime logs (logback-spring.xml) ###
+/logs/
