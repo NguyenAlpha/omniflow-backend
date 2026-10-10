@@ -65,6 +65,48 @@ Dùng chung cho hầu hết các endpoint trả về thông tin sản phẩm.
 
 ---
 
+## GET `/api/businesses/{businessId}/products/limit`
+
+Kiểm tra business còn được tạo thêm sản phẩm theo giới hạn gói subscription (`maxProducts`) hay không. UI gọi trước khi mở form tạo sản phẩm. Yêu cầu quyền **OWNER hoặc MANAGER** (giống `POST /products`).
+
+Endpoint chỉ đọc, không khóa subscription — kết quả có thể cũ đi khi submit. `POST /products` vẫn kiểm tra lại và trả `402 SUBSCRIPTION_LIMIT_EXCEEDED` nếu vượt giới hạn.
+
+### Path parameters
+
+| Parameter | Type | Mô tả |
+|:----------|:-----|:------|
+| `businessId` | number | ID của business |
+
+### Response `200 OK`
+
+```json
+{
+  "success": true,
+  "data": {
+    "canCreate": false,
+    "currentProducts": 50,
+    "maxProducts": 50
+  },
+  "error": null
+}
+```
+
+| Field | Type | Mô tả |
+|:------|:-----|:------|
+| `canCreate` | boolean | `true` nếu `maxProducts = null` hoặc `currentProducts < maxProducts` |
+| `currentProducts` | number | Số sản phẩm chưa bị xóa (soft delete) của business |
+| `maxProducts` | number \| null | Giới hạn của gói hiện tại; `null` = không giới hạn |
+
+### Lỗi
+
+| HTTP | `error.code` | Nguyên nhân |
+|:----:|:------------|:-----------|
+| 401 | `UNAUTHORIZED` | Không có hoặc JWT hết hạn |
+| 403 | `FORBIDDEN` | Không phải OWNER/MANAGER của business |
+| 404 | `SUBSCRIPTION_NOT_FOUND` | Business chưa có subscription (không xảy ra bình thường) |
+
+---
+
 ## GET `/api/businesses/{businessId}/products/sku/{sku}`
 
 Tra cứu sản phẩm theo SKU chính xác. Dùng cho tính năng quét mã vạch — client decode barcode ra SKU rồi gọi endpoint này để lấy thông tin sản phẩm. Yêu cầu là **thành viên** của business.

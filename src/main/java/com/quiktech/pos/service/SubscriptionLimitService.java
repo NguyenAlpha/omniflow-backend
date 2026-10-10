@@ -1,5 +1,6 @@
 package com.quiktech.pos.service;
 
+import com.quiktech.pos.dto.response.catalog.ProductLimitResponse;
 import com.quiktech.pos.dto.response.common.ErrorCode;
 import com.quiktech.pos.entity.Subscription;
 import com.quiktech.pos.entity.enums.RoleName;
@@ -92,6 +93,20 @@ public class SubscriptionLimitService {
         if (sub.getMaxProducts() == null) return null;
         long count = productRepository.countByBusinessIdAndDeletedAtIsNull(businessId);
         return Math.max(0, sub.getMaxProducts() - count);
+    }
+
+    /**
+     * Pre-check cho UI trước khi mở form tạo product. Chỉ đọc, không khóa row:
+     * kết quả có thể cũ đi khi tới lúc submit — {@code checkProductLimit} trong
+     * create vẫn là chốt chặn thật.
+     */
+    @Transactional(readOnly = true)
+    public ProductLimitResponse getProductLimit(Long businessId) {
+        Subscription sub = subscriptionRepository.findByBusinessId(businessId)
+                .orElseThrow(() -> new ResourceNotFoundException(ErrorCode.SUBSCRIPTION_NOT_FOUND, "Subscription not found"));
+        long count = productRepository.countByBusinessIdAndDeletedAtIsNull(businessId);
+        boolean canCreate = sub.getMaxProducts() == null || count < sub.getMaxProducts();
+        return new ProductLimitResponse(canCreate, count, sub.getMaxProducts());
     }
 
     // SELECT ... FOR UPDATE — xem comment ở đầu nhóm check limit

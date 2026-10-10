@@ -4,11 +4,13 @@ import com.quiktech.pos.dto.request.catalog.ProductUpsertRequest;
 import com.quiktech.pos.dto.request.common.SetStatusRequest;
 import com.quiktech.pos.dto.response.catalog.ProductDetailResponse;
 import com.quiktech.pos.dto.response.catalog.ProductImportResponse;
+import com.quiktech.pos.dto.response.catalog.ProductLimitResponse;
 import com.quiktech.pos.dto.response.catalog.ProductResponse;
 import com.quiktech.pos.dto.response.common.ApiResult;
 import com.quiktech.pos.dto.response.common.PagedResult;
 import com.quiktech.pos.security.UserPrincipal;
 import com.quiktech.pos.service.ProductService;
+import com.quiktech.pos.service.SubscriptionLimitService;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
@@ -33,6 +35,7 @@ import java.util.UUID;
 public class ProductController {
 
     private final ProductService productService;
+    private final SubscriptionLimitService subscriptionLimitService;
 
     @GetMapping
     @PreAuthorize("@businessAccess.isMember(#businessId, authentication)")
@@ -59,6 +62,13 @@ public class ProductController {
         Sort.Direction direction = "asc".equalsIgnoreCase(sort) ? Sort.Direction.ASC : Sort.Direction.DESC;
         var pageable = PageRequest.of(page, size, Sort.by(direction, field));
         return ResponseEntity.ok(ApiResult.ok(productService.search(businessId, q, isActive, categoryPublicId, pageable, currentUser)));
+    }
+
+    // Cùng quyền với POST create — UI gọi trước khi mở form tạo product
+    @GetMapping("/limit")
+    @PreAuthorize("@businessAccess.isOwnerOrManager(#businessId, authentication)")
+    public ResponseEntity<ApiResult<ProductLimitResponse>> getLimit(@PathVariable Long businessId) {
+        return ResponseEntity.ok(ApiResult.ok(subscriptionLimitService.getProductLimit(businessId)));
     }
 
     @GetMapping("/sku/{sku}")
