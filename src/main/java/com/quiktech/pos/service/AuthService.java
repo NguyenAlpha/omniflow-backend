@@ -65,21 +65,24 @@ public class AuthService {
                 .phone(request.phone())
                 .build();
 
-        AuthResponse response;
+        User saved;
         try {
             // Không kiểm tra trùng username/email trước khi lưu: để DB tự chặn bằng unique index
             // (uq_users_username_active / uq_users_email_active). Nếu kiểm tra trước, 2 người
             // đăng ký cùng lúc vẫn có thể cùng lọt qua bước kiểm tra.
             // Vi phạm unique index → Spring ném DataIntegrityViolationException ngay khi save()
             // (User dùng ID tự tăng IDENTITY nên INSERT chạy ngay, không đợi tới lúc commit).
-            response = buildAuthResponse(userRepository.save(user));
+            // try chỉ bọc save(): lỗi constraint ở bước khác (VD tạo refresh token) không bị
+            // báo nhầm thành "trùng username/email".
+            saved = userRepository.save(user);
         } catch (DataIntegrityViolationException e) {
             log.warn("Register failed: duplicate username or email: {}", request.username());
             // IllegalArgumentException → GlobalExceptionHandler trả 400 VALIDATION_ERROR
             throw new IllegalArgumentException("Username or email already taken");
         }
-        log.info("User registered: username={}, email={}", user.getUsername(), user.getEmail());
-        return response;
+        // Không ghi email vào log (dữ liệu cá nhân) — userId đủ để tra cứu
+        log.info("User registered: userId={}, username={}", saved.getId(), saved.getUsername());
+        return buildAuthResponse(saved);
     }
 
     /**

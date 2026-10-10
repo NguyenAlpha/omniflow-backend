@@ -13,7 +13,6 @@ import com.quiktech.pos.repository.UserRoleRepository;
 import com.quiktech.pos.security.JwtService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
@@ -37,11 +36,6 @@ public class AuthResponseAssembler {
     private final UserRoleRepository userRoleRepository;
     private final JwtService jwtService;
 
-    // Thời hạn access token tính bằng mili giây, đọc từ application.properties
-    // (jwt.expiration = ${JWT_EXPIRATION:3600000} → mặc định 1 giờ)
-    @Value("${jwt.expiration}")
-    private long jwtExpiration;
-
     /**
      * Dựng toàn bộ response đăng nhập cho một user đã xác thực xong.
      *
@@ -58,7 +52,7 @@ public class AuthResponseAssembler {
         List<BusinessMembershipResponse> memberships = resolveMemberships(user);
         List<String> globalRoles = resolveGlobalRoles(user);
 
-        log.info("Building token for userId={}: globalRoles={}, businessCount={}",
+        log.debug("Building token for userId={}: globalRoles={}, businessCount={}",
                 user.getId(), globalRoles, memberships.size());
 
         // Tạo JWT ký bằng HS256 (JwtService): subject = username, thêm 2 claim riêng là userId
@@ -74,8 +68,8 @@ public class AuthResponseAssembler {
                 user.getFullName(), user.getPhone(), user.getIsActive()
         );
 
-        // jwtExpiration là mili giây → chia 1000 để expiresIn trả về client tính bằng giây
-        return new AuthResponse(token, "Bearer", jwtExpiration / 1000, userSummary, memberships, refreshToken);
+        // expiresIn lấy từ JwtService (cùng nguồn jwt.expiration với token vừa tạo) để không bao giờ lệch nhau
+        return new AuthResponse(token, "Bearer", jwtService.getExpirationSeconds(), userSummary, memberships, refreshToken);
     }
 
     /**

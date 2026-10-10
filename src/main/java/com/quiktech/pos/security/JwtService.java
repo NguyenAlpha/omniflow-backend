@@ -64,4 +64,14 @@ public class JwtService {
         extraClaims.forEach(builder::claim);
         return jwtEncoder.encode(JwtEncoderParameters.from(HS256_HEADER, builder.build())).getTokenValue();
     }
+
+    /**
+     * Thời hạn của access token tính bằng giây — trả về client dưới dạng {@code expiresIn}.
+     * Đọc cùng {@code jwt.expiration} (mili giây) với {@link #generateToken} để hai giá trị luôn khớp.
+     *
+     * @return số giây từ lúc tạo tới lúc token hết hạn
+     */
+    public long getExpirationSeconds() {
+        return expiration / 1000;
+    }
 }

@@ -19,7 +19,6 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.test.util.ReflectionTestUtils;
 
 import java.util.List;
 import java.util.Map;
@@ -45,7 +44,6 @@ class AuthResponseAssemblerTest {
 
     @BeforeEach
     void setUp() {
-        ReflectionTestUtils.setField(assembler, "jwtExpiration", 3_600_000L);
         user = User.builder().id(7L).username("an").email("an@test.com").fullName("An").isActive(true).build();
         business = Business.builder().id(1L).name("Coffee Chain").build();
         when(jwtService.generateToken(eq(user), anyMap())).thenReturn("jwt-token");
@@ -92,6 +90,8 @@ class AuthResponseAssemblerTest {
         when(userRoleRepository.findByUserIdAndBusinessIsNullAndStoreIsNullAndDeletedAtIsNull(7L)).thenReturn(List.of(
                 UserRole.builder().user(user).role(role(RoleName.ROLE_SUPER_ADMIN)).isActive(true).build(),
                 UserRole.builder().user(user).role(role(RoleName.ROLE_SUPPORT)).isActive(false).build()));
+
+        when(jwtService.getExpirationSeconds()).thenReturn(3600L);
 
         AuthResponse response = assembler.assemble(user, "refresh-token");
 

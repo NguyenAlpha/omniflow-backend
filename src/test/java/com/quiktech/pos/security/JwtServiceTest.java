@@ -72,4 +72,9 @@ class JwtServiceTest {
         var jwt = jwtDecoder.decode(token);
         assertThat(jwt.getExpiresAt()).isNotNull();
     }
+
+    @Test
+    void getExpirationSeconds_convertsConfiguredMillisToSeconds() {
+        assertThat(jwtService.getExpirationSeconds()).isEqualTo(EXPIRATION / 1000);
+    }
 }

@@ -78,6 +78,16 @@ class AuthServiceTest {
         verifyNoInteractions(refreshTokenService);
     }
 
+    @Test
+    void register_constraintErrorAfterSave_isNotReportedAsDuplicateUser() {
+        when(passwordEncoder.encode(anyString())).thenReturn("bcrypt-hash");
+        when(userRepository.save(any(User.class))).thenReturn(user(7L, true, null));
+        when(refreshTokenService.create(7L)).thenThrow(new DataIntegrityViolationException("refresh_tokens"));
+
+        assertThatThrownBy(() -> authService.register(registerRequest()))
+                .isInstanceOf(DataIntegrityViolationException.class);
+    }
+
     // ── login ─────────────────────────────────────────────────────────────────
 
     @Test
