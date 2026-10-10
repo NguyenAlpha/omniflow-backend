@@ -45,6 +45,7 @@ hợp lệ, do đó mỗi nhân viên có quota riêng ngay cả khi cùng Wi-Fi
 | Policy | Key Redis | Phạm vi | Mặc định |
 |---|---|---|---:|
 | Login | `rl:login:{ip}` | `POST /api/auth/login` | 10/phút |
+| Login sai theo tài khoản | `rl:login-account:{user:<id> \| name:<sha256>}` | lần **sai mật khẩu** của `POST /api/auth/login` | 5/15 phút |
 | Register | `rl:register:{ip}` | `POST /api/auth/register` | 5/phút |
 | Refresh | `rl:refresh:{ip}` | `POST /api/auth/refresh` | 20/phút |
 | API IP ceiling | `rl:ip:api:{ip}` | mọi `/api/**` khác | 1.200/phút |
@@ -96,6 +97,26 @@ dùng quota cũ cho đến lần truy cập đầu tiên từ instance mới.
 
 Khi rollback quota, triển khai giá trị cũ với **version mới lớn hơn**, không giảm
 version. Không cần xóa Redis key. Version, timeout và cooldown phải là số dương.
+
+## Giới hạn đăng nhập sai theo tài khoản
+
+Quota login theo IP không chặn được dò mật khẩu một tài khoản từ nhiều IP (botnet).
+`LoginAttemptLimiter` (gọi trong `AuthService.login`) đếm số lần **sai mật khẩu** theo
+tài khoản:
+
+- Trước khi xác thực chỉ *xem* bucket (không trừ); sai mật khẩu mới trừ 1 lượt. Đăng nhập
+  đúng, tài khoản bị khóa (`DisabledException`) không trừ.
+- Key là `user:<userId>` nếu tài khoản tồn tại (username và email dùng chung bucket);
+  không tồn tại thì `name:<sha256(chuỗi đã nhập, lowercase)>` — chuỗi dài tùy ý không
+  thành key Redis, và vẫn giới hạn dò tài khoản không có thật.
+- Hết lượt → `429 RATE_LIMIT_EXCEEDED` với cùng header như các quota khác, tới khi bucket
+  nạp lại. **Không khóa hẳn tài khoản**: người khác cố tình nhập sai chỉ làm chủ tài khoản
+  phải chờ hết cửa sổ, không khóa vĩnh viễn được.
+
+```dotenv
+RATE_LIMIT_LOGIN_ACCOUNT_MAX_FAILURES=5
+RATE_LIMIT_LOGIN_ACCOUNT_WINDOW_SECONDS=900
+```
 
 ## Reverse proxy và IP client
 
@@ -163,6 +184,12 @@ tiếp và cả hai lớp IP/user của instance đó bỏ qua Redis trong **5 g
 instance thử Redis trở lại; nếu vẫn lỗi thì bắt đầu cooldown mới. Các request
 đã đang kiểm tra trước thời điểm phát hiện lỗi vẫn có thể chờ tới deadline.
 
+**Ngoại lệ — quota chống brute-force:** `login`, `register`, `refresh` (theo IP) và
+`login-account` không fail-open. Khi Redis lỗi/cooldown, chúng chuyển sang bucket
+Bucket4j trong bộ nhớ của từng instance (LRU tối đa 10.000 key) — vẫn chặn, chỉ không
+chia sẻ giữa các instance, nên quota thực tế là `capacity × số instance` trong lúc
+Redis sập. Khi Redis hồi phục, quota quay lại dùng bucket Redis.
+
 Cooldown là trạng thái cục bộ mỗi instance, không phải quota; quota vẫn nằm
 trong Redis. Warning được hạn chế theo đợt lỗi, không ghi một stack trace cho
 mỗi request bị bỏ qua. Các cơ chế này áp dụng cho kiểm tra quota sau khi app
@@ -175,7 +202,7 @@ thêm rate limit thô tại Nginx, CDN hoặc WAF trước khi traffic vào Spri
 Metric Prometheus:
 
 ```text
-rate_limit_requests_total{scope="ip|user",policy="...",outcome="allowed|blocked|error|bypassed"}
+rate_limit_requests_total{scope="ip|user|account",policy="...",outcome="allowed|blocked|error|bypassed|fallback_blocked"}
 ```
 
 Không có IP, userId, URL có ID hoặc request header trong labels để tránh lộ dữ

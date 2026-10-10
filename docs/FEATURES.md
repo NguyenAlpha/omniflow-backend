@@ -312,11 +312,19 @@ Ghi nhận mọi hành động quan trọng — ai xóa đơn hàng, ai thay đ�
 
 Chống tạo đơn trùng khi client retry (mạng yếu, timeout).
 
-- Client gửi header `Idempotency-Key: <uuid>` khi tạo đơn
-- Server check Redis: key tồn tại → trả về response đã cache (24h TTL)
-- Response được cache sau khi tạo đơn thành công (2xx)
-- Chỉ áp dụng cho `POST /api/stores/{id}/orders`
-- Header `X-Idempotency-Cached: true` được trả về khi response đến từ cache
+- Client gửi header `Idempotency-Key: <uuid>` khi tạo đơn (tối đa 128 ký tự)
+- Chỉ áp dụng cho `POST /api/stores/{id}/orders` **đã xác thực JWT** — filter chạy trong
+  Spring Security chain, sau rate limit theo user
+- Key gắn với user và store (`idem:<userId>:<storeId>:<key>`): hai client trùng key không
+  nhận response của nhau
+- Giữ chỗ bằng `SETNX` (60s): request trùng key đến khi request đầu còn đang xử lý → `409
+  IDEMPOTENCY_REQUEST_IN_PROGRESS`
+- Thành công (2xx) → lưu status + body 24h; retry nhận lại **đúng status** (201) và body, kèm
+  header `X-Idempotency-Cached: true`
+- Lỗi (4xx/5xx) → xóa key, client sửa dữ liệu rồi gửi lại cùng key được
+- Redis lỗi → xử lý như không có idempotency (không chặn tạo đơn)
+- Không so sánh body giữa các request cùng key — gửi lại cùng key với body khác vẫn nhận
+  response của lần đầu
 
 ---
 

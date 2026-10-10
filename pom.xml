@@ -198,6 +198,8 @@
 							<testIncludes>
 								<testInclude>com/quiktech/pos/filter/RateLimit*Test.java</testInclude>
 								<testInclude>com/quiktech/pos/security/ClientIpResolverTest.java</testInclude>
+								<testInclude>com/quiktech/pos/security/LoginAttemptLimiterTest.java</testInclude>
+								<testInclude>com/quiktech/pos/filter/IdempotencyFilterTest.java</testInclude>
 								<testInclude>com/quiktech/pos/support/InMemoryRateLimitRedis.java</testInclude>
 							</testIncludes>
 						</configuration>
@@ -209,6 +211,8 @@
 							<includes>
 								<include>**/RateLimit*Test.java</include>
 								<include>**/ClientIpResolverTest.java</include>
+								<include>**/LoginAttemptLimiterTest.java</include>
+								<include>**/IdempotencyFilterTest.java</include>
 							</includes>
 						</configuration>
 					</plugin>

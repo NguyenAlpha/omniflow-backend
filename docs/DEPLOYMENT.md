@@ -134,7 +134,8 @@ java -jar target/quiktech-pos-0.0.1-SNAPSHOT.jar
 Kiểm tra:
 
 ```bash
-curl --fail http://localhost:8080/actuator/health
+curl --fail http://localhost:8080/readyz
+curl --fail http://localhost:9090/actuator/health   # trên chính máy chủ / mạng nội bộ
 ```
 
 Kết quả mong đợi là HTTP `200` và trạng thái `UP`.
@@ -181,7 +182,14 @@ REDIS_PORT=6379
 REDIS_PASSWORD=<secret>
 CORS_ORIGINS=https://app.example.com
 SEED_ENABLED=false
+MANAGEMENT_SERVER_PORT=9090
 ```
+
+Actuator (`/actuator/health`, `/actuator/prometheus`) chạy trên `MANAGEMENT_SERVER_PORT`,
+**không** mở port này ra Internet — chỉ cho Prometheus/giám sát nội bộ truy cập (firewall
+hoặc security group). Port chính chỉ còn `/livez` (process còn sống) và `/readyz` (ứng dụng đã khởi động xong,
+sẵn sàng nhận traffic) cho health check của load balancer. Hai probe này không kiểm tra
+DB/Redis — chi tiết từng thành phần xem ở `/actuator/health` trên management port.
 
 Giới hạn quyền đọc:
 
@@ -270,7 +278,7 @@ Ví dụ:
 ```bash
 sudo systemctl restart quiktech-pos
 sudo systemctl is-active --quiet quiktech-pos
-curl --fail https://api.example.com/actuator/health
+curl --fail https://api.example.com/readyz
 ```
 
 Không dùng login hoặc thao tác ghi dữ liệu làm smoke test nếu không có test account và
@@ -278,7 +286,7 @@ kịch bản dọn dữ liệu rõ ràng.
 
 ## 9. Checklist sau deploy
 
-- [ ] `/actuator/health` trả HTTP `200`.
+- [ ] `/readyz` trả HTTP `200`; `https://api.example.com/actuator/health` trả `404` (actuator không public).
 - [ ] Log không có lỗi Flyway, database hoặc Redis liên tục.
 - [ ] Swagger/OpenAPI chỉ public nếu môi trường cho phép.
 - [ ] Frontend origin hợp lệ gọi được API; origin lạ bị CORS chặn.
@@ -294,7 +302,7 @@ Rollback code bằng cách khôi phục JAR của release gần nhất rồi res
 
 ```bash
 sudo systemctl restart quiktech-pos
-curl --fail https://api.example.com/actuator/health
+curl --fail https://api.example.com/readyz
 ```
 
 Rollback application không tự rollback database. Nếu release đã chạy Flyway migration,
@@ -341,7 +349,8 @@ Trên Azure App Service, AWS Elastic Beanstalk, Google Cloud Run hoặc nền t�
 - Thay `systemd` bằng cơ chế runtime của nền tảng.
 - Khai báo các biến trên trong phần application settings/environment variables.
 - Lưu secret trong secret manager; không đóng gói secret vào JAR.
-- Cấu hình health probe tới `/actuator/health`.
+- Cấu hình health probe tới `/readyz` (readiness) và `/livez` (liveness) trên port chính;
+  không public `MANAGEMENT_SERVER_PORT`.
 - Giữ PostgreSQL và Redis ngoài container/application instance.
 - Xác nhận Java 21 và cổng mà nền tảng cấp cho ứng dụng trước khi deploy.
 
