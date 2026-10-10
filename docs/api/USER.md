@@ -199,4 +199,5 @@ Cập nhật thông tin profile của người dùng hiện tại.
 |:----:|:------------|:-----------|
 | 400 | `VALIDATION_ERROR` | Field không hợp lệ — `error.field` chỉ rõ field nào |
 | 401 | `UNAUTHORIZED` | Không có hoặc JWT hết hạn |
-| 400 | `INVALID_CREDENTIALS` | `currentPassword` không đúng |
+| 400 | `VALIDATION_ERROR` | `currentPassword` không đúng (message `Current password is incorrect`) |
+| 429 | `RATE_LIMIT_EXCEEDED` | Quá 5 lần đổi mật khẩu / 10 phút mỗi user (`RATE_LIMIT_CHANGE_PASSWORD_USER_*`) — kèm header `Retry-After` (giây phải chờ); xem [RATE_LIMITING.md](../RATE_LIMITING.md) |

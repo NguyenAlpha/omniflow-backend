@@ -393,6 +393,7 @@ Trả về mảng `InventoryTransactionResponse`, theo đúng thứ tự `items`
 | 400 | `VALIDATION_ERROR` | Thiếu field, `items` rỗng hoặc quá 200 dòng, trùng sản phẩm, `quantity = 0`, hoặc một dòng làm tồn kho âm (message có dạng `"<tên> (<SKU>): Adjustment would result in negative stock"`) |
 | 404 | `PRODUCT_NOT_FOUND` | Một sản phẩm không thuộc business của store |
 | 404 | `WAREHOUSE_NOT_FOUND` | Kho hàng không tồn tại trong store này |
+| 429 | `RATE_LIMIT_EXCEEDED` | Quá 10 request / 10 phút mỗi user — `adjust/bulk` và `transfer/bulk` dùng chung quota — kèm header `Retry-After` (giây phải chờ); xem [RATE_LIMITING.md](../RATE_LIMITING.md) |
 
 ---
 
@@ -444,3 +445,4 @@ Trả về mảng `InventoryTransactionResponse`: mỗi dòng của `items` sinh
 | 404 | `PRODUCT_NOT_FOUND` | Một sản phẩm không thuộc business của store |
 | 404 | `WAREHOUSE_NOT_FOUND` | Kho nguồn hoặc kho đích không tồn tại trong store này |
 | 404 | `INVENTORY_NOT_FOUND` | Sản phẩm chưa từng có tồn kho ở kho nguồn |
+| 429 | `RATE_LIMIT_EXCEEDED` | Quá 10 request / 10 phút mỗi user — `adjust/bulk` và `transfer/bulk` dùng chung quota — kèm header `Retry-After` (giây phải chờ); xem [RATE_LIMITING.md](../RATE_LIMITING.md) |

@@ -34,8 +34,9 @@ Content-Disposition: attachment; filename="orders.xlsx"
 
 | HTTP | `error.code` | Nguyên nhân |
 |:----:|:------------|:-----------|
-| 403 | `ACCESS_DENIED` | Không phải OWNER hoặc MANAGER |
+| 403 | `FORBIDDEN` | Không phải OWNER hoặc MANAGER |
 | 404 | `STORE_NOT_FOUND` | Store không tồn tại |
+| 429 | `RATE_LIMIT_EXCEEDED` | Quá 10 lần export / 10 phút mỗi user — 3 endpoint export (và `HEAD`) dùng chung quota — kèm header `Retry-After` (giây phải chờ); xem [RATE_LIMITING.md](../RATE_LIMITING.md) |
 
 ---
 
@@ -62,8 +63,9 @@ Content-Disposition: attachment; filename="inventory.xlsx"
 
 | HTTP | `error.code` | Nguyên nhân |
 |:----:|:------------|:-----------|
-| 403 | `ACCESS_DENIED` | Không phải OWNER hoặc MANAGER |
+| 403 | `FORBIDDEN` | Không phải OWNER hoặc MANAGER |
 | 404 | `STORE_NOT_FOUND` | Store không tồn tại |
+| 429 | `RATE_LIMIT_EXCEEDED` | Quá 10 lần export / 10 phút mỗi user — 3 endpoint export (và `HEAD`) dùng chung quota — kèm header `Retry-After` (giây phải chờ); xem [RATE_LIMITING.md](../RATE_LIMITING.md) |
 
 ---
 
@@ -91,6 +93,7 @@ Content-Disposition: attachment; filename="purchase-order.pdf"
 
 | HTTP | `error.code` | Nguyên nhân |
 |:----:|:------------|:-----------|
-| 403 | `ACCESS_DENIED` | Không phải OWNER hoặc MANAGER |
+| 403 | `FORBIDDEN` | Không phải OWNER hoặc MANAGER |
 | 404 | `STORE_NOT_FOUND` | Store không tồn tại |
 | 404 | `PURCHASE_ORDER_NOT_FOUND` | Đơn nhập không tồn tại trong store này |
+| 429 | `RATE_LIMIT_EXCEEDED` | Quá 10 lần export / 10 phút mỗi user — 3 endpoint export (và `HEAD`) dùng chung quota — kèm header `Retry-After` (giây phải chờ); xem [RATE_LIMITING.md](../RATE_LIMITING.md) |

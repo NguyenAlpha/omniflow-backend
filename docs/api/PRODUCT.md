@@ -416,6 +416,69 @@ Tạo sản phẩm mới. Chỉ **OWNER** hoặc **MANAGER** của business mớ
 
 ---
 
+## POST `/api/businesses/{businessId}/products/import`
+
+Import sản phẩm hàng loạt từ file CSV. Yêu cầu quyền **OWNER hoặc MANAGER** (OWNER/BUSINESS_MANAGER
+cấp business, hoặc MANAGER của một store trong business).
+
+Mỗi dòng được xử lý độc lập: dòng lỗi bị bỏ qua kèm thông báo, **không rollback** các dòng hợp lệ.
+
+### Request
+
+`Content-Type: multipart/form-data`, field `file` là file CSV (chuẩn RFC 4180 — tên có dấu phẩy /
+ngoặc kép phải đặt trong ngoặc kép). Dòng đầu là header và luôn bị bỏ qua. Tối đa **1.000 dòng dữ liệu**
+mỗi file — phần vượt bị bỏ qua.
+
+Thứ tự cột:
+
+| # | Cột | Bắt buộc | Ràng buộc |
+|:-:|:----|:--------:|:----------|
+| 1 | `sku` | ✅ | max 50 ký tự, unique trong business — trùng thì dòng bị bỏ qua |
+| 2 | `name` | ✅ | max 200 ký tự |
+| 3 | `description` | ❌ | |
+| 4 | `categoryName` | ❌ | tên danh mục đã có trong business; để trống = không có danh mục |
+| 5 | `unitName` | ✅ | tên đơn vị tính — system unit hoặc unit của business |
+| 6 | `costPrice` | ✅ | số, không âm |
+| 7 | `sellingPrice` | ✅ | số, không âm |
+| 8 | `minStockLevel` | ✅ | số, không âm |
+| 9 | `isActive` | ❌ | `true`/`false`; bỏ trống cột = `true` |
+
+Sản phẩm vượt giới hạn gói (`maxProducts`) bị bỏ qua — các dòng hợp lệ trước đó vẫn được lưu.
+
+### Response `200 OK`
+
+```json
+{
+  "success": true,
+  "data": {
+    "imported": 2,
+    "skipped": 1,
+    "errors": [
+      "Row 3: SKU 'CF-001' already exists, skipped"
+    ]
+  },
+  "error": null
+}
+```
+
+| Field | Type | Mô tả |
+|:------|:-----|:------|
+| `imported` | number | Số sản phẩm đã tạo |
+| `skipped` | number | Số dòng bị bỏ qua |
+| `errors` | string[] | Lý do theo từng dòng (`Row <n>: ...`, `n` tính cả dòng header) và lỗi cấp file (file rỗng, vượt 1.000 dòng) |
+
+### Lỗi
+
+| HTTP | `error.code` | Nguyên nhân |
+|:----:|:------------|:-----------|
+| 401 | `UNAUTHORIZED` | Không có hoặc JWT hết hạn |
+| 403 | `FORBIDDEN` | Không phải OWNER hoặc MANAGER của business |
+| 429 | `RATE_LIMIT_EXCEEDED` | Quá 5 lần import / 10 phút mỗi user (`RATE_LIMIT_IMPORT_PRODUCTS_USER_*`) — kèm header `Retry-After` (giây phải chờ); xem [RATE_LIMITING.md](../RATE_LIMITING.md) |
+
+> Lỗi theo từng dòng **không** trả HTTP lỗi — xem `errors` trong response `200`.
+
+---
+
 ## PUT `/api/businesses/{businessId}/products/{publicId}`
 
 Cập nhật thông tin sản phẩm. Chỉ **OWNER** hoặc **MANAGER** mới được thực hiện.
