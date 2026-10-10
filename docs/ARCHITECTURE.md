@@ -8,52 +8,95 @@
 
 ```
 com.quiktech.pos
+├── QuikTechPosApplication.java
+│
 ├── config/
-│   ├── ApplicationConfig.java       — auth beans; UserDetailsService chỉ dùng cho login
+│   ├── ApplicationConfig.java       — auth beans; UserDetailsService chỉ dùng cho login; CORS filter
 │   ├── SecurityConfig.java          — JWT filter chain, method security (@EnableMethodSecurity)
 │   ├── RateLimiterConfig.java       — hạ tầng Bucket4j trên Redis (proxy manager, timeout) cho rate limit
-│   └── SystemAdminSeeder.java       — seed SUPER_ADMIN khi khởi động (bật bằng admin.seed.enabled=true)
+│   ├── SchedulingConfig.java        — @EnableScheduling cho các job @Scheduled
+│   ├── SwaggerConfig.java           — OpenAPI + JWT Bearer scheme cho Swagger UI
+│   ├── CustomFunctions.java         — đăng ký hàm HQL fts_match (search_vector @@ plainto_tsquery + unaccent)
+│   └── seed/                        — seed dữ liệu khi khởi động (SEED_ENABLED)
+│       ├── SystemAdminSeeder.java   — tạo SUPER_ADMIN (admin.seed.*)
+│       └── *Seeder.java             — dữ liệu demo: user, business, store, kho, catalog, KH/NCC, đơn
 │
 ├── controller/
-│   ├── AuthController.java          — POST /api/auth/register, /login
-│   ├── UserController.java          — profile, đổi mật khẩu (user tự quản lý)
-│   ├── AdminUserController.java     — quản lý user (SUPER_ADMIN)
+│   ├── AuthController.java          — POST /api/auth/register, /login, /refresh, /logout
+│   ├── UserController.java          — profile, đổi mật khẩu, lookup user (user tự quản lý)
+│   ├── BusinessController.java      — CRUD business, tạo business mặc định, subscription của owner
+│   ├── BusinessMemberController.java — trợ lý cấp business (BUSINESS_MANAGER)
 │   ├── StoreController.java         — CRUD store + member management
-│   ├── ProductController.java       — CRUD + search products
+│   ├── PlanController.java          — GET /api/plans (bảng giá công khai)
+│   ├── ProductController.java       — CRUD + search + import CSV products
 │   ├── CategoryController.java      — CRUD categories
 │   ├── UnitController.java          — CRUD units
-│   ├── OrderController.java         — tạo và xem đơn bán
-│   ├── PurchaseOrderController.java — tạo và xem đơn nhập
-│   ├── ReturnOrderController.java   — tạo và xem đơn trả
-│   ├── InventoryController.java     — xem tồn kho, điều chỉnh thủ công
-│   ├── PaymentController.java       — ghi nhận thanh toán
-│   ├── CustomerController.java      — CRUD khách hàng
-│   ├── SupplierController.java      — CRUD nhà cung cấp
+│   ├── OrderController.java         — đơn bán: tạo, hoàn thành, thanh toán, huỷ
+│   ├── PurchaseOrderController.java — đơn nhập: tạo, nhận hàng, thanh toán, huỷ
+│   ├── ReturnOrderController.java   — đơn trả hàng
+│   ├── InventoryController.java     — tồn kho, điều chỉnh / chuyển kho (đơn lẻ + hàng loạt)
+│   ├── PaymentController.java       — sổ quỹ thu chi
+│   ├── CustomerController.java      — CRUD khách hàng, thu nợ
+│   ├── SupplierController.java      — CRUD nhà cung cấp, trả nợ
 │   ├── WarehouseController.java     — CRUD kho hàng
+│   ├── DashboardController.java     — KPI + biểu đồ của cửa hàng
+│   ├── ExportController.java        — xuất Excel / PDF
+│   ├── NotificationController.java  — thông báo trong ứng dụng
+│   ├── SubscriptionController.java  — /api/admin/subscriptions: duyệt invoice, đổi gói, thống kê (SUPER_ADMIN)
+│   ├── AdminOperationsController.java — /api/admin: session, chi tiết business, audit log (SUPER_ADMIN)
+│   ├── AdminUserController.java     — quản lý user (SUPER_ADMIN)
+│   ├── AdminPlanController.java     — sửa giá / giới hạn gói (SUPER_ADMIN)
+│   ├── AdminPaymentAccountController.java — tài khoản nhận tiền + ảnh QR (SUPER_ADMIN)
 │   └── AdminTrafficController.java  — GET /api/admin/traffic, /traffic/system — dashboard lưu lượng (SUPER_ADMIN)
 │
 ├── service/
-│   ├── AuthService.java             — register, login, build auth response
+│   ├── AuthService.java             — register, login, refresh, logout
+│   ├── AuthResponseAssembler.java   — dựng AuthResponse: memberships, global roles, JWT
+│   ├── RefreshTokenService.java     — tạo / rotate / thu hồi refresh token (reuse detection)
 │   ├── UserService.java             — profile, đổi mật khẩu, quản lý user (admin)
+│   ├── BusinessService.java         — business CRUD, tạo bộ business/store/kho mặc định
+│   ├── BusinessMemberService.java   — trợ lý cấp business, cache invalidation
 │   ├── StoreService.java            — store CRUD, member management, cache invalidation
-│   ├── ProductService.java          — product CRUD + search + price history
+│   ├── SubscriptionService.java     — nâng / hạ gói, invoice lifecycle, admin confirm / reject
+│   ├── SubscriptionLimitService.java — kiểm tra giới hạn gói trước khi tạo resource
+│   ├── SubscriptionPaymentAccountService.java — tài khoản nhận tiền, snapshot vào invoice
+│   ├── PlanCatalogService.java      — nguồn duy nhất cho giá và giới hạn gói (subscription_plans)
+│   ├── PaymentQrStorage.java        — lưu / đọc ảnh QR tài khoản nhận tiền trên đĩa
+│   ├── ProductService.java          — product CRUD + search + import + price history
 │   ├── CategoryService.java         — category CRUD
-│   ├── UnitService.java             — unit CRUD (system + store-scoped)
-│   ├── OrderService.java            — tạo đơn bán, trừ tồn kho
-│   ├── PurchaseOrderService.java    — tạo đơn nhập, cộng tồn kho
-│   ├── ReturnOrderService.java      — tạo đơn trả, hoàn tồn kho
-│   ├── InventoryService.java        — xem tồn kho, điều chỉnh thủ công
-│   ├── PaymentService.java          — ghi nhận và tra cứu thanh toán
-│   ├── CustomerService.java         — CRUD khách hàng
-│   ├── SupplierService.java         — CRUD nhà cung cấp
+│   ├── UnitService.java             — unit CRUD (system + business units)
+│   ├── OrderService.java            — đơn bán, trừ tồn kho khi tạo
+│   ├── PurchaseOrderService.java    — đơn nhập, cộng tồn kho khi nhận
+│   ├── ReturnOrderService.java      — đơn trả, hoàn tồn kho + hoàn tiền
+│   ├── InventoryService.java        — tồn kho, điều chỉnh / chuyển kho
+│   ├── PaymentService.java          — sổ quỹ, ghi / xoá payment công nợ
+│   ├── CustomerService.java         — CRUD khách hàng, thu nợ
+│   ├── SupplierService.java         — CRUD nhà cung cấp, trả nợ
 │   ├── WarehouseService.java        — CRUD kho hàng
+│   ├── DashboardService.java        — KPI dashboard (đọc materialized view)
+│   ├── ExportService.java           — Excel (Apache POI) / PDF (OpenPDF)
+│   ├── NotificationService.java     — đọc / đánh dấu đã đọc thông báo
+│   ├── EmailService.java            — gửi email async (Spring Mail)
+│   ├── AuditService.java            — ghi audit nghiệp vụ async (dùng bởi AuditAspect)
+│   ├── AdminAuditService.java       — audit quản trị, ghi đồng bộ trong transaction (MANDATORY)
+│   ├── AdminStatsService.java       — thống kê tổng quan cho SUPER_ADMIN
 │   ├── ApiTrafficRecorder.java      — cộng dồn lưu lượng trong bộ nhớ, mỗi phút UPSERT vào api_traffic_* (V11)
-│   └── ApiTrafficService.java       — đọc số liệu lưu lượng + tình trạng instance cho dashboard admin
+│   ├── ApiTrafficService.java       — đọc số liệu lưu lượng + tình trạng instance cho dashboard admin
+│   └── Job @Scheduled (xem LIFECYCLE.md mục 1):
+│       NotificationProjector, DashboardRefreshScheduler, SubscriptionExpiryScheduler,
+│       RefreshTokenCleanupScheduler
+│
+├── annotation/
+│   └── Auditable.java               — @Auditable(action, entityType) đánh dấu method cần audit
+│
+├── aspect/
+│   └── AuditAspect.java             — AOP: bắt method @Auditable, gọi AuditService
 │
 ├── security/
-│   ├── JwtService.java              — generate / validate JWT, extract claims
+│   ├── JwtService.java              — ký JWT, cung cấp thời hạn token (expiresIn)
 │   ├── UserPrincipalConverter.java  — convert Jwt → UserPrincipal, set SecurityContext (0 DB call)
 │   ├── UserPrincipal.java           — record(userId, username, roles) — principal trong SecurityContext
+│   ├── BusinessAccessEvaluator.java — @PreAuthorize helper cho catalog / business endpoints; Redis cache → DB
 │   ├── StoreAccessEvaluator.java    — @PreAuthorize helper; Redis cache → DB fallback
 │   ├── LoginAttemptLimiter.java     — giới hạn đăng nhập sai theo tài khoản (gọi từ AuthService.login)
 │   └── ClientIpResolver.java        — lấy IP client; chỉ tin X-Forwarded-For từ rate-limit.trusted-proxies
@@ -67,11 +110,10 @@ com.quiktech.pos
 │   ├── RateLimitResponseWriter.java — ghi response 429 + header Retry-After / RateLimit-*
 │   └── RateLimitMetrics.java        — metric Prometheus rate_limit_requests_total
 │
-├── repository/                      — JpaRepository; custom @Query với JOIN FETCH
+├── repository/                      — JpaRepository; custom @Query với JOIN FETCH; ProductSpec (Specification)
 │
-├── entity/                          — 26 JPA entities (xem ENTITY_MODEL.md)
-│   └── enums/
-│       └── RoleName.java
+├── entity/                          — 31 JPA entities (schema: database/DATABASE_SCHEMA.md)
+│   └── enums/                       — RoleName, OrderStatus, SubscriptionPlan, PaymentMethod, ...
 │
 ├── dto/
 │   ├── request/
@@ -84,11 +126,14 @@ com.quiktech.pos
 │       ├── store/
 │       └── ...
 │
-└── exception/
-    ├── ForbiddenException.java
+└── exception/                       — xem ERROR_LIFECYCLE.md
+    ├── GlobalExceptionHandler.java  — @RestControllerAdvice
     ├── ResourceNotFoundException.java
+    ├── ForbiddenException.java
+    ├── InvalidTokenException.java   — refresh token không hợp lệ / hết hạn (401)
+    ├── SubscriptionLimitExceededException.java — vượt giới hạn gói (402)
     ├── RateLimitExceededException.java — 429 cho quota kiểm tra trong service (đăng nhập sai)
-    └── GlobalExceptionHandler.java  — @RestControllerAdvice; xem ERROR_LIFECYCLE.md
+    └── PaymentAccountUnavailableException.java — chưa có tài khoản nhận tiền (503)
 ```
 
 ---
