@@ -105,6 +105,9 @@ Request
   ↓
 CorsFilter (servlet filter, xử lý CORS trước limiter)
   ↓
+ApiTrafficFilter (đo lưu lượng cho dashboard admin — không chặn request;
+                  bọc ngoài limiter nên request bị 429 vẫn được đếm)
+  ↓
 RateLimitFilter (trước Spring Security)
   ├── login/register/refresh: quota theo IP, chống brute-force
   └── mọi /api/** khác: trần IP rộng, chống flood thô
@@ -113,7 +116,13 @@ BearerTokenAuthenticationFilter → JWT → UserPrincipal
   ↓
 AuthenticatedRateLimitFilter
   ├── quota mặc định theo userId
-  └── quota riêng cho import, export, đổi mật khẩu
+  └── quota riêng cho import, export, điều chỉnh/chuyển kho hàng loạt, đổi mật khẩu
+  ↓
+IdempotencyFilter (chỉ POST /api/stores/{id}/orders — chạy sau limiter nên request
+                   trùng key vẫn bị tính quota)
+  ↓
+AuthService.login → LoginAttemptLimiter (lớp thứ ba, trong service: số lần sai mật khẩu
+                    theo tài khoản, bất kể IP)
 ```
 
 | Policy | Key | Mặc định |
@@ -125,7 +134,9 @@ AuthenticatedRateLimitFilter
 | API đã xác thực | `userId` | 300/phút |
 | Import sản phẩm | `userId` | 5/10 phút |
 | Export file (`GET` và `HEAD` dùng chung quota) | `userId` | 10/10 phút |
+| Điều chỉnh / chuyển kho hàng loạt (`/inventory/adjust/bulk`, `/transfer/bulk` dùng chung quota) | `userId` | 10/10 phút |
 | Đổi mật khẩu | `userId` | 5/10 phút |
+| Đăng nhập **sai** (chỉ lần sai mới trừ) | tài khoản (`userId` hoặc SHA-256 chuỗi nhập) | 5 lần/15 phút |
 
 Khi hết quota, API trả `429` với envelope `RATE_LIMIT_EXCEEDED`, kèm `Retry-After`,
 `RateLimit-Limit`, `RateLimit-Remaining`, và `RateLimit-Reset`. Các header này được
@@ -137,10 +148,13 @@ Chỉ trong trường hợp đó mới dùng `X-Forwarded-For`; client gọi th�
 Các biến môi trường có thể override được liệt kê trong [`.env.example`](../.env.example).
 
 Kiểm tra quota có timeout mặc định 200 ms. Nếu Redis lỗi/timeout, limiter fail-open
-và bỏ qua kiểm tra trên instance đó trong 5 giây trước khi thử lại. Điều này không
+và bỏ qua kiểm tra trên instance đó trong 5 giây trước khi thử lại. Ngoại lệ là các quota
+chống brute-force (login, register, refresh, đăng nhập sai theo tài khoản): chúng chuyển sang
+bucket trong bộ nhớ của từng instance thay vì cho qua — quota thực tế khi đó là
+`capacity × số instance`. Điều này không
 đảm bảo startup khi Redis down hoặc bảo vệ các Redis consumer khác. Production
 vẫn nên có giới hạn thô ở reverse proxy/CDN/WAF trước khi request đến Spring.
-Prometheus có metric `rate_limit_requests_total` với tags giới hạn `scope`, `policy`,
+Prometheus có metric `rate_limit_requests_total` với tags giới hạn `scope` (`ip`, `user`, `account`), `policy`,
 `outcome` (`allowed`, `blocked`, `error`, `bypassed`); không có userId, IP hoặc URL động.
 
 Khi đổi quota/window phải tăng `RATE_LIMIT_CONFIG_VERSION`; rollback cũng dùng
