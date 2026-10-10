@@ -15,7 +15,7 @@ và khả năng sync offline (sync chưa triển khai ngay).
 
 | Thành phần    | Công nghệ                                                                     |
 |:--------------|:------------------------------------------------------------------------------|
-| **Backend**   | Java 21 / Spring Boot 4.1 (Spring Framework 7, Jackson 3)                     |
+| **Backend**   | Java 25 / Spring Boot 4.1 (Spring Framework 7, Jackson 3)                     |
 | **Database**  | PostgreSQL 16                                                                 |
 | **ORM**       | Spring Data JPA + Hibernate 7                                                 |
 | **Migration** | Flyway — `ddl-auto=validate`                                                  |
