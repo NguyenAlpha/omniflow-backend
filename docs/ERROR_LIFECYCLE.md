@@ -56,7 +56,7 @@ Nguồn: `exception/GlobalExceptionHandler.java`.
 | `MethodArgumentNotValidException` | 400 | `VALIDATION_ERROR` | `@Valid` fail trên request body; `field` được set |
 | `MethodArgumentTypeMismatchException` | 400 | `VALIDATION_ERROR` | Path/query param sai kiểu (VD chữ vào chỗ số); `field` = tên param |
 | `IllegalArgumentException` | 400 | `VALIDATION_ERROR` | Business rule vi phạm (trùng SKU, tên...) |
-| `BusinessRuleException` | 400 | _(từ exception)_ | `USERNAME_TAKEN` / `EMAIL_TAKEN` / `INVALID_CURRENT_PASSWORD` |
+| `BusinessRuleException` | 400 | _(từ exception)_ | `USERNAME_TAKEN` / `EMAIL_TAKEN` / `INVALID_CURRENT_PASSWORD`. Vi phạm unique index bảng `users` (register, TOCTOU khi sửa hồ sơ) cũng ra 2 mã đầu qua `UserUniqueViolations` |
 | `IllegalStateException` | 400 | `INSUFFICIENT_STOCK` | ⚠️ Mọi `IllegalStateException` đều ra mã này — chỉ ném khi thật sự là thiếu tồn kho |
 | `BadCredentialsException` | 401 | `INVALID_CREDENTIALS` | Sai username/password khi login |
 | `DisabledException` | 401 | `INVALID_CREDENTIALS` | User bị deactivate (`isActive = false`) |

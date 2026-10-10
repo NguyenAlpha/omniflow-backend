@@ -71,12 +71,13 @@ public class UserService {
         user.setPhone(request.phone());
         user.setUpdatedAt(Instant.now());
         // saveAndFlush + catch: 2 request song song cùng pass checkUsernameAndEmailUnique
-        // (TOCTOU) — unique index DB chặn request thua, convert 500 → 400 như register.
+        // (TOCTOU) — unique index DB chặn request thua, convert 500 → 400 (USERNAME_TAKEN /
+        // EMAIL_TAKEN theo tên index) như register.
         // Phải flush ngay trong try; để flush lúc commit thì exception thoát ra ngoài catch.
         try {
             return toResponse(userRepository.saveAndFlush(user));
         } catch (DataIntegrityViolationException e) {
-            throw new IllegalArgumentException("Username or email already taken");
+            throw UserUniqueViolations.toException(e);
         }
     }
 
@@ -121,7 +122,7 @@ public class UserService {
         try {
             return toAdminResponse(userRepository.saveAndFlush(user));
         } catch (DataIntegrityViolationException e) {
-            throw new IllegalArgumentException("Username or email already taken");
+            throw UserUniqueViolations.toException(e);
         }
     }
 

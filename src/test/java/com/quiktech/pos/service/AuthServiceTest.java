@@ -5,6 +5,7 @@ import com.quiktech.pos.dto.request.auth.RegisterRequest;
 import com.quiktech.pos.dto.response.auth.AuthResponse;
 import com.quiktech.pos.dto.response.common.ErrorCode;
 import com.quiktech.pos.entity.User;
+import com.quiktech.pos.exception.BusinessRuleException;
 import com.quiktech.pos.exception.InvalidTokenException;
 import com.quiktech.pos.exception.RateLimitExceededException;
 import com.quiktech.pos.repository.UserRepository;
@@ -68,14 +69,41 @@ class AuthServiceTest {
     }
 
     @Test
-    void register_duplicateUsernameOrEmail_becomesValidationError() {
+    void register_duplicateUsername_becomesUsernameTaken() {
         when(passwordEncoder.encode(anyString())).thenReturn("bcrypt-hash");
-        when(userRepository.save(any(User.class))).thenThrow(new DataIntegrityViolationException("uq_users_username_active"));
+        when(userRepository.save(any(User.class))).thenThrow(uniqueViolation("uq_users_username_active"));
+
+        assertThatThrownBy(() -> authService.register(registerRequest()))
+                .isInstanceOf(BusinessRuleException.class)
+                .extracting("errorCode").isEqualTo(ErrorCode.USERNAME_TAKEN);
+        verifyNoInteractions(refreshTokenService);
+    }
+
+    @Test
+    void register_duplicateEmail_becomesEmailTaken() {
+        when(passwordEncoder.encode(anyString())).thenReturn("bcrypt-hash");
+        when(userRepository.save(any(User.class))).thenThrow(uniqueViolation("uq_users_email_active"));
+
+        assertThatThrownBy(() -> authService.register(registerRequest()))
+                .isInstanceOf(BusinessRuleException.class)
+                .extracting("errorCode").isEqualTo(ErrorCode.EMAIL_TAKEN);
+        verifyNoInteractions(refreshTokenService);
+    }
+
+    @Test
+    void register_unknownConstraintViolation_staysValidationError() {
+        when(passwordEncoder.encode(anyString())).thenReturn("bcrypt-hash");
+        when(userRepository.save(any(User.class))).thenThrow(uniqueViolation("some_other_constraint"));
 
         assertThatThrownBy(() -> authService.register(registerRequest()))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessage("Username or email already taken");
-        verifyNoInteractions(refreshTokenService);
+    }
+
+    // Giống lỗi thật: Spring bọc exception của driver, message PostgreSQL chứa tên index
+    private static DataIntegrityViolationException uniqueViolation(String constraint) {
+        return new DataIntegrityViolationException("could not execute statement",
+                new RuntimeException("ERROR: duplicate key value violates unique constraint \"" + constraint + "\""));
     }
 
     @Test

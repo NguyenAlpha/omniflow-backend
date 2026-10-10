@@ -51,7 +51,8 @@ public class AuthService {
      *
      * @param request username, email, mật khẩu (chưa băm), họ tên, số điện thoại
      * @return access token, refresh token, thông tin user và memberships (rỗng)
-     * @throws IllegalArgumentException username hoặc email đã được tài khoản khác dùng (→ 400)
+     * @throws com.quiktech.pos.exception.BusinessRuleException username hoặc email đã được tài khoản khác dùng
+     *         (→ 400 USERNAME_TAKEN / EMAIL_TAKEN)
      */
     @Transactional
     public AuthResponse register(RegisterRequest request) {
@@ -77,8 +78,8 @@ public class AuthService {
             saved = userRepository.save(user);
         } catch (DataIntegrityViolationException e) {
             log.warn("Register failed: duplicate username or email: {}", request.username());
-            // IllegalArgumentException → GlobalExceptionHandler trả 400 VALIDATION_ERROR
-            throw new IllegalArgumentException("Username or email already taken");
+            // Theo tên unique index → 400 USERNAME_TAKEN / EMAIL_TAKEN (xem UserUniqueViolations)
+            throw UserUniqueViolations.toException(e);
         }
         // Không ghi email vào log (dữ liệu cá nhân) — userId đủ để tra cứu
         log.info("User registered: userId={}, username={}", saved.getId(), saved.getUsername());

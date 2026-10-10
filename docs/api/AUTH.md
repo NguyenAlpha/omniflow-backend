@@ -91,7 +91,8 @@ Tạo tài khoản mới. Trả về access token, refresh token và thông tin 
 | HTTP | `error.code` | Nguyên nhân |
 |:----:|:------------|:-----------|
 | 400 | `VALIDATION_ERROR` | Field không hợp lệ — `error.field` chỉ rõ field nào |
-| 400 | `VALIDATION_ERROR` | Username hoặc email đã tồn tại (`Username or email already taken`) |
+| 400 | `USERNAME_TAKEN` | Username đã tồn tại (DB unique index `uq_users_username_active` chặn) |
+| 400 | `EMAIL_TAKEN` | Email đã tồn tại (DB unique index `uq_users_email_active` chặn) |
 | 429 | `RATE_LIMIT_EXCEEDED` | Quá 5 lần đăng ký / phút từ cùng IP |
 
 ---

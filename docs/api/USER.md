@@ -196,7 +196,9 @@ Cập nhật thông tin profile của người dùng hiện tại.
 | 401 | `UNAUTHORIZED` | Không có hoặc JWT hết hạn |
 | 400 | `USERNAME_TAKEN` | Username đã được tài khoản khác sử dụng |
 | 400 | `EMAIL_TAKEN` | Email đã được tài khoản khác sử dụng |
-| 400 | `VALIDATION_ERROR` | Hiếm: 2 request song song cùng lọt bước kiểm tra trùng → unique index DB chặn (message `Username or email already taken`, không phân biệt được field nào) |
+
+> 2 request song song cùng lọt bước kiểm tra trùng → unique index DB chặn request thua; mã lỗi
+> vẫn đúng field (`USERNAME_TAKEN` / `EMAIL_TAKEN`, suy ra từ tên index — `UserUniqueViolations`).
 
 ---
 

@@ -13,6 +13,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
 import java.util.List;
@@ -61,6 +62,19 @@ class UserServiceTest {
                 .isInstanceOf(BusinessRuleException.class)
                 .extracting("errorCode").isEqualTo(ErrorCode.EMAIL_TAKEN);
         verify(userRepository, never()).saveAndFlush(any());
+    }
+
+    @Test
+    void updateProfile_concurrentDuplicateEmail_caughtByUniqueIndex_throwsEmailTaken() {
+        when(userRepository.findById(7L)).thenReturn(Optional.of(user(7L)));
+        when(userRepository.findByUsername("an")).thenReturn(Optional.of(user(7L)));
+        when(userRepository.findByEmail("binh@test.com")).thenReturn(Optional.empty());
+        when(userRepository.saveAndFlush(any())).thenThrow(new DataIntegrityViolationException("could not execute statement",
+                new RuntimeException("ERROR: duplicate key value violates unique constraint \"uq_users_email_active\"")));
+
+        assertThatThrownBy(() -> userService.updateProfile(currentUser, profile("an", "binh@test.com")))
+                .isInstanceOf(BusinessRuleException.class)
+                .extracting("errorCode").isEqualTo(ErrorCode.EMAIL_TAKEN);
     }
 
     // ── changePassword ────────────────────────────────────────────────────────
