@@ -25,8 +25,8 @@ import java.util.Optional;
  *
  * <p>Có 2 loại token:
  * <ul>
- *   <li><b>Access token</b> (JWT, sống ngắn — mặc định 1 giờ): client gửi kèm mọi request.</li>
- *   <li><b>Refresh token</b> (chuỗi ngẫu nhiên lưu DB, sống 30 ngày): chỉ dùng để xin access
+ *   <li><b>Access token</b> (JWT, sống ngắn — {@code jwt.expiration}, mặc định 1 giờ): client gửi kèm mọi request.</li>
+ *   <li><b>Refresh token</b> (chuỗi ngẫu nhiên lưu DB, sống {@code jwt.refresh-token-expiration-days} ngày): chỉ dùng để xin access
  *       token mới khi access token hết hạn — xem {@link RefreshTokenService}.</li>
  * </ul>
  * Phần dựng response (memberships, JWT) nằm ở {@link AuthResponseAssembler}.
@@ -102,7 +102,7 @@ public class AuthService {
         // accountKey = khóa đếm số lần sai trên Redis: userId nếu tài khoản tồn tại, ngược lại
         // là SHA-256 của chuỗi đã nhập (vẫn chặn được việc dò thử tài khoản không có thật)
         String accountKey = LoginAttemptLimiter.accountKey(found.map(User::getId).orElse(null), request.usernameOrEmail());
-        // Đã hết lượt (5 lần sai / 15 phút) → ném RateLimitExceededException → 429,
+        // Đã hết lượt (rate-limit.login-account.*, mặc định 5 lần sai / 15 phút) → ném RateLimitExceededException → 429,
         // dừng luôn ở đây, kể cả khi lần này nhập đúng mật khẩu
         loginAttemptLimiter.assertAllowed(accountKey);
 
@@ -152,10 +152,8 @@ public class AuthService {
      */
     @Transactional(noRollbackFor = InvalidTokenException.class)
     public AuthResponse refresh(String refreshToken) {
-        // rotate() = "đổi token cũ lấy token mới": kiểm tra token tồn tại, chưa dùng, chưa hết hạn
-        // → thu hồi token cũ, tạo token mới. Trả về RotateResult(newToken, userId).
-        // Token đã dùng rồi (dấu hiệu bị đánh cắp) → thu hồi TOÀN BỘ token của user rồi ném lỗi.
-        // Mọi trường hợp lỗi đều ném InvalidTokenException → 401.
+        // rotate() = "đổi token cũ lấy token mới" → trả về RotateResult(newToken, userId);
+        // token sai/đã dùng/hết hạn → InvalidTokenException → 401 (chi tiết: xem RefreshTokenService.rotate)
         RefreshTokenService.RotateResult result = refreshTokenService.rotate(refreshToken);
         // User bị xóa mềm sẽ không tìm thấy do @SQLRestriction("deleted_at IS NULL");
         // user bị khóa thì isEnabled() = false. Cả 2 trường hợp: thu hồi toàn bộ refresh
@@ -187,7 +185,7 @@ public class AuthService {
     // ── Private helpers ───────────────────────────────────────────────────────
 
     /**
-     * Dùng cho register/login: tạo refresh token MỚI (lưu DB, sống 30 ngày) rồi dựng response.
+     * Dùng cho register/login: tạo refresh token MỚI (lưu DB, hạn theo {@code jwt.refresh-token-expiration-days}) rồi dựng response.
      * refresh() không đi qua đây vì rotate() đã tạo sẵn token mới.
      *
      * @param user user vừa đăng ký hoặc vừa xác thực thành công
