@@ -99,6 +99,18 @@ public class GlobalExceptionHandler {
         );
     }
 
+    // Cùng body/header với RateLimitResponseWriter (429 từ filter) để client xử lý một kiểu
+    @ExceptionHandler(RateLimitExceededException.class)
+    public ResponseEntity<ApiResult<?>> handleRateLimit(RateLimitExceededException ex) {
+        String retryAfter = String.valueOf(ex.getRetryAfterSeconds());
+        return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
+                .header("Retry-After", retryAfter)
+                .header("RateLimit-Limit", String.valueOf(ex.getLimit()))
+                .header("RateLimit-Remaining", String.valueOf(ex.getRemaining()))
+                .header("RateLimit-Reset", retryAfter)
+                .body(ApiResult.fail(ErrorDetail.of(ErrorCode.RATE_LIMIT_EXCEEDED, ex.getMessage())));
+    }
+
     @ExceptionHandler(AccessDeniedException.class)
     public ResponseEntity<ApiResult<?>> handleAccessDenied(AccessDeniedException ignored) {
         return ResponseEntity.status(HttpStatus.FORBIDDEN).body(

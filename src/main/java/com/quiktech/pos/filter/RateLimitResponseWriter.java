@@ -23,7 +23,7 @@ import java.util.concurrent.TimeUnit;
  * Body được ghi thẳng (không qua {@code GlobalExceptionHandler}) vì filter chạy ngoài
  * DispatcherServlet.
  */
-final class RateLimitResponseWriter {
+public final class RateLimitResponseWriter {
 
     private static final String RATE_LIMIT_BODY = """
             {"success":false,"data":null,"error":{"code":"RATE_LIMIT_EXCEEDED","message":"Too many requests. Please try again later.","field":null}}""";
@@ -39,9 +39,7 @@ final class RateLimitResponseWriter {
      * @param limit capacity của bucket
      */
     static void write(HttpServletResponse response, ConsumptionProbe probe, long limit) throws IOException {
-        long nanos = probe.getNanosToWaitForRefill();
-        long retryAfter = Math.max(1, TimeUnit.NANOSECONDS.toSeconds(nanos)
-                + (nanos % TimeUnit.SECONDS.toNanos(1) == 0 ? 0 : 1));
+        long retryAfter = retryAfterSeconds(probe);
 
         response.setStatus(429);
         response.setHeader("Retry-After", String.valueOf(retryAfter));
@@ -51,5 +49,15 @@ final class RateLimitResponseWriter {
         response.setContentType(MediaType.APPLICATION_JSON_VALUE);
         response.setCharacterEncoding(StandardCharsets.UTF_8.name());
         response.getWriter().write(RATE_LIMIT_BODY);
+    }
+
+    /**
+     * Số giây client phải chờ, làm tròn lên và tối thiểu 1. Dùng chung với
+     * {@code GlobalExceptionHandler} (429 của giới hạn đăng nhập sai) để hai nơi trả cùng giá trị.
+     */
+    public static long retryAfterSeconds(ConsumptionProbe probe) {
+        long nanos = probe.getNanosToWaitForRefill();
+        return Math.max(1, TimeUnit.NANOSECONDS.toSeconds(nanos)
+                + (nanos % TimeUnit.SECONDS.toNanos(1) == 0 ? 0 : 1));
     }
 }

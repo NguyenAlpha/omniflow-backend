@@ -16,11 +16,13 @@ import com.quiktech.pos.repository.StoreRepository;
 import com.quiktech.pos.repository.UserRepository;
 import com.quiktech.pos.repository.UserRoleRepository;
 import com.quiktech.pos.security.JwtService;
+import com.quiktech.pos.security.LoginAttemptLimiter;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.security.authentication.AuthenticationManager;
+import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -30,6 +32,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.stream.Collectors;
 
 @Slf4j
@@ -45,6 +48,7 @@ public class AuthService {
     private final JwtService jwtService;
     private final AuthenticationManager authenticationManager;
     private final RefreshTokenService refreshTokenService;
+    private final LoginAttemptLimiter loginAttemptLimiter;
 
     @Value("${jwt.expiration}")
     private long jwtExpiration;
@@ -72,14 +76,25 @@ public class AuthService {
 
     @Transactional
     public AuthResponse login(LoginRequest request) {
-        authenticationManager.authenticate(
-                new UsernamePasswordAuthenticationToken(request.usernameOrEmail(), request.password())
-        );
+        // Tra user trước để giới hạn đăng nhập sai theo tài khoản (username/email chung bucket)
+        Optional<User> found = userRepository.findByUsernameOrEmail(request.usernameOrEmail(), request.usernameOrEmail());
+        String accountKey = LoginAttemptLimiter.accountKey(found.map(User::getId).orElse(null), request.usernameOrEmail());
+        loginAttemptLimiter.assertAllowed(accountKey);
+
+        try {
+            authenticationManager.authenticate(
+                    new UsernamePasswordAuthenticationToken(request.usernameOrEmail(), request.password())
+            );
+        } catch (BadCredentialsException wrongPassword) {
+            // Chỉ sai mật khẩu mới bị tính; tài khoản bị khóa (DisabledException) không trừ lượt
+            loginAttemptLimiter.recordFailure(accountKey);
+            throw wrongPassword;
+        }
 
         // authenticate() ở trên đã thành công nên user chắc chắn tồn tại — nếu vẫn
         // không tìm thấy (race hiếm: user bị xóa giữa 2 câu query) thì fail với message
         // rõ ràng thay vì NoSuchElementException không có context
-        User user = userRepository.findByUsernameOrEmail(request.usernameOrEmail(), request.usernameOrEmail())
+        User user = found
                 .orElseThrow(() -> new IllegalStateException(
                         "User not found after successful authentication: " + request.usernameOrEmail()));
 
