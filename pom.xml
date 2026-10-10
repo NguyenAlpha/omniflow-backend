@@ -28,6 +28,16 @@
 	</scm>
 	<properties>
 		<java.version>25</java.version>
+		<!-- Boot 4.1.1 vẫn quản lý logback 1.5.38 (CVE-2026-19880, CVE-2026-104721: ảnh hưởng tới 1.6.4).
+		     Bỏ dòng này khi nâng lên bản Spring Boot đã quản lý logback >= 1.6.5. -->
+		<logback.version>1.6.5</logback.version>
+		<!-- Boot 4.1.1 quản lý jackson-databind 2.21.5 (swagger-core/springdoc dùng) và 3.1.5, dính các CVE DoS
+		     CVE-2026-68497, -91776, -91777, -83557. Lên bản vá cùng dòng; bỏ khi Boot quản lý >= 2.21.7 / 3.1.7. -->
+		<jackson-2-bom.version>2.21.7</jackson-2-bom.version>
+		<jackson-bom.version>3.1.7</jackson-bom.version>
+		<!-- Boot 4.1.1 quản lý Tomcat 11.0.24, dính CVE-2026-65637, -65905, -65182, -68525... (vá từ 11.0.25).
+		     Bỏ khi Boot quản lý tomcat >= 11.0.25. -->
+		<tomcat.version>11.0.26</tomcat.version>
 	</properties>
 	<dependencies>
 		<dependency>
@@ -118,7 +128,6 @@
 		<dependency>
 			<groupId>org.springdoc</groupId>
 			<artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
-			<!-- Dòng 3.1.x của springdoc dành cho Spring Boot 4.1 (2.8.x cho Boot 3, 3.0.x cho Boot 4.0) -->
 			<version>3.1.1</version>
 		</dependency>
 		<dependency>
