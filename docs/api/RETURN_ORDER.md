@@ -127,7 +127,7 @@ Lấy danh sách tất cả đơn trả hàng của store. Yêu cầu user là *
 
 | HTTP | `error.code` | Nguyên nhân |
 |:----:|:------------|:-----------|
-| 403 | `ACCESS_DENIED` | Không phải thành viên của store |
+| 403 | `FORBIDDEN` | Không phải thành viên của store |
 | 404 | `STORE_NOT_FOUND` | Store không tồn tại |
 
 ---
@@ -151,7 +151,7 @@ Trả về `ReturnOrderResponse`.
 
 | HTTP | `error.code` | Nguyên nhân |
 |:----:|:------------|:-----------|
-| 403 | `ACCESS_DENIED` | Không phải thành viên của store |
+| 403 | `FORBIDDEN` | Không phải thành viên của store |
 | 404 | `RETURN_ORDER_NOT_FOUND` | Đơn trả không tồn tại trong store này |
 
 ---
@@ -210,7 +210,7 @@ Trả về `ReturnOrderResponse` với `status = "PENDING"`.
 | HTTP | `error.code` | Nguyên nhân |
 |:----:|:------------|:-----------|
 | 400 | `VALIDATION_ERROR` | Field không hợp lệ |
-| 403 | `ACCESS_DENIED` | Không phải OWNER hoặc MANAGER |
+| 403 | `FORBIDDEN` | Không phải OWNER hoặc MANAGER |
 | 404 | `STORE_NOT_FOUND` | Store không tồn tại |
 
 ---
@@ -239,7 +239,7 @@ Trả về `ReturnOrderResponse` với `status = "COMPLETED"`.
 | HTTP | `error.code` | Nguyên nhân |
 |:----:|:------------|:-----------|
 | 400 | `VALIDATION_ERROR` | Đơn không ở trạng thái PENDING |
-| 403 | `ACCESS_DENIED` | Không phải OWNER hoặc MANAGER |
+| 403 | `FORBIDDEN` | Không phải OWNER hoặc MANAGER |
 | 404 | `RETURN_ORDER_NOT_FOUND` | Đơn trả không tồn tại |
 
 ---
@@ -266,5 +266,5 @@ Trả về `ReturnOrderResponse` với `status = "CANCELLED"`.
 | HTTP | `error.code` | Nguyên nhân |
 |:----:|:------------|:-----------|
 | 400 | `VALIDATION_ERROR` | Đơn không ở trạng thái PENDING |
-| 403 | `ACCESS_DENIED` | Không phải OWNER hoặc MANAGER |
+| 403 | `FORBIDDEN` | Không phải OWNER hoặc MANAGER |
 | 404 | `RETURN_ORDER_NOT_FOUND` | Đơn trả không tồn tại |

@@ -123,7 +123,7 @@ Tạo store mới trong một business. Chỉ **OWNER** của business mới đ�
 | HTTP | `error.code` | Nguyên nhân                                         |
 |:----:|:------------|:----------------------------------------------------|
 | 400  | `VALIDATION_ERROR` | Field không hợp lệ — `error.field` chỉ rõ field nào |
-| 403  | `ACCESS_DENIED` | Không phải OWNER của business                       |
+| 403  | `FORBIDDEN` | Không phải OWNER của business                       |
 | 404  | `BUSINESS_NOT_FOUND` | Business không tồn tại                              |
 | 402  | `SUBSCRIPTION_LIMIT_EXCEEDED` | giới hạn số cửa hàng                                |
 ---
@@ -192,7 +192,7 @@ Lấy thông tin chi tiết một store. Yêu cầu user là **thành viên** c�
 
 | HTTP | `error.code` | Nguyên nhân |
 |:----:|:------------|:-----------|
-| 403 | `ACCESS_DENIED` | Không phải thành viên của store |
+| 403 | `FORBIDDEN` | Không phải thành viên của store |
 | 404 | `STORE_NOT_FOUND` | Store không tồn tại |
 
 ---
@@ -234,7 +234,7 @@ Trả về `StoreResponse` sau khi cập nhật.
 | HTTP | `error.code` | Nguyên nhân |
 |:----:|:------------|:-----------|
 | 400 | `VALIDATION_ERROR` | Field không hợp lệ |
-| 403 | `ACCESS_DENIED` | Không phải OWNER hoặc MANAGER của store |
+| 403 | `FORBIDDEN` | Không phải OWNER hoặc MANAGER của store |
 | 404 | `STORE_NOT_FOUND` | Store không tồn tại |
 
 ---
@@ -270,7 +270,7 @@ Trả về `StoreResponse` với `isActive` đã được cập nhật.
 | HTTP | `error.code` | Nguyên nhân |
 |:----:|:------------|:-----------|
 | 400 | `VALIDATION_ERROR` | `isActive` bị bỏ trống |
-| 403 | `ACCESS_DENIED` | Không phải OWNER của store |
+| 403 | `FORBIDDEN` | Không phải OWNER của store |
 | 404 | `STORE_NOT_FOUND` | Store không tồn tại |
 
 ---
@@ -313,7 +313,7 @@ Lấy danh sách thành viên của store. Yêu cầu user là **thành viên** 
 
 | HTTP | `error.code` | Nguyên nhân |
 |:----:|:------------|:-----------|
-| 403 | `ACCESS_DENIED` | Không phải thành viên của store |
+| 403 | `FORBIDDEN` | Không phải thành viên của store |
 | 404 | `STORE_NOT_FOUND` | Store không tồn tại |
 
 ---
@@ -373,7 +373,7 @@ Thêm user vào store. Chỉ **OWNER** mới được thực hiện.
 | HTTP | `error.code` | Nguyên nhân |
 |:----:|:------------|:-----------|
 | 400 | `VALIDATION_ERROR` | Field không hợp lệ |
-| 403 | `ACCESS_DENIED` | Không phải OWNER của store |
+| 403 | `FORBIDDEN` | Không phải OWNER của store |
 | 404 | `STORE_NOT_FOUND` | Store không tồn tại |
 | 404 | `USER_NOT_FOUND` | User cần thêm không tồn tại |
 | 409 | `MEMBER_ALREADY_EXISTS` | User đã là thành viên của store |
@@ -416,7 +416,7 @@ Trả về `StoreMemberResponse` sau khi cập nhật.
 | HTTP | `error.code` | Nguyên nhân |
 |:----:|:------------|:-----------|
 | 400 | `VALIDATION_ERROR` | Field không hợp lệ |
-| 403 | `ACCESS_DENIED` | Không phải OWNER của store |
+| 403 | `FORBIDDEN` | Không phải OWNER của store |
 | 404 | `MEMBER_NOT_FOUND` | Membership không tồn tại trong store này |
 
 ---
@@ -446,5 +446,5 @@ Xoá thành viên khỏi store. Chỉ **OWNER** mới được thực hiện.
 
 | HTTP | `error.code` | Nguyên nhân |
 |:----:|:------------|:-----------|
-| 403 | `ACCESS_DENIED` | Không phải OWNER của store |
+| 403 | `FORBIDDEN` | Không phải OWNER của store |
 | 404 | `MEMBER_NOT_FOUND` | Membership không tồn tại trong store này |

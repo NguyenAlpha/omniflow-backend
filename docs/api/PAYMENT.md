@@ -143,7 +143,7 @@ Tìm kiếm và lọc danh sách giao dịch. Yêu cầu user là **thành viên
 
 | HTTP | `error.code` | Nguyên nhân |
 |:----:|:------------|:-----------|
-| 403 | `ACCESS_DENIED` | Không phải thành viên của store |
+| 403 | `FORBIDDEN` | Không phải thành viên của store |
 | 404 | `STORE_NOT_FOUND` | Store không tồn tại |
 
 ---
@@ -167,7 +167,7 @@ Trả về `PaymentResponse`.
 
 | HTTP | `error.code` | Nguyên nhân |
 |:----:|:------------|:-----------|
-| 403 | `ACCESS_DENIED` | Không phải thành viên của store |
+| 403 | `FORBIDDEN` | Không phải thành viên của store |
 | 404 | `PAYMENT_NOT_FOUND` | Giao dịch không tồn tại trong store này |
 
 ---
@@ -216,7 +216,7 @@ Trả về `PaymentResponse`.
 | HTTP | `error.code` | Nguyên nhân |
 |:----:|:------------|:-----------|
 | 400 | `VALIDATION_ERROR` | Field bắt buộc bị thiếu hoặc giá trị không hợp lệ |
-| 403 | `ACCESS_DENIED` | Không phải OWNER hoặc MANAGER |
+| 403 | `FORBIDDEN` | Không phải OWNER hoặc MANAGER |
 | 404 | `STORE_NOT_FOUND` | Store không tồn tại |
 | 404 | `CUSTOMER_NOT_FOUND` | Khách hàng không tồn tại trong business này |
 | 404 | `SUPPLIER_NOT_FOUND` | Nhà cung cấp không tồn tại trong business này |

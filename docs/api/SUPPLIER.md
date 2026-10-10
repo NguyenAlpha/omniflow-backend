@@ -98,7 +98,7 @@ Lấy toàn bộ danh sách nhà cung cấp của business (không phân trang).
 
 | HTTP | `error.code` | Nguyên nhân |
 |:----:|:------------|:-----------|
-| 403 | `ACCESS_DENIED` | Không phải thành viên của business |
+| 403 | `FORBIDDEN` | Không phải thành viên của business |
 | 404 | `BUSINESS_NOT_FOUND` | Business không tồn tại |
 
 ---
@@ -132,7 +132,7 @@ Trả về `PagedResult<SupplierResponse>`.
 | HTTP | `error.code` | Nguyên nhân |
 |:----:|:------------|:-----------|
 | 400 | `VALIDATION_ERROR` | `q` bị thiếu |
-| 403 | `ACCESS_DENIED` | Không phải thành viên của business |
+| 403 | `FORBIDDEN` | Không phải thành viên của business |
 
 ---
 
@@ -155,7 +155,7 @@ Trả về `SupplierResponse`.
 
 | HTTP | `error.code` | Nguyên nhân |
 |:----:|:------------|:-----------|
-| 403 | `ACCESS_DENIED` | Không phải thành viên của business |
+| 403 | `FORBIDDEN` | Không phải thành viên của business |
 | 404 | `SUPPLIER_NOT_FOUND` | Nhà cung cấp không tồn tại trong business này |
 
 ---
@@ -199,7 +199,7 @@ Trả về `SupplierResponse` với `debtBalance = 0`.
 | HTTP | `error.code` | Nguyên nhân |
 |:----:|:------------|:-----------|
 | 400 | `VALIDATION_ERROR` | Field không hợp lệ |
-| 403 | `ACCESS_DENIED` | Không phải OWNER hoặc MANAGER |
+| 403 | `FORBIDDEN` | Không phải OWNER hoặc MANAGER |
 | 404 | `BUSINESS_NOT_FOUND` | Business không tồn tại |
 | 409 | `SUPPLIER_CODE_DUPLICATE` | `code` đã tồn tại trong business |
 
@@ -229,7 +229,7 @@ Trả về `SupplierResponse` sau khi cập nhật.
 | HTTP | `error.code` | Nguyên nhân |
 |:----:|:------------|:-----------|
 | 400 | `VALIDATION_ERROR` | Field không hợp lệ |
-| 403 | `ACCESS_DENIED` | Không phải OWNER hoặc MANAGER |
+| 403 | `FORBIDDEN` | Không phải OWNER hoặc MANAGER |
 | 404 | `SUPPLIER_NOT_FOUND` | Nhà cung cấp không tồn tại |
 | 409 | `SUPPLIER_CODE_DUPLICATE` | `code` đã tồn tại (khi đổi sang code khác) |
 
@@ -271,7 +271,7 @@ Trả về `SupplierResponse` với `debtBalance` đã được giảm.
 | HTTP | `error.code` | Nguyên nhân |
 |:----:|:------------|:-----------|
 | 400 | `VALIDATION_ERROR` | `amount` thiếu hoặc nhỏ hơn 0.01; `paymentMethod` không thuộc enum |
-| 403 | `ACCESS_DENIED` | Không phải OWNER hoặc MANAGER |
+| 403 | `FORBIDDEN` | Không phải OWNER hoặc MANAGER |
 | 404 | `SUPPLIER_NOT_FOUND` | Nhà cung cấp không tồn tại |
 | 404 | `STORE_NOT_FOUND` | `storeId` không tồn tại hoặc không thuộc business |
 
@@ -306,5 +306,5 @@ Xóa nhà cung cấp. Yêu cầu user là **OWNER** hoặc **MANAGER** của bus
 | HTTP | `error.code` | Nguyên nhân |
 |:----:|:------------|:-----------|
 | 400 | `VALIDATION_ERROR` | Nhà cung cấp còn công nợ chưa tất toán |
-| 403 | `ACCESS_DENIED` | Không phải OWNER hoặc MANAGER |
+| 403 | `FORBIDDEN` | Không phải OWNER hoặc MANAGER |
 | 404 | `SUPPLIER_NOT_FOUND` | Nhà cung cấp không tồn tại |

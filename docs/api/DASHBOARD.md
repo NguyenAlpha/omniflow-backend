@@ -124,5 +124,5 @@ Trả về `DashboardResponse` như mô tả ở trên.
 
 | HTTP | `error.code` | Nguyên nhân |
 |:----:|:------------|:-----------|
-| 403 | `ACCESS_DENIED` | Không phải thành viên của store |
+| 403 | `FORBIDDEN` | Không phải thành viên của store |
 | 404 | `STORE_NOT_FOUND` | Store không tồn tại |

@@ -223,7 +223,7 @@ Lấy thông tin chi tiết một business.
 
 | HTTP | `error.code` | Nguyên nhân |
 |:----:|:------------|:-----------|
-| 403 | `ACCESS_DENIED` | Không phải thành viên của business |
+| 403 | `FORBIDDEN` | Không phải thành viên của business |
 | 404 | `BUSINESS_NOT_FOUND` | Business không tồn tại |
 
 ---
@@ -268,7 +268,7 @@ Lấy thông tin gói đăng ký hiện tại của business.
 
 | HTTP | `error.code` | Nguyên nhân |
 |:----:|:------------|:-----------|
-| 403 | `ACCESS_DENIED` | Không phải thành viên của business |
+| 403 | `FORBIDDEN` | Không phải thành viên của business |
 | 404 | `BUSINESS_NOT_FOUND` | Business không tồn tại |
 | 404 | `SUBSCRIPTION_NOT_FOUND` | Business chưa có subscription (không xảy ra bình thường) |
 
@@ -375,7 +375,7 @@ Trả về `BusinessResponse` sau khi cập nhật.
 | HTTP | `error.code` | Nguyên nhân |
 |:----:|:------------|:-----------|
 | 400 | `VALIDATION_ERROR` | Field không hợp lệ |
-| 403 | `ACCESS_DENIED` | Không phải OWNER của business |
+| 403 | `FORBIDDEN` | Không phải OWNER của business |
 | 404 | `BUSINESS_NOT_FOUND` | Business không tồn tại |
 
 ---
@@ -411,5 +411,5 @@ Trả về `BusinessResponse` với `isActive` đã được cập nhật.
 | HTTP | `error.code` | Nguyên nhân |
 |:----:|:------------|:-----------|
 | 400 | `VALIDATION_ERROR` | `isActive` bị bỏ trống |
-| 403 | `ACCESS_DENIED` | Không phải OWNER của business |
+| 403 | `FORBIDDEN` | Không phải OWNER của business |
 | 404 | `BUSINESS_NOT_FOUND` | Business không tồn tại |

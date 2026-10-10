@@ -74,7 +74,7 @@ Lấy danh sách tất cả kho hàng của store. Yêu cầu user là **thành 
 
 | HTTP | `error.code` | Nguyên nhân |
 |:----:|:------------|:-----------|
-| 403 | `ACCESS_DENIED` | Không phải thành viên của store |
+| 403 | `FORBIDDEN` | Không phải thành viên của store |
 | 404 | `STORE_NOT_FOUND` | Store không tồn tại |
 
 ---
@@ -98,7 +98,7 @@ Trả về `WarehouseResponse`.
 
 | HTTP | `error.code` | Nguyên nhân |
 |:----:|:------------|:-----------|
-| 403 | `ACCESS_DENIED` | Không phải thành viên của store |
+| 403 | `FORBIDDEN` | Không phải thành viên của store |
 | 404 | `WAREHOUSE_NOT_FOUND` | Kho hàng không tồn tại trong store này |
 
 ---
@@ -139,7 +139,7 @@ Trả về `WarehouseResponse`.
 |:----:|:------------|:-----------|
 | 400 | `VALIDATION_ERROR` | `name` bị thiếu hoặc vượt 100 ký tự |
 | 402 | `SUBSCRIPTION_LIMIT_EXCEEDED` | Đã đạt giới hạn số kho hàng theo gói |
-| 403 | `ACCESS_DENIED` | Không phải OWNER hoặc MANAGER |
+| 403 | `FORBIDDEN` | Không phải OWNER hoặc MANAGER |
 | 404 | `STORE_NOT_FOUND` | Store không tồn tại |
 
 ---
@@ -168,7 +168,7 @@ Trả về `WarehouseResponse` sau khi cập nhật.
 | HTTP | `error.code` | Nguyên nhân |
 |:----:|:------------|:-----------|
 | 400 | `VALIDATION_ERROR` | `name` bị thiếu hoặc vượt 100 ký tự |
-| 403 | `ACCESS_DENIED` | Không phải OWNER hoặc MANAGER |
+| 403 | `FORBIDDEN` | Không phải OWNER hoặc MANAGER |
 | 404 | `WAREHOUSE_NOT_FOUND` | Kho hàng không tồn tại trong store này |
 
 ---
@@ -198,5 +198,5 @@ Xóa kho hàng. Yêu cầu user là **OWNER** hoặc **MANAGER** của store.
 
 | HTTP | `error.code` | Nguyên nhân |
 |:----:|:------------|:-----------|
-| 403 | `ACCESS_DENIED` | Không phải OWNER hoặc MANAGER |
+| 403 | `FORBIDDEN` | Không phải OWNER hoặc MANAGER |
 | 404 | `WAREHOUSE_NOT_FOUND` | Kho hàng không tồn tại trong store này |

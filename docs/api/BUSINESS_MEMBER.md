@@ -81,7 +81,7 @@ Danh sách thành viên cấp business (OWNER + trợ lý). Chỉ **OWNER**.
 
 | HTTP | `error.code` | Nguyên nhân |
 |:----:|:------------|:-----------|
-| 403 | `ACCESS_DENIED` | Không phải OWNER của business |
+| 403 | `FORBIDDEN` | Không phải OWNER của business |
 | 404 | `BUSINESS_NOT_FOUND` | Business không tồn tại |
 
 ---
@@ -116,7 +116,7 @@ Trả về `BusinessMemberResponse` vừa tạo.
 |:----:|:------------|:-----------|
 | 400 | `VALIDATION_ERROR` | Field không hợp lệ, hoặc user đã là thành viên của business |
 | 402 | `SUBSCRIPTION_LIMIT_EXCEEDED` | Vượt quota `max_staff` của gói |
-| 403 | `ACCESS_DENIED` | Không phải OWNER của business |
+| 403 | `FORBIDDEN` | Không phải OWNER của business |
 | 404 | `BUSINESS_NOT_FOUND` | Business không tồn tại |
 | 404 | `USER_NOT_FOUND` | User cần thêm không tồn tại |
 
@@ -154,7 +154,7 @@ Trả về `BusinessMemberResponse` sau khi cập nhật. `isActive=false` thu h
 | HTTP | `error.code` | Nguyên nhân |
 |:----:|:------------|:-----------|
 | 400 | `VALIDATION_ERROR` | Field không hợp lệ, hoặc cố sửa OWNER qua endpoint này |
-| 403 | `ACCESS_DENIED` | Không phải OWNER của business |
+| 403 | `FORBIDDEN` | Không phải OWNER của business |
 | 404 | `BUSINESS_MEMBER_NOT_FOUND` | Membership không tồn tại trong business này |
 
 ---
@@ -181,5 +181,5 @@ Gỡ một trợ lý khỏi business (soft delete roster + thu hồi role). Ch�
 | HTTP | `error.code` | Nguyên nhân |
 |:----:|:------------|:-----------|
 | 400 | `VALIDATION_ERROR` | Cố xóa OWNER qua endpoint này |
-| 403 | `ACCESS_DENIED` | Không phải OWNER của business |
+| 403 | `FORBIDDEN` | Không phải OWNER của business |
 | 404 | `BUSINESS_MEMBER_NOT_FOUND` | Membership không tồn tại trong business này |
