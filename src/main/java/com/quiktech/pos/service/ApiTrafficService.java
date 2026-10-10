@@ -12,9 +12,9 @@ import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.TimeGauge;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.actuate.health.CompositeHealth;
-import org.springframework.boot.actuate.health.HealthComponent;
-import org.springframework.boot.actuate.health.HealthEndpoint;
+import org.springframework.boot.health.actuate.endpoint.CompositeHealthDescriptor;
+import org.springframework.boot.health.actuate.endpoint.HealthDescriptor;
+import org.springframework.boot.health.actuate.endpoint.HealthEndpoint;
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.stereotype.Service;
@@ -169,9 +169,9 @@ public class ApiTrafficService {
         Map<String, String> components = new TreeMap<>();
         HealthEndpoint endpoint = healthEndpoint.getIfAvailable();
         if (endpoint != null) {
-            HealthComponent health = endpoint.health();
+            HealthDescriptor health = endpoint.health();
             status = health.getStatus().getCode();
-            if (health instanceof CompositeHealth composite) {
+            if (health instanceof CompositeHealthDescriptor composite) {
                 composite.getComponents().forEach((name, component) -> components.put(name, component.getStatus().getCode()));
             }
         }

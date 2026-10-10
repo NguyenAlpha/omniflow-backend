@@ -1,6 +1,6 @@
 package com.quiktech.pos.aspect;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.databind.ObjectMapper;
 import com.quiktech.pos.annotation.Auditable;
 import com.quiktech.pos.security.ClientIpResolver;
 import com.quiktech.pos.security.UserPrincipal;

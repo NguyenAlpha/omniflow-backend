@@ -10,7 +10,7 @@ import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
-import java.util.concurrent.TimeUnit;
+import java.time.Duration;
 
 /**
  * Kiểm tra quyền truy cập theo business context — dùng trong {@code @PreAuthorize} cho catalog endpoints.
@@ -122,7 +122,7 @@ public class BusinessAccessEvaluator {
 
         if (role != null) {
             try {
-                redisTemplate.opsForValue().set(key, role.name(), cacheTtlSeconds, TimeUnit.SECONDS);
+                redisTemplate.opsForValue().set(key, role.name(), Duration.ofSeconds(cacheTtlSeconds));
             } catch (Exception ignored) {
                 // Redis down — bỏ qua
             }
@@ -154,7 +154,7 @@ public class BusinessAccessEvaluator {
                 : RoleName.ROLE_STAFF.name();
 
         try {
-            redisTemplate.opsForValue().set(key, highest, cacheTtlSeconds, TimeUnit.SECONDS);
+            redisTemplate.opsForValue().set(key, highest, Duration.ofSeconds(cacheTtlSeconds));
         } catch (Exception ignored) {
             // Redis down — bỏ qua
         }

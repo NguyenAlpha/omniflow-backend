@@ -1,7 +1,6 @@
 package com.quiktech.pos.service;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.databind.ObjectMapper;
 import com.quiktech.pos.dto.response.admin.AdminAuditPage;
 import com.quiktech.pos.dto.response.admin.AdminAuditResponse;
 import com.quiktech.pos.entity.AuditLog;
@@ -16,6 +15,7 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
+import tools.jackson.core.JacksonException;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -49,7 +49,7 @@ public class AdminAuditService {
             repository.save(AuditLog.builder().userId(actor.userId()).businessId(businessId)
                     .action(action).entityType(entityType).entityId(entityId)
                     .oldValue(mapper.writeValueAsString(before)).newValue(mapper.writeValueAsString(metadata)).build());
-        } catch (JsonProcessingException ex) {
+        } catch (JacksonException ex) {
             throw new IllegalStateException("Cannot serialize admin audit", ex);
         }
     }
@@ -78,10 +78,10 @@ public class AdminAuditService {
     private AdminAuditResponse toResponse(AuditLog row) {
         try {
             var metadata = mapper.readTree(row.getNewValue());
-            return new AdminAuditResponse(row.getId(), row.getUserId(), metadata.path("actorName").asText(),
+            return new AdminAuditResponse(row.getId(), row.getUserId(), metadata.path("actorName").asString(),
                     row.getBusinessId(), row.getAction(), row.getEntityType(), row.getEntityId(),
-                    metadata.path("reason").asText(null), mapper.readTree(row.getOldValue()), metadata.path("state"), row.getCreatedAt());
-        } catch (JsonProcessingException ex) {
+                    metadata.path("reason").asString(null), mapper.readTree(row.getOldValue()), metadata.path("state"), row.getCreatedAt());
+        } catch (JacksonException ex) {
             throw new IllegalStateException("Cannot read admin audit", ex);
         }
     }

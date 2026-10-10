@@ -2,6 +2,7 @@ package com.quiktech.pos.service;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.boot.sql.init.dependency.DependsOnDatabaseInitialization;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
@@ -11,6 +12,7 @@ import java.sql.Statement;
 
 @Slf4j
 @Component
+@DependsOnDatabaseInitialization
 @RequiredArgsConstructor
 public class DashboardRefreshScheduler {
 

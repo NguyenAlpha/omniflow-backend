@@ -60,6 +60,8 @@ public enum ErrorCode {
     PAYMENT_ACCOUNT_UNAVAILABLE,
     PAYMENT_QR_NOT_FOUND,
     NOTIFICATION_NOT_FOUND,
+    // URL không khớp endpoint nào
+    RESOURCE_NOT_FOUND,
 
     // Refresh token
     REFRESH_TOKEN_INVALID,

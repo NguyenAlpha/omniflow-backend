@@ -15,11 +15,11 @@ và khả năng sync offline (sync chưa triển khai ngay).
 
 | Thành phần    | Công nghệ                                                                     |
 |:--------------|:------------------------------------------------------------------------------|
-| **Backend**   | Java 21 / Spring Boot 3.5                                                     |
+| **Backend**   | Java 21 / Spring Boot 4.1 (Spring Framework 7, Jackson 3)                     |
 | **Database**  | PostgreSQL 16                                                                 |
-| **ORM**       | Spring Data JPA + Hibernate 6                                                 |
+| **ORM**       | Spring Data JPA + Hibernate 7                                                 |
 | **Migration** | Flyway — `ddl-auto=validate`                                                  |
-| **Auth**      | Spring Security 6 + OAuth2 Resource Server (Nimbus) — stateless, Hybrid cache |
+| **Auth**      | Spring Security 7 + OAuth2 Resource Server (Nimbus) — stateless, Hybrid cache |
 | **Cache**     | Redis (Spring Data Redis) — store role cache, TTL 5 phút                      |
 
 ---

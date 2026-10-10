@@ -15,6 +15,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
+import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 @Slf4j
 @RestControllerAdvice
@@ -82,6 +83,15 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ApiResult<?>> handleNotFound(ResourceNotFoundException ex) {
         return ResponseEntity.status(HttpStatus.NOT_FOUND).body(
                 ApiResult.fail(ErrorDetail.of(ex.getErrorCode(), ex.getMessage()))
+        );
+    }
+
+    // URL không tồn tại (VD /actuator/** trên port chính) — không có handler riêng thì rơi vào
+    // handler Exception chung và bị trả 500
+    @ExceptionHandler(NoResourceFoundException.class)
+    public ResponseEntity<ApiResult<?>> handleNoResource(NoResourceFoundException ex) {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(
+                ApiResult.fail(ErrorDetail.of(ErrorCode.RESOURCE_NOT_FOUND, "Resource not found"))
         );
     }
 

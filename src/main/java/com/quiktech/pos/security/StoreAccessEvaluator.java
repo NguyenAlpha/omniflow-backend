@@ -12,7 +12,7 @@ import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Component;
 
 import java.util.Arrays;
-import java.util.concurrent.TimeUnit;
+import java.time.Duration;
 
 /**
  * Kiểm tra quyền truy cập theo store context — dùng trong {@code @PreAuthorize}.
@@ -161,7 +161,7 @@ public class StoreAccessEvaluator {
         RoleName role = ur.get().getRole().getName();
 
         try {
-            redisTemplate.opsForValue().set(key, role.name(), cacheTtlSeconds, TimeUnit.SECONDS);
+            redisTemplate.opsForValue().set(key, role.name(), Duration.ofSeconds(cacheTtlSeconds));
         } catch (Exception ignored) {
             // Redis down — bỏ qua
         }
@@ -186,7 +186,7 @@ public class StoreAccessEvaluator {
 
         if (businessId != null) {
             try {
-                redisTemplate.opsForValue().set(key, businessId.toString(), cacheTtlSeconds, TimeUnit.SECONDS);
+                redisTemplate.opsForValue().set(key, businessId.toString(), Duration.ofSeconds(cacheTtlSeconds));
             } catch (Exception ignored) {
                 // Redis down — bỏ qua
             }
@@ -226,7 +226,7 @@ public class StoreAccessEvaluator {
 
         if (role != null) {
             try {
-                redisTemplate.opsForValue().set(key, role.name(), cacheTtlSeconds, TimeUnit.SECONDS);
+                redisTemplate.opsForValue().set(key, role.name(), Duration.ofSeconds(cacheTtlSeconds));
             } catch (Exception ignored) {
                 // Redis down — bỏ qua
             }

@@ -119,14 +119,16 @@ HTTP Request
 
 | Dependency                                   | Version | Dùng cho                                                 |
 |:---------------------------------------------|:--------|:---------------------------------------------------------|
-| `spring-boot-starter-web`                    | 3.5.x   | REST API, Jackson JSON                                   |
-| `spring-boot-starter-security`               | 3.5.x   | Spring Security 6, filter chain                          |
-| `spring-boot-starter-oauth2-resource-server` | 3.5.x   | JWT validation (Nimbus), BearerTokenAuthenticationFilter |
-| `spring-boot-starter-data-jpa`               | 3.5.x   | JPA / Hibernate 6                                        |
-| `spring-boot-starter-data-redis`             | 3.5.x   | Redis client (store role cache)                          |
-| `spring-boot-starter-validation`             | 3.5.x   | Bean Validation (`@Valid`, `@NotBlank`)                  |
-| `flyway-core` + `flyway-database-postgresql` | —       | Schema migration                                         |
+| `spring-boot-starter-webmvc`                 | 4.1.x   | REST API, Jackson 3 JSON (`tools.jackson.*`)             |
+| `spring-boot-starter-security`               | 4.1.x   | Spring Security 7, filter chain                          |
+| `spring-boot-starter-security-oauth2-resource-server` | 4.1.x | JWT validation (Nimbus), BearerTokenAuthenticationFilter |
+| `spring-boot-starter-data-jpa`               | 4.1.x   | JPA / Hibernate 7                                        |
+| `spring-boot-starter-data-redis`             | 4.1.x   | Redis client (store role cache)                          |
+| `spring-boot-starter-validation`             | 4.1.x   | Bean Validation (`@Valid`, `@NotBlank`)                  |
+| `spring-boot-starter-flyway` + `flyway-database-postgresql` | 4.1.x | Schema migration — Boot 4 chỉ tự chạy Flyway khi có starter này |
+| `spring-boot-starter-aspectj`                | 4.1.x   | AOP cho `@Auditable`                                      |
+| `springdoc-openapi-starter-webmvc-ui`        | 3.1.x   | Swagger UI / OpenAPI (dòng 3.1 dành cho Boot 4.1)        |
 | `postgresql`                                 | —       | JDBC driver (runtime)                                    |
 | `lombok`                                     | —       | Boilerplate reduction (`@Getter`, `@Builder`...)         |
-| `spring-boot-starter-test`                   | 3.5.x   | JUnit 5, Mockito                                         |
-| `spring-security-test`                       | 3.5.x   | Security test utilities                                  |
+| `spring-boot-starter-test`                   | 4.1.x   | JUnit 5, Mockito                                         |
+| `spring-boot-starter-webmvc-test`, `spring-boot-starter-security-test` | 4.1.x | MockMvc / `@WebMvcTest`, security test utilities |

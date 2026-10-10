@@ -4,6 +4,7 @@ import com.quiktech.pos.entity.Product;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.data.jpa.repository.Modifying;
+import org.springframework.data.jpa.repository.NativeQuery;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
@@ -57,6 +58,6 @@ public interface ProductRepository extends JpaRepository<Product, Long>, JpaSpec
     Optional<Product> findByBusinessIdAndPublicIdWithPriceHistories(@Param("businessId") Long businessId, @Param("publicId") UUID publicId);
 
     @Modifying
-    @Query(value = "UPDATE products SET total_stock = (SELECT COALESCE(SUM(quantity), 0) FROM inventory WHERE product_id = :productId AND deleted_at IS NULL) WHERE id = :productId", nativeQuery = true)
+    @NativeQuery("UPDATE products SET total_stock = (SELECT COALESCE(SUM(quantity), 0) FROM inventory WHERE product_id = :productId AND deleted_at IS NULL) WHERE id = :productId")
     void recalculateTotalStock(@Param("productId") Long productId);
 }
