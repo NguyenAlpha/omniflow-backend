@@ -71,7 +71,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
         "rate-limit.login.max-requests=1",
         "rate-limit.api.ip.max-requests=10",
         "rate-limit.api.user.max-requests=2",
-        "rate-limit.export.user.max-requests=1"
+        "rate-limit.export.user.max-requests=1",
+        "rate-limit.inventory-bulk.user.max-requests=1"
 })
 class RateLimitIntegrationTest {
 
@@ -179,6 +180,19 @@ class RateLimitIntegrationTest {
         verifyNoInteractions(exportService);
     }
 
+    @Test
+    void bulkAdjustAndBulkTransferShareOneQuotaSeparateFromGeneralApi() throws Exception {
+        String bearer = bearer(42);
+        mvc.perform(post("/api/stores/1/inventory/adjust/bulk").header("Authorization", bearer))
+                .andExpect(status().isOk());
+        mvc.perform(post("/api/stores/1/inventory/transfer/bulk").header("Authorization", bearer))
+                .andExpect(status().isTooManyRequests())
+                .andExpect(header().string("RateLimit-Limit", "1"));
+        // Quota chung "api" (2 request) không bị trừ bởi request bulk
+        mvc.perform(get("/api/users/me").header("Authorization", bearer)).andExpect(status().isOk());
+        mvc.perform(get("/api/users/me").header("Authorization", bearer)).andExpect(status().isOk());
+    }
+
     private String bearer(long userId) {
         Instant now = Instant.now();
         var claims = JwtClaimsSet.builder().subject("review-user-" + userId)
@@ -230,5 +244,8 @@ class RateLimitIntegrationTest {
 
         @GetMapping("/api/users/me")
         Map<String, Boolean> me() { return Map.of("success", true); }
+
+        @PostMapping({"/api/stores/{storeId}/inventory/adjust/bulk", "/api/stores/{storeId}/inventory/transfer/bulk"})
+        Map<String, Boolean> inventoryBulk() { return Map.of("success", true); }
     }
 }

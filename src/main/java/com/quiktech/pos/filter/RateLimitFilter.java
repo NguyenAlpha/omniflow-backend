@@ -17,7 +17,11 @@ import org.springframework.web.filter.OncePerRequestFilter;
 import org.springframework.web.util.UrlPathHelper;
 
 import java.io.IOException;
+import java.net.Inet4Address;
+import java.net.InetAddress;
+import java.net.UnknownHostException;
 import java.time.Duration;
+import java.util.Arrays;
 
 /**
  * Rate limit theo IP, chạy ở lớp servlet <b>trước</b> Spring Security (ngay sau CORS filter,
@@ -128,7 +132,7 @@ public class RateLimitFilter extends OncePerRequestFilter {
         // Path đã decode + bỏ context path — so khớp bằng equals, không dùng endsWith
         // trên URI thô (bypass được bằng URL-encoding)
         String path = PATH_HELPER.getPathWithinApplication(request);
-        String ip = clientIpResolver.resolve(request);
+        String ip = bucketIp(clientIpResolver.resolve(request));
         String bucketKey = null;
         BucketConfiguration config = null;
         String policy = null;
@@ -162,6 +166,30 @@ public class RateLimitFilter extends OncePerRequestFilter {
         }
 
         chain.doFilter(request, response);
+    }
+
+    /**
+     * IP dùng trong bucket key. IPv6 được gom theo dải /64: nhà mạng thường cấp nguyên một
+     * dải /64 cho mỗi thuê bao, nên tính theo từng địa chỉ thì client chỉ cần đổi địa chỉ
+     * trong dải là có bucket mới, né được quota. IPv4 (kể cả IPv4-mapped {@code ::ffff:a.b.c.d})
+     * giữ nguyên. Chuỗi không parse được thì dùng nguyên văn.
+     */
+    static String bucketIp(String ip) {
+        if (ip == null || ip.indexOf(':') < 0) {
+            return ip;
+        }
+        try {
+            // Chuỗi chứa ':' được parse như IPv6 literal, không tra DNS
+            InetAddress address = InetAddress.getByName(ip);
+            if (address instanceof Inet4Address) {
+                return address.getHostAddress();
+            }
+            byte[] prefix = Arrays.copyOf(address.getAddress(), 16);
+            Arrays.fill(prefix, 8, 16, (byte) 0);
+            return InetAddress.getByAddress(prefix).getHostAddress() + "/64";
+        } catch (UnknownHostException invalid) {
+            return ip;
+        }
     }
 
 }

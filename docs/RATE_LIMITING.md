@@ -110,6 +110,16 @@ RATE_LIMIT_TRUSTED_PROXIES=10.0.0.10,10.0.0.11
 `0.0.0.0/0`. Nếu backend được gọi trực tiếp, để biến này rỗng. Audit log cũng
 dùng cùng `ClientIpResolver`, nên IP trong log và rate-limit key nhất quán.
 
+Biến nhận cả IP lẻ lẫn dải CIDR (VD `10.0.0.0/8` cho mạng nội bộ Docker/k8s có IP
+thay đổi). Khi có nhiều lớp proxy (VD CDN → Nginx → app), khai báo tất cả các lớp:
+`X-Forwarded-For` được duyệt từ phải sang trái, bỏ qua các entry là proxy tin cậy,
+entry đầu tiên không tin cậy là IP client. Thiếu một lớp thì IP của lớp đó bị coi
+là client và mọi người dùng sau nó chung một bucket.
+
+Bucket theo IP gom IPv6 theo dải **/64** (nhà mạng thường cấp cả dải /64 cho một
+thuê bao — tính từng địa chỉ thì đổi địa chỉ là né được quota). IPv4 và IPv4-mapped
+IPv6 giữ nguyên. Audit log vẫn ghi đầy đủ địa chỉ.
+
 ## Phản hồi khi bị giới hạn
 
 Khi bucket hết token, API trả HTTP `429 Too Many Requests`:
@@ -139,9 +149,10 @@ header cho origin được phép. `Retry-After` và cả ba header `RateLimit-*`
 expose để JavaScript khác origin có thể đọc. Origin không được phép vẫn bị chặn.
 
 Frontend nên hiển thị lỗi này và không tự retry request ghi dữ liệu hoặc export.
-`Retry-After` là số giây client nên chờ trước khi thử lại. Backend đã cung cấp đủ
-header/body; frontend hiện vẫn còn việc xử lý refresh gặp 429 và hiển thị lỗi tại
-màn hình export, không được coi là đã hoàn tất trong bản sửa backend này.
+`Retry-After` là số giây client nên chờ trước khi thử lại. Web đã xử lý: `ApiError`
+đọc `Retry-After`, `t.errors.RATE_LIMIT_RETRY_AFTER` hiện "thử lại sau N giây",
+`useRateLimitCooldown` khóa nút đăng nhập/import/export tới hết thời gian chờ, và
+refresh token gặp 429 không bị gửi lại liên tục (xem web `docs/RATE_LIMITING.md`).
 
 ## Redis, availability và monitoring
 
