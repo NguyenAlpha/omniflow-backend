@@ -46,6 +46,10 @@ public class AuthenticatedRateLimitFilter extends OncePerRequestFilter {
     private int exportMaxRequests;
     @Value("${rate-limit.export.user.window-seconds:600}")
     private int exportWindowSeconds;
+    @Value("${rate-limit.inventory-bulk.user.max-requests:10}")
+    private int inventoryBulkMaxRequests;
+    @Value("${rate-limit.inventory-bulk.user.window-seconds:600}")
+    private int inventoryBulkWindowSeconds;
     @Value("${rate-limit.change-password.user.max-requests:5}")
     private int changePasswordMaxRequests;
     @Value("${rate-limit.change-password.user.window-seconds:600}")
@@ -54,6 +58,7 @@ public class AuthenticatedRateLimitFilter extends OncePerRequestFilter {
     private BucketConfiguration apiConfig;
     private BucketConfiguration importProductsConfig;
     private BucketConfiguration exportConfig;
+    private BucketConfiguration inventoryBulkConfig;
     private BucketConfiguration changePasswordConfig;
 
     public AuthenticatedRateLimitFilter(RateLimitService rateLimitService) {
@@ -65,6 +70,7 @@ public class AuthenticatedRateLimitFilter extends OncePerRequestFilter {
         apiConfig = bucketConfig(maxRequests, windowSeconds);
         importProductsConfig = bucketConfig(importProductsMaxRequests, importProductsWindowSeconds);
         exportConfig = bucketConfig(exportMaxRequests, exportWindowSeconds);
+        inventoryBulkConfig = bucketConfig(inventoryBulkMaxRequests, inventoryBulkWindowSeconds);
         changePasswordConfig = bucketConfig(changePasswordMaxRequests, changePasswordWindowSeconds);
     }
 
@@ -112,6 +118,10 @@ public class AuthenticatedRateLimitFilter extends OncePerRequestFilter {
         }
         if (("GET".equals(method) || "HEAD".equals(method)) && path.matches("^/api/stores/[^/]+/export/.+$")) {
             return new RateLimitRule("export", exportConfig);
+        }
+        // adjust/bulk và transfer/bulk dùng chung bucket: mỗi request ghi tới 200 dòng tồn kho
+        if ("POST".equals(method) && path.matches("^/api/stores/[^/]+/inventory/(adjust|transfer)/bulk$")) {
+            return new RateLimitRule("inventory-bulk", inventoryBulkConfig);
         }
         if ("PATCH".equals(method) && "/api/users/me/password".equals(path)) {
             return new RateLimitRule("change-password", changePasswordConfig);

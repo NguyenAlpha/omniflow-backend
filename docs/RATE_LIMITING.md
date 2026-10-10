@@ -8,7 +8,7 @@ Bucket4j với Redis để quota được chia sẻ giữa nhiều instance back
 - Chặn brute-force ở login, register và refresh token.
 - Bảo vệ API khi một client gửi quá nhiều request.
 - Tách quota theo user cho các máy POS dùng chung mạng; trần IP vẫn là giới hạn dùng chung.
-- Hạn chế endpoint tốn tài nguyên như import và export.
+- Hạn chế endpoint tốn tài nguyên như import, export và điều chỉnh/chuyển kho hàng loạt.
 
 ## Kiến trúc hai lớp
 
@@ -31,7 +31,7 @@ BearerTokenAuthenticationFilter
   v
 AuthenticatedRateLimitFilter
   |- quota mặc định theo userId
-  `- quota riêng cho import/export/đổi mật khẩu
+  `- quota riêng cho import/export/inventory bulk/đổi mật khẩu
   |
   v
 Controller
@@ -51,6 +51,7 @@ hợp lệ, do đó mỗi nhân viên có quota riêng ngay cả khi cùng Wi-Fi
 | API user | `rl:user:api:{userId}` | API JWT không có rule riêng | 300/phút |
 | Product import | `rl:user:import-products:{userId}` | `POST /api/businesses/{businessId}/products/import` | 5/10 phút |
 | Export | `rl:user:export:{userId}` | mọi `GET`/`HEAD /api/stores/{storeId}/export/**` | 10/10 phút |
+| Inventory bulk | `rl:user:inventory-bulk:{userId}` | `POST /api/stores/{storeId}/inventory/adjust/bulk` và `/transfer/bulk` (chung bucket) | 10/10 phút |
 | Change password | `rl:user:change-password:{userId}` | `PATCH /api/users/me/password` | 5/10 phút |
 
 Rule cụ thể thay thế quota user mặc định cho request đó. Request vẫn chịu trần IP
