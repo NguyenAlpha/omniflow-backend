@@ -1,4 +1,4 @@
-# Schema Review 1.1 — OmniFlow
+# Schema Review 1.1 — QuikTech POS
 
 > **Vai trò đánh giá:** Database Architect Senior, 10+ năm kinh nghiệm production
 > **Ngày đánh giá:** 2026-05-07

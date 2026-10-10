@@ -1,4 +1,4 @@
-# Đánh giá local-first / offline-first cho schema OmniFlow
+# Đánh giá local-first / offline-first cho schema QuikTech POS
 
 ## Bối cảnh & giả định
 - Mục tiêu sync: multi-device (một cửa hàng dùng nhiều thiết bị)

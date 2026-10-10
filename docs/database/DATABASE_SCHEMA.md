@@ -1,4 +1,4 @@
-# Database Schema — OmniFlow
+# Database Schema — QuikTech POS
 
 > Tất cả bảng đều có `created_at TIMESTAMPTZ` và `updated_at TIMESTAMPTZ` (trừ các bảng giao dịch chỉ có `created_at`).
 > Kiểu tiền tệ và số lượng dùng `NUMERIC(15, 2)` để tránh lỗi làm tròn floating-point.

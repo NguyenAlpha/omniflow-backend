@@ -1,4 +1,4 @@
-# Database Capabilities — OmniFlow
+# Database Capabilities — QuikTech POS
 
 > Mục đích: Tài liệu hoá những gì **DB đã tự lo** để service layer không cần implement lại.
 > Cập nhật khi thêm index / trigger / view mới.

@@ -1,6 +1,6 @@
 # Security — Hybrid JWT + Redis RBAC
 
-Mô tả kiến trúc xác thực và phân quyền của OmniFlow.
+Mô tả kiến trúc xác thực và phân quyền của QuikTech POS.
 Xem thêm luồng chi tiết tại [LIFECYCLE.md](LIFECYCLE.md) và [TOKEN_LIFECYCLE.md](TOKEN_LIFECYCLE.md).
 
 ---

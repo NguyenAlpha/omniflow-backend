@@ -1,6 +1,6 @@
 # Developer Guide
 
-Conventions và patterns cần tuân theo khi thêm feature mới vào OmniFlow.
+Conventions và patterns cần tuân theo khi thêm feature mới vào QuikTech POS.
 
 ---
 
@@ -52,13 +52,13 @@ List<Order> findByStoreIdAndIdLessThan(Long storeId, Long cursorId, Pageable pag
 
 Áp dụng cho: `orders`, `inventory_transactions`, `audit_logs`, `sync_change_log`.
 
-### JOIN FETCH trong buildAuthResponse
+### JOIN FETCH khi dựng memberships
 
-`AuthService.buildAuthResponse` dùng 2 query có JOIN FETCH để tránh N+1 khi load store memberships:
+`AuthResponseAssembler.resolveMemberships` (gọi từ `AuthService` sau register/login/refresh) dùng 2 query có JOIN FETCH để tránh N+1 khi load store memberships:
 
 ```java
-storeMemberRepository.findByUserIdAndDeletedAtIsNullWithStore(userId)  // JOIN FETCH sm.store
-userRoleRepository.findActiveStoreRolesWithDetails(userId)             // JOIN FETCH ur.role + ur.store
+storeMemberRepository.findByUserIdAndDeletedAtIsNullWithStore(userId)    // JOIN FETCH sm.store
+userRoleRepository.findActiveStoreRolesWithBusinessDetails(userId)       // JOIN FETCH ur.role + ur.store + store.business
 ```
 
 Sau đó join in-memory qua `storeId` — không gọi thêm query nào.
