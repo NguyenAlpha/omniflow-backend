@@ -184,14 +184,26 @@
 | `created_at` | TIMESTAMPTZ | NOT NULL | Thời điểm tạo |
 | `updated_at` | TIMESTAMPTZ | NOT NULL | Thời điểm cập nhật |
 
-> **Giới hạn mặc định theo plan** (nguồn: `PlanLimits`, null = không giới hạn):
-> | Plan | max_stores | max_staff | max_products | max_warehouses |
-> |---|---|---|---|---|
-> | FREE | 1 | 0 | 50 | 1 |
-> | BASIC | 2 | 20 | 200 | 20 |
-> | PRO | 3 | null | null | null |
+> `max_*` là **bản sao** giới hạn từ `subscription_plans`: sub `ACTIVE` mang giới hạn của
+> gói đang dùng, sub không `ACTIVE` mang giới hạn `FREE`. Admin sửa gói → cập nhật ngay.
 >
 > Cột `max_orders_per_month` đã bị loại bỏ — chưa từng được gán giá trị (dead code).
+
+### `subscription_plans` — Giá và giới hạn của từng gói (admin sửa được)
+| Tên cột | Kiểu | Ràng buộc | Ý nghĩa |
+|---|---|---|---|
+| `code` | VARCHAR(20) | PK, CHECK IN (`FREE`,`BASIC`,`PRO`) | Gói — danh sách cố định |
+| `monthly_price` | NUMERIC(15,2) | NOT NULL, >= 0 | Giá tháng (VND) |
+| `yearly_price` | NUMERIC(15,2) | NOT NULL, >= 0 | Giá năm (VND) |
+| `max_stores` | INTEGER | >= 0 | Giới hạn cửa hàng — null = không giới hạn |
+| `max_staff` | INTEGER | >= 0 | Giới hạn nhân viên — null = không giới hạn |
+| `max_products` | INTEGER | >= 0 | Giới hạn sản phẩm — null = không giới hạn |
+| `max_warehouses` | INTEGER | >= 0 | Giới hạn kho — null = không giới hạn |
+| `version` | BIGINT | NOT NULL | Optimistic lock |
+| `updated_at` | TIMESTAMPTZ | NOT NULL | Lần sửa gần nhất |
+
+> CHECK `ck_subscription_plans_free_price`: giá gói `FREE` luôn bằng 0. Seed trong V2:
+> FREE 0/0 — 1/0/50/1; BASIC 199.000/1.990.000 — 2/20/200/20; PRO 499.000/4.990.000 — 3/∞/∞/∞.
 
 ---
 

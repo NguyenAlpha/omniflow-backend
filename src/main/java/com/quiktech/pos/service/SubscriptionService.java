@@ -7,10 +7,9 @@ import com.quiktech.pos.dto.response.subscription.SubscriptionResponse;
 import com.quiktech.pos.dto.response.subscription.UpgradeResponse;
 import com.quiktech.pos.entity.Subscription;
 import com.quiktech.pos.entity.SubscriptionInvoice;
+import com.quiktech.pos.entity.SubscriptionPlanConfig;
 import com.quiktech.pos.entity.enums.BillingCycle;
 import com.quiktech.pos.entity.enums.InvoiceStatus;
-import com.quiktech.pos.entity.enums.PlanLimits;
-import com.quiktech.pos.entity.enums.PlanPricing;
 import com.quiktech.pos.entity.enums.SubscriptionPlan;
 import com.quiktech.pos.entity.enums.SubscriptionStatus;
 import com.quiktech.pos.exception.ResourceNotFoundException;
@@ -40,6 +39,7 @@ import java.util.Locale;
 public class SubscriptionService {
 
     private final SubscriptionRepository subscriptionRepository;
+    private final PlanCatalogService planCatalogService;
     private final SubscriptionInvoiceRepository invoiceRepository;
     private final EmailService emailService;
     private final AdminAuditService adminAuditService;
@@ -131,7 +131,7 @@ public class SubscriptionService {
             throw new IllegalArgumentException("A pending invoice already exists for this business");
         }
 
-        BigDecimal amount = PlanPricing.valueOf(newPlan.name()).priceFor(billingCycle);
+        BigDecimal amount = planCatalogService.priceFor(newPlan, billingCycle);
         Instant now = Instant.now();
         Instant periodEnd = billingCycle == BillingCycle.YEARLY
                 ? now.plus(365, ChronoUnit.DAYS)
@@ -229,15 +229,12 @@ public class SubscriptionService {
     public SubscriptionResponse changePlan(Long businessId, SubscriptionPlan newPlan, BillingCycle billingCycle, String reason) {
         Subscription sub = getSubscriptionForUpdate(businessId);
         var before = toResponse(sub);
-        PlanLimits limits = PlanLimits.valueOf(newPlan.name());
+        SubscriptionPlanConfig limits = planCatalogService.limitsFor(newPlan);
         Instant now = Instant.now();
 
         sub.setPlan(newPlan);
         sub.setStatus(SubscriptionStatus.ACTIVE);
-        sub.setMaxStores(limits.maxStores);
-        sub.setMaxStaff(limits.maxStaff);
-        sub.setMaxProducts(limits.maxProducts);
-        sub.setMaxWarehouses(limits.maxWarehouses);
+        limits.applyLimitsTo(sub);
         sub.setStartedAt(now);
 
         if (newPlan == SubscriptionPlan.FREE) {
@@ -343,14 +340,11 @@ public class SubscriptionService {
         // Cập nhật subscription sang plan mới
         Subscription sub = getSubscriptionForUpdate(invoice.getBusiness().getId());
         var beforeSubscription = toResponse(sub);
-        PlanLimits limits = PlanLimits.valueOf(invoice.getPlan().name());
+        SubscriptionPlanConfig limits = planCatalogService.limitsFor(invoice.getPlan());
         sub.setPlan(invoice.getPlan());
         sub.setStatus(SubscriptionStatus.ACTIVE);
         sub.setBillingCycle(invoice.getBillingCycle());
-        sub.setMaxStores(limits.maxStores);
-        sub.setMaxStaff(limits.maxStaff);
-        sub.setMaxProducts(limits.maxProducts);
-        sub.setMaxWarehouses(limits.maxWarehouses);
+        limits.applyLimitsTo(sub);
         sub.setStartedAt(now);
         sub.setExpiresAt(invoice.getPeriodEnd());
         // Chu kỳ mới bắt đầu — cho phép gửi lại email cảnh báo khi chu kỳ này sắp hết hạn

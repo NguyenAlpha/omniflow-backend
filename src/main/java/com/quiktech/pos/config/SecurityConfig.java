@@ -19,6 +19,7 @@ import org.springframework.security.oauth2.server.resource.web.authentication.Be
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.boot.web.servlet.FilterRegistrationBean;
 
+import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
 
 import jakarta.servlet.http.HttpServletResponse;
@@ -78,6 +79,8 @@ public class SecurityConfig {
                         // Auth endpoints công khai — đăng ký / đăng nhập / refresh không cần token
                         // logout yêu cầu JWT hợp lệ (không trong danh sách này)
                         .requestMatchers("/api/auth/login", "/api/auth/register", "/api/auth/refresh").permitAll()
+                        // Bảng giá/giới hạn gói — trang landing hiển thị cho khách chưa đăng nhập
+                        .requestMatchers(HttpMethod.GET, "/api/plans").permitAll()
                         .requestMatchers("/actuator/**").permitAll()
                         .requestMatchers("/swagger-ui/**", "/swagger-ui.html", "/v3/api-docs/**").permitAll()
                         // Mọi request còn lại bắt buộc phải có JWT hợp lệ

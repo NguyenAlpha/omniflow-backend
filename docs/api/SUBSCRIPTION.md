@@ -105,23 +105,47 @@ Trả về sau khi tạo yêu cầu nâng cấp.
 
 ---
 
-## Bảng giá
+## Giá và giới hạn theo gói
 
-| Gói | MONTHLY | YEARLY |
-|:----|--------:|-------:|
-| `BASIC` | 199.000 VND | 1.990.000 VND |
-| `PRO` | 499.000 VND | 4.990.000 VND |
-| `FREE` | 0 VND | 0 VND |
+Lưu trong bảng `subscription_plans`, **admin sửa được** qua
+[`PUT /api/admin/plans/{code}`](#put-apiadminplanscode). Client đọc giá trị hiện hành
+qua [`GET /api/plans`](#get-apiplans) — không hardcode. Giá trị khởi tạo (seed trong V2):
+
+| Gói | MONTHLY | YEARLY | Stores | Staff | Products | Warehouses |
+|:----|--------:|-------:|-------:|------:|---------:|-----------:|
+| `FREE` | 0 VND | 0 VND | 1 | 0 | 50 | 1 |
+| `BASIC` | 199.000 VND | 1.990.000 VND | 2 | 20 | 200 | 20 |
+| `PRO` | 499.000 VND | 4.990.000 VND | 3 | Không giới hạn | Không giới hạn | Không giới hạn |
+
+- **Giá** được chép vào `invoice.amount` lúc tạo invoice → đổi giá chỉ áp dụng cho invoice mới.
+- **Giới hạn** được chép vào `subscriptions.max_*` khi đổi gói. Sub `ACTIVE` mang giới hạn của
+  gói đang dùng; sub không `ACTIVE` (`EXPIRED`) mang giới hạn `FREE` dù `plan` giữ gói cũ.
+  Admin sửa giới hạn → cập nhật ngay các bản sao này trong cùng transaction.
+- Danh sách gói cố định `FREE` / `BASIC` / `PRO` — không tạo/xóa gói. Giá `FREE` luôn bằng 0.
 
 ---
 
-## Giới hạn theo gói
+## GET `/api/plans`
 
-| Gói | Stores | Staff | Products | Warehouses |
-|:----|-------:|------:|---------:|-----------:|
-| `FREE` | 1 | 0 | 50 | 1 |
-| `BASIC` | 2 | 20 | 200 | 20 |
-| `PRO` | 3 | Không giới hạn | Không giới hạn | Không giới hạn |
+Giá và giới hạn hiện hành của các gói, theo thứ tự `FREE`, `BASIC`, `PRO`. **Công khai —
+không cần JWT** (trang landing hiển thị cho khách chưa đăng nhập). Chịu rate limit theo IP
+chung của `/api/**`.
+
+### Response `200 OK`
+
+```json
+{
+  "success": true,
+  "data": [
+    { "code": "FREE", "monthlyPrice": 0.00, "yearlyPrice": 0.00, "maxStores": 1, "maxStaff": 0, "maxProducts": 50, "maxWarehouses": 1 },
+    { "code": "BASIC", "monthlyPrice": 199000.00, "yearlyPrice": 1990000.00, "maxStores": 2, "maxStaff": 20, "maxProducts": 200, "maxWarehouses": 20 },
+    { "code": "PRO", "monthlyPrice": 499000.00, "yearlyPrice": 4990000.00, "maxStores": 3, "maxStaff": null, "maxProducts": null, "maxWarehouses": null }
+  ],
+  "error": null
+}
+```
+
+`max*` = `null` nghĩa là không giới hạn.
 
 ---
 
@@ -174,7 +198,7 @@ Trả về `SubscriptionResponse` với `pendingPlan` đã được set.
 | 400 | `VALIDATION_ERROR` | Subscription không ACTIVE |
 | 400 | `VALIDATION_ERROR` | Đang ở gói FREE, không thể downgrade tiếp |
 | 400 | `VALIDATION_ERROR` | Gói mới không thấp hơn gói hiện tại |
-| 403 | `ACCESS_DENIED` | Không phải OWNER |
+| 403 | `FORBIDDEN` | Không phải OWNER |
 | 404 | `SUBSCRIPTION_NOT_FOUND` | Business chưa có subscription |
 
 ---
@@ -200,7 +224,7 @@ Trả về `SubscriptionResponse` với `pendingPlan = null`.
 | HTTP | `error.code` | Nguyên nhân |
 |:----:|:------------|:-----------|
 | 400 | `VALIDATION_ERROR` | Không có lịch downgrade nào để huỷ |
-| 403 | `ACCESS_DENIED` | Không phải OWNER |
+| 403 | `FORBIDDEN` | Không phải OWNER |
 | 404 | `SUBSCRIPTION_NOT_FOUND` | Business chưa có subscription |
 
 ---
@@ -249,7 +273,7 @@ Tạo yêu cầu nâng cấp gói. Hệ thống tạo invoice PENDING và trả 
       "businessId": 1,
       "plan": "BASIC",
       "billingCycle": "MONTHLY",
-      "amount": 299000,
+      "amount": 199000,
       "status": "PENDING",
       "bankTransferRef": "basic 1",
       "adminNote": null,
@@ -279,7 +303,7 @@ Tạo yêu cầu nâng cấp gói. Hệ thống tạo invoice PENDING và trả 
 | 400 | `VALIDATION_ERROR` | `plan = FREE` (không có gì để thanh toán) |
 | 400 | `VALIDATION_ERROR` | Sub còn ACTIVE nhưng gói mới không cao hơn gói hiện tại |
 | 400 | `VALIDATION_ERROR` | Đã có invoice PENDING chưa xử lý |
-| 403 | `ACCESS_DENIED` | Không phải OWNER |
+| 403 | `FORBIDDEN` | Không phải OWNER |
 | 404 | `SUBSCRIPTION_NOT_FOUND` | Business chưa có subscription |
 
 ---
@@ -307,7 +331,7 @@ Business owner huỷ invoice PENDING. Chỉ được phép khi invoice chưa đ�
 | HTTP | `error.code` | Nguyên nhân |
 |:----:|:------------|:-----------|
 | 400 | `VALIDATION_ERROR` | Invoice không ở trạng thái PENDING |
-| 403 | `ACCESS_DENIED` | Không phải OWNER |
+| 403 | `FORBIDDEN` | Không phải OWNER |
 | 404 | `INVOICE_NOT_FOUND` | Invoice không tồn tại hoặc không thuộc business |
 
 ---
@@ -336,7 +360,7 @@ không có dữ liệu lịch sử. Không dùng tài khoản hiện tại thay 
 
 | HTTP | `error.code` | Nguyên nhân |
 |:----:|:------------|:-----------|
-| 403 | `ACCESS_DENIED` | Không phải OWNER |
+| 403 | `FORBIDDEN` | Không phải OWNER |
 
 ---
 
@@ -377,7 +401,7 @@ Trả về `SubscriptionInvoiceResponse` với `bankTransferRef` đã được l
 |:----:|:------------|:-----------|
 | 400 | `VALIDATION_ERROR` | `bankTransferRef` rỗng hoặc vượt 100 ký tự |
 | 400 | `VALIDATION_ERROR` | Invoice đã PAID hoặc FAILED |
-| 403 | `ACCESS_DENIED` | Không phải OWNER |
+| 403 | `FORBIDDEN` | Không phải OWNER |
 | 404 | `INVOICE_NOT_FOUND` | Invoice không tồn tại hoặc không thuộc business |
 
 ---
@@ -413,7 +437,7 @@ Xem lịch sử invoice của business (phân trang, mới nhất trước).
         "businessId": 1,
         "plan": "BASIC",
         "billingCycle": "MONTHLY",
-        "amount": 299000,
+        "amount": 199000,
         "status": "PAID",
         "bankTransferRef": "QUIKTECH 1 THANH TOAN GOI BASIC",
         "adminNote": "Đã đối chiếu giao dịch ngân hàng",
@@ -438,7 +462,7 @@ Xem lịch sử invoice của business (phân trang, mới nhất trước).
 
 | HTTP | `error.code` | Nguyên nhân |
 |:----:|:------------|:-----------|
-| 403 | `ACCESS_DENIED` | Không phải thành viên của business |
+| 403 | `FORBIDDEN` | Không phải thành viên của business |
 
 ---
 
@@ -463,7 +487,7 @@ Trả về `SubscriptionInvoiceResponse`.
 
 | HTTP | `error.code` | Nguyên nhân |
 |:----:|:------------|:-----------|
-| 403 | `ACCESS_DENIED` | Không phải thành viên của business |
+| 403 | `FORBIDDEN` | Không phải thành viên của business |
 | 404 | `INVOICE_NOT_FOUND` | Invoice không tồn tại hoặc không thuộc business |
 
 ---
@@ -473,6 +497,65 @@ Trả về `SubscriptionInvoiceResponse`.
 > Tất cả endpoint admin đều yêu cầu role **`SUPER_ADMIN`**.
 
 Base path: `/api/admin/subscriptions`
+
+---
+
+## GET `/api/admin/plans`
+
+Danh sách gói cho trang quản trị — giống [`GET /api/plans`](#get-apiplans) và thêm:
+
+| Field | Type | Mô tả |
+|:------|:-----|:------|
+| `version` | number | Gửi lại khi sửa (chống ghi đè khi 2 admin cùng sửa) |
+| `updatedAt` | ISO 8601 | Lần sửa gần nhất |
+| `affectedBusinesses` | number | Số business bị cập nhật giới hạn nếu sửa gói này: sub `ACTIVE` của gói; riêng `FREE` cộng thêm mọi sub không `ACTIVE` |
+
+---
+
+## PUT `/api/admin/plans/{code}`
+
+Sửa giá và giới hạn của một gói (`code` = `FREE` / `BASIC` / `PRO`). Trong cùng transaction:
+cập nhật `subscription_plans`, cập nhật `max_*` của mọi subscription bị ảnh hưởng (xem
+`affectedBusinesses`) và ghi audit `ADMIN_PLAN_CONFIG_UPDATED` (giá trị trước/sau).
+
+Hạ giới hạn không xóa dữ liệu (soft cap) — business đang vượt chỉ bị chặn tạo mới.
+
+Dòng gói bị khóa `FOR UPDATE` khi sửa; các luồng chép giới hạn sang subscription (confirm
+invoice, admin đổi gói, scheduler hết hạn/downgrade, tạo business) khóa `FOR SHARE` cùng dòng
+→ không có subscription nào bị kích hoạt với giới hạn cũ trong lúc admin đang sửa.
+
+### Request
+
+```json
+{
+  "monthlyPrice": 249000,
+  "yearlyPrice": 2490000,
+  "maxStores": 2,
+  "maxStaff": 25,
+  "maxProducts": 300,
+  "maxWarehouses": 20,
+  "version": 0,
+  "reason": "Điều chỉnh giá quý 4"
+}
+```
+
+| Field | Type | Bắt buộc | Ràng buộc |
+|:------|:-----|:--------:|:----------|
+| `monthlyPrice`, `yearlyPrice` | number | ✅ | `>= 0`, tối đa 2 chữ số thập phân. Gói `FREE` phải bằng 0 |
+| `maxStores`, `maxStaff`, `maxProducts`, `maxWarehouses` | number \| null | ❌ | `>= 0`; `null` = không giới hạn |
+| `version` | number | ✅ | `version` đọc từ `GET /api/admin/plans` |
+| `reason` | string | ❌ | Tối đa 500 ký tự, lưu vào audit |
+
+### Response `200 OK`
+
+Trả về gói sau khi sửa (cùng dạng phần tử của `GET /api/admin/plans`).
+
+### Lỗi
+
+| HTTP | `error.code` | Nguyên nhân |
+|:----:|:------------|:-----------|
+| 400 | `VALIDATION_ERROR` | Field sai ràng buộc, `code` không hợp lệ, hoặc giá gói `FREE` khác 0 |
+| 409 | `CONCURRENT_MODIFICATION` | `version` đã cũ — gói vừa được admin khác sửa, tải lại rồi thử lại |
 
 ---
 
@@ -545,7 +628,7 @@ Danh sách tất cả invoice đang ở trạng thái `PENDING` của toàn hệ
         "businessId": 2,
         "plan": "PRO",
         "billingCycle": "YEARLY",
-        "amount": 6990000,
+        "amount": 4990000,
         "status": "PENDING",
         "bankTransferRef": "CK NANG CAP GOI PRO 12 THANG",
         "adminNote": null,

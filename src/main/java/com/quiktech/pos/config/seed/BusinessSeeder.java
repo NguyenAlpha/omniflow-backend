@@ -5,7 +5,8 @@ import com.quiktech.pos.entity.BusinessMember;
 import com.quiktech.pos.entity.Subscription;
 import com.quiktech.pos.entity.User;
 import com.quiktech.pos.entity.UserRole;
-import com.quiktech.pos.entity.enums.PlanLimits;
+import com.quiktech.pos.entity.SubscriptionPlanConfig;
+import com.quiktech.pos.service.PlanCatalogService;
 import com.quiktech.pos.entity.enums.RoleName;
 import com.quiktech.pos.entity.enums.SubscriptionPlan;
 import com.quiktech.pos.entity.enums.SubscriptionStatus;
@@ -35,6 +36,7 @@ public class BusinessSeeder implements ApplicationRunner {
     private final UserRoleRepository userRoleRepository;
     private final RoleRepository roleRepository;
     private final SubscriptionRepository subscriptionRepository;
+    private final PlanCatalogService planCatalogService;
 
     // Chạy khi SEED_ENABLED=true VÀ business.seed.enabled=true
     @Value("#{${seed.enabled:false} and ${business.seed.enabled:false}}")
@@ -78,15 +80,15 @@ public class BusinessSeeder implements ApplicationRunner {
 
         subscriptionRepository.findByBusinessId(business.getId())
                 .orElseGet(() -> {
-                    PlanLimits limits = PlanLimits.FREE;
+                    SubscriptionPlanConfig limits = planCatalogService.limitsFor(SubscriptionPlan.FREE);
                     return subscriptionRepository.save(Subscription.builder()
                             .business(business)
                             .plan(SubscriptionPlan.FREE)
                             .status(SubscriptionStatus.ACTIVE)
-                            .maxStores(limits.maxStores)
-                            .maxStaff(limits.maxStaff)
-                            .maxProducts(limits.maxProducts)
-                            .maxWarehouses(limits.maxWarehouses)
+                            .maxStores(limits.getMaxStores())
+                            .maxStaff(limits.getMaxStaff())
+                            .maxProducts(limits.getMaxProducts())
+                            .maxWarehouses(limits.getMaxWarehouses())
                             .startedAt(Instant.now())
                             .build());
                 });

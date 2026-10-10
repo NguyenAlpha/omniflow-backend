@@ -34,6 +34,44 @@ public interface SubscriptionRepository extends JpaRepository<Subscription, Long
 
     long countByPlanAndStatus(SubscriptionPlan plan, SubscriptionStatus status);
 
+    long countByStatusNot(SubscriptionStatus status);
+
+    // Admin sửa limit của gói → cập nhật bản sao limit của mọi sub ACTIVE đang dùng gói đó
+    @Modifying(clearAutomatically = true)
+    @Query("""
+        UPDATE Subscription s
+        SET s.maxStores = :maxStores,
+            s.maxStaff = :maxStaff,
+            s.maxProducts = :maxProducts,
+            s.maxWarehouses = :maxWarehouses
+        WHERE s.plan = :plan AND s.status = :active
+    """)
+    int applyPlanLimits(
+            @Param("plan") SubscriptionPlan plan,
+            @Param("active") SubscriptionStatus active,
+            @Param("maxStores") Integer maxStores,
+            @Param("maxStaff") Integer maxStaff,
+            @Param("maxProducts") Integer maxProducts,
+            @Param("maxWarehouses") Integer maxWarehouses);
+
+    // Sub không ACTIVE (EXPIRED) mang limit FREE dù plan giữ gói cũ (xem expireOverdue)
+    // → admin sửa limit FREE thì cũng phải cập nhật nhóm này
+    @Modifying(clearAutomatically = true)
+    @Query("""
+        UPDATE Subscription s
+        SET s.maxStores = :maxStores,
+            s.maxStaff = :maxStaff,
+            s.maxProducts = :maxProducts,
+            s.maxWarehouses = :maxWarehouses
+        WHERE s.status <> :active
+    """)
+    int applyFreeLimitsToInactive(
+            @Param("active") SubscriptionStatus active,
+            @Param("maxStores") Integer maxStores,
+            @Param("maxStaff") Integer maxStaff,
+            @Param("maxProducts") Integer maxProducts,
+            @Param("maxWarehouses") Integer maxWarehouses);
+
     // Lấy các subscription ACTIVE đã hết hạn và có pending downgrade — xử lý riêng từng cái
     @Query("""
         SELECT s FROM Subscription s

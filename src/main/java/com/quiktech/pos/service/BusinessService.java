@@ -9,13 +9,13 @@ import com.quiktech.pos.dto.response.store.StoreResponse;
 import com.quiktech.pos.dto.response.warehouse.WarehouseResponse;
 import com.quiktech.pos.entity.Business;
 import com.quiktech.pos.entity.BusinessMember;
+import com.quiktech.pos.entity.SubscriptionPlanConfig;
 import com.quiktech.pos.entity.Role;
 import com.quiktech.pos.entity.Store;
 import com.quiktech.pos.entity.Subscription;
 import com.quiktech.pos.entity.User;
 import com.quiktech.pos.entity.UserRole;
 import com.quiktech.pos.entity.Warehouse;
-import com.quiktech.pos.entity.enums.PlanLimits;
 import com.quiktech.pos.entity.enums.RoleName;
 import com.quiktech.pos.entity.enums.SubscriptionPlan;
 import com.quiktech.pos.entity.enums.SubscriptionStatus;
@@ -52,6 +52,7 @@ public class BusinessService {
     private final StoreRepository storeRepository;
     private final WarehouseRepository warehouseRepository;
     private final SubscriptionRepository subscriptionRepository;
+    private final PlanCatalogService planCatalogService;
 
     @Transactional
     public BusinessResponse createBusiness(BusinessCreateRequest request, UserPrincipal currentUser) {
@@ -219,17 +220,17 @@ public class BusinessService {
     }
 
     private Subscription buildFreeSubscription(Business business) {
-        // Đọc limit từ PlanLimits.FREE (single source of truth) — trước đây hardcode
-        // 1,0,50,1 tạo 2 nguồn chân lý, sửa PlanLimits sẽ không có tác dụng ở đây
-        PlanLimits free = PlanLimits.FREE;
+        // Đọc limit FREE từ bảng subscription_plans (single source of truth) — trước đây
+        // hardcode 1,0,50,1 tạo 2 nguồn chân lý, admin sửa gói sẽ không có tác dụng ở đây
+        SubscriptionPlanConfig free = planCatalogService.limitsFor(SubscriptionPlan.FREE);
         return Subscription.builder()
                 .business(business)
                 .plan(SubscriptionPlan.FREE)
                 .status(SubscriptionStatus.ACTIVE)
-                .maxStores(free.maxStores)
-                .maxStaff(free.maxStaff)
-                .maxProducts(free.maxProducts)
-                .maxWarehouses(free.maxWarehouses)
+                .maxStores(free.getMaxStores())
+                .maxStaff(free.getMaxStaff())
+                .maxProducts(free.getMaxProducts())
+                .maxWarehouses(free.getMaxWarehouses())
                 .startedAt(Instant.now())
                 .build();
     }

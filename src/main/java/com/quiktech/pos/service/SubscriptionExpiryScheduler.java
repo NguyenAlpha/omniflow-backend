@@ -2,7 +2,7 @@ package com.quiktech.pos.service;
 
 import com.quiktech.pos.entity.Subscription;
 import com.quiktech.pos.entity.enums.InvoiceStatus;
-import com.quiktech.pos.entity.enums.PlanLimits;
+import com.quiktech.pos.entity.SubscriptionPlanConfig;
 import com.quiktech.pos.entity.enums.SubscriptionPlan;
 import com.quiktech.pos.entity.enums.SubscriptionStatus;
 import com.quiktech.pos.repository.SubscriptionInvoiceRepository;
@@ -24,6 +24,7 @@ import java.util.List;
 public class SubscriptionExpiryScheduler {
 
     private final SubscriptionRepository subscriptionRepository;
+    private final PlanCatalogService planCatalogService;
     private final SubscriptionInvoiceRepository invoiceRepository;
     private final EmailService emailService;
 
@@ -49,13 +50,10 @@ public class SubscriptionExpiryScheduler {
 
         for (Subscription sub : pendingDowngrades) {
             SubscriptionPlan targetPlan = sub.getPendingPlan();
-            PlanLimits limits = PlanLimits.valueOf(targetPlan.name());
+            SubscriptionPlanConfig limits = planCatalogService.limitsFor(targetPlan);
 
             sub.setPlan(targetPlan);
-            sub.setMaxStores(limits.maxStores);
-            sub.setMaxStaff(limits.maxStaff);
-            sub.setMaxProducts(limits.maxProducts);
-            sub.setMaxWarehouses(limits.maxWarehouses);
+            limits.applyLimitsTo(sub);
             sub.setPendingPlan(null);
             sub.setPendingBillingCycle(null);
 
@@ -78,15 +76,15 @@ public class SubscriptionExpiryScheduler {
         // 2. Bulk-expire phần còn lại (không có pending plan)
         // Hạ limit về FREE ngay trong UPDATE — sub EXPIRED không được giữ quyền lợi
         // gói trả phí (soft cap: data hiện có không bị xóa, chỉ chặn tạo mới vượt FREE)
-        PlanLimits freeLimits = PlanLimits.FREE;
+        SubscriptionPlanConfig freeLimits = planCatalogService.limitsFor(SubscriptionPlan.FREE);
         int expired = subscriptionRepository.expireOverdue(
                 SubscriptionStatus.EXPIRED,
                 SubscriptionStatus.ACTIVE,
                 now,
-                freeLimits.maxStores,
-                freeLimits.maxStaff,
-                freeLimits.maxProducts,
-                freeLimits.maxWarehouses);
+                freeLimits.getMaxStores(),
+                freeLimits.getMaxStaff(),
+                freeLimits.getMaxProducts(),
+                freeLimits.getMaxWarehouses());
 
         if (expired > 0) {
             log.info("Expired {} subscription(s) past their expiresAt", expired);
