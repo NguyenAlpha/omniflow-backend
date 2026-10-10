@@ -24,16 +24,41 @@ Application Start
 │   ├── Controllers / Services   — xử lý business logic
 │   └── StringRedisTemplate      — Redis client
 │
-├── SecurityFilterChain được build — thứ tự filter cố định cho toàn app
+├── Filter chain được build — thứ tự cố định cho toàn app (ngoài → trong)
 │   │
+│   │   Servlet filter (chạy trước Spring Security):
+│   ├── CorsFilter                       ← HIGHEST_PRECEDENCE (ApplicationConfig) — xử lý CORS/preflight trước mọi thứ
+│   ├── ApiTrafficFilter                 ← HIGHEST_PRECEDENCE — đo mọi /api/** (trừ preflight) cho dashboard
+│   │                                       lưu lượng; bọc ngoài cùng nên đếm được cả response 401/429
+│   ├── RateLimitFilter                  ← HIGHEST_PRECEDENCE + 1 — quota theo IP (login/register/refresh
+│   │                                       riêng, mọi /api/** khác chung); hết quota → 429 ngay
+│   │
+│   │   SecurityFilterChain (DelegatingFilterProxy):
 │   ├── BearerTokenAuthenticationFilter  ← auto-register bởi oauth2ResourceServer().jwt()
 │   │                                       extract Bearer token → NimbusJwtDecoder validate
 │   │                                       → UserPrincipalConverter → SecurityContext
+│   ├── AuthenticatedRateLimitFilter     ← addFilterAfter(Bearer…) — quota theo userId (+ quota riêng
+│   │                                       cho import/export/bulk inventory/đổi mật khẩu); hết quota → 429
+│   ├── IdempotencyFilter                ← addFilterAfter(AuthenticatedRateLimit…) — chỉ xử lý
+│   │                                       POST /api/stores/{id}/orders có header Idempotency-Key
 │   ├── AnonymousAuthenticationFilter    ← set anonymous nếu chưa có auth
-│   ├── ExceptionTranslationFilter       ← bắt 401/403, trả JSON error
-│   └── AuthorizationFilter              ← kiểm tra quyền truy cập endpoint
+│   ├── ExceptionTranslationFilter       ← bắt 401, gọi authenticationEntryPoint (body ApiResult)
+│   └── AuthorizationFilter              ← kiểm tra quyền truy cập endpoint (URL-level: authenticated())
 │
-│   Lưu ý: CsrfFilter bị tắt (csrf.disable() trong SecurityConfig)
+│   Lưu ý: CsrfFilter bị tắt (csrf.disable() trong SecurityConfig). Chỉ liệt kê filter có
+│   ảnh hưởng tới nghiệp vụ — Spring còn chèn thêm vài filter nội bộ (CharacterEncodingFilter,
+│   SecurityContextHolderFilter, HeaderWriterFilter...). Chi tiết rate limit: RATE_LIMITING.md.
+│
+├── Scheduled jobs được đăng ký (@Scheduled, chạy nền suốt vòng đời app)
+│   │
+│   ├── ApiTrafficRecorder.flushCompletedMinutes   ← api-traffic.flush-interval-ms (mặc định 60s):
+│   │                                                 UPSERT số liệu các phút đã kết thúc vào api_traffic_*
+│   ├── ApiTrafficRecorder.deleteExpired           ← api-traffic.cleanup-cron (mặc định phút 7 mỗi giờ):
+│   │                                                 xóa số liệu traffic quá hạn lưu giữ
+│   ├── NotificationProjector                      ← notifications.refresh-ms (mặc định 60s)
+│   ├── DashboardRefreshScheduler.refreshViews     ← dashboard.refresh.cron (mặc định mỗi 15 phút)
+│   ├── SubscriptionExpiryScheduler                ← subscription.expiry.cron (mặc định 01:00 hằng ngày)
+│   └── RefreshTokenCleanupScheduler               ← refresh-token.cleanup.cron (mặc định 02:00 hằng ngày)
 │
 └── Application READY — bắt đầu nhận request
 ```
@@ -50,6 +75,11 @@ HTTP POST /api/auth/login  {"usernameOrEmail": "...", "password": "..."}
 │
 ├── Tomcat nhận request
 │
+├── ApiTrafficFilter — bắt đầu đo (ghi nhận khi response xong, kể cả bị 401/429)
+│
+├── RateLimitFilter — quota login theo IP (rate-limit.login.*, mặc định 10/phút)
+│   └── Hết quota → 429 RATE_LIMIT_EXCEEDED, dừng tại đây (không vào controller)
+│
 ├── DelegatingFilterProxy → SecurityFilterChain
 │
 ├── BearerTokenAuthenticationFilter
@@ -62,6 +92,11 @@ HTTP POST /api/auth/login  {"usernameOrEmail": "...", "password": "..."}
 │
 ├── AuthService.login()
 │   │
+│   ├── userRepository.findByUsernameOrEmail(...) → accountKey (userId hoặc SHA-256 chuỗi nhập)  [1 DB query]
+│   │
+│   ├── LoginAttemptLimiter.assertAllowed(accountKey)
+│   │   └── Hết lượt đăng nhập sai của tài khoản (rate-limit.login-account.*) → 429, dừng tại đây
+│   │
 │   ├── authenticationManager.authenticate(username, password)
 │   │   │
 │   │   └── DaoAuthenticationProvider
@@ -72,17 +107,22 @@ HTTP POST /api/auth/login  {"usernameOrEmail": "...", "password": "..."}
 │   │       │   └── verify password — ném BadCredentialsException nếu sai
 │   │       │
 │   │       └── user.isEnabled() — false nếu isActive=false hoặc đã soft-delete
+│   │   (BadCredentialsException → LoginAttemptLimiter.recordFailure — trừ 1 lượt rồi trả 401)
 │   │
 │   └── buildAuthResponse(user)
 │       │
-│       ├── findActiveBusinessRolesForUser(userId)                        [DB — UserRole + Business (OWNER entries)]
-│       ├── findActiveStoreRolesWithBusinessDetails(userId)               [DB — UserRole + Store + Business (MANAGER/STAFF)]
-│       └── findByUserIdAndBusinessIsNullAndStoreIsNullAndDeletedAtIsNull(userId) [DB — global roles]
+│       ├── refreshTokenService.create(userId) — INSERT refresh_tokens                  [DB]
+│       │
+│       └── AuthResponseAssembler.assemble(user, refreshToken)
+│           │
+│           ├── findActiveBusinessRolesForUser(userId)              [DB — UserRole + Business (OWNER / BUSINESS_MANAGER entries)]
+│           ├── findActiveStoreRolesWithBusinessDetails(userId)     [DB — UserRole + Store + Business (MANAGER/STAFF)]
+│           ├── findByUserIdAndBusinessIsNullAndStoreIsNullAndDeletedAtIsNull(userId)  [DB — global roles]
 │           │
 │           └── jwtService.generateToken(user, {userId, roles})
 │               └── JWT payload: { sub, userId, roles: ["SUPER_ADMIN"?], iat, exp }
 │
-└── Response: AuthResponse { accessToken, tokenType, expiresIn, user, memberships }
+└── Response: AuthResponse { accessToken, tokenType, expiresIn, user, memberships, refreshToken }
 
     Lưu ý: memberships nhóm theo business — mỗi entry: { businessId, businessName, stores[] }.
     OWNER: stores = tất cả stores trong business (role=OWNER, positionTitle=null).
@@ -174,7 +214,8 @@ Authorization: Bearer eyJhbGci...
 
 | Luồng                                                                  | DB calls                                        |
 |:-----------------------------------------------------------------------|:------------------------------------------------|
-| Login / Register                                                       | ~3 queries (auth + build response)              |
+| Login                                                                  | ~6 + 1/business (2 tra user, INSERT refresh token, 3 role/membership, store theo từng business) |
+| Register                                                               | ~5 + 1/business (INSERT user, INSERT refresh token, 3 role/membership) |
 | Request — JWT auth                                                     | **0** (JWT claims)                              |
 | Store check — SUPER_ADMIN                                              | **0** (JWT authorities)                         |
 | Store check — OWNER (store:business + business:role hit)               | **0** (cả hai Redis hit)                        |
