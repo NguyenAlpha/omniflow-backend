@@ -48,6 +48,7 @@ và khả năng sync offline (sync chưa triển khai ngay).
 | [SUBSCRIPTION.md](api/SUBSCRIPTION.md)  | Luồng nâng cấp gói, invoice, xác nhận CK        |
 | [DEVELOPER_GUIDE.md](DEVELOPER_GUIDE.md) | Conventions: JPA, query pattern, naming          |
 | [REDIS_CACHE.md](REDIS_CACHE.md)     | Giải thích cơ chế cache Redis          |
+| [RATE_LIMITING.md](RATE_LIMITING.md) | Rate limit theo IP / user / tài khoản (Bucket4j + Redis), quota, cấu hình, monitoring |
 
 
 ### Lifecycle & Flow
@@ -57,8 +58,9 @@ và khả năng sync offline (sync chưa triển khai ngay).
 | [TOKEN_LIFECYCLE.md](TOKEN_LIFECYCLE.md)               | JWT token — issue, validate, expire, giới hạn |
 | [ERROR_LIFECYCLE.md](ERROR_LIFECYCLE.md)               | Exception → HTTP response, mapping table      |
 | [STORE_MEMBER_LIFECYCLE.md](STORE_MEMBER_LIFECYCLE.md) | Vòng đời member: add, update role, remove     |
-| [ORDER_LIFECYCLE.md](ORDER_LIFECYCLE.md)               | Vòng đời order: add, update role, remove      |
+| [ORDER_LIFECYCLE.md](ORDER_LIFECYCLE.md)               | Vòng đời đơn bán: tạo, hoàn thành, thanh toán, huỷ |
 ### Tính năng
 | File                                                   | Nội dung                                      |
 |:-------------------------------------------------------|:----------------------------------------------|
 | [FEATURES.md](FEATURES.md)               | liệt kê các chức năng                            |
+| [ADMIN_OPERATIONS.md](api/ADMIN_OPERATIONS.md) | Thao tác SUPER_ADMIN: audit quản trị, dashboard lưu lượng API, tình trạng hệ thống |
