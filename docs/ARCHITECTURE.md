@@ -11,6 +11,7 @@ com.quiktech.pos
 ├── config/
 │   ├── ApplicationConfig.java       — auth beans; UserDetailsService chỉ dùng cho login
 │   ├── SecurityConfig.java          — JWT filter chain, method security (@EnableMethodSecurity)
+│   ├── RateLimiterConfig.java       — hạ tầng Bucket4j trên Redis (proxy manager, timeout) cho rate limit
 │   └── SystemAdminSeeder.java       — seed SUPER_ADMIN khi khởi động (bật bằng admin.seed.enabled=true)
 │
 ├── controller/
@@ -28,7 +29,8 @@ com.quiktech.pos
 │   ├── PaymentController.java       — ghi nhận thanh toán
 │   ├── CustomerController.java      — CRUD khách hàng
 │   ├── SupplierController.java      — CRUD nhà cung cấp
-│   └── WarehouseController.java     — CRUD kho hàng
+│   ├── WarehouseController.java     — CRUD kho hàng
+│   └── AdminTrafficController.java  — GET /api/admin/traffic, /traffic/system — dashboard lưu lượng (SUPER_ADMIN)
 │
 ├── service/
 │   ├── AuthService.java             — register, login, build auth response
@@ -44,13 +46,26 @@ com.quiktech.pos
 │   ├── PaymentService.java          — ghi nhận và tra cứu thanh toán
 │   ├── CustomerService.java         — CRUD khách hàng
 │   ├── SupplierService.java         — CRUD nhà cung cấp
-│   └── WarehouseService.java        — CRUD kho hàng
+│   ├── WarehouseService.java        — CRUD kho hàng
+│   ├── ApiTrafficRecorder.java      — cộng dồn lưu lượng trong bộ nhớ, mỗi phút UPSERT vào api_traffic_* (V11)
+│   └── ApiTrafficService.java       — đọc số liệu lưu lượng + tình trạng instance cho dashboard admin
 │
 ├── security/
 │   ├── JwtService.java              — generate / validate JWT, extract claims
 │   ├── UserPrincipalConverter.java  — convert Jwt → UserPrincipal, set SecurityContext (0 DB call)
 │   ├── UserPrincipal.java           — record(userId, username, roles) — principal trong SecurityContext
-│   └── StoreAccessEvaluator.java    — @PreAuthorize helper; Redis cache → DB fallback
+│   ├── StoreAccessEvaluator.java    — @PreAuthorize helper; Redis cache → DB fallback
+│   ├── LoginAttemptLimiter.java     — giới hạn đăng nhập sai theo tài khoản (gọi từ AuthService.login)
+│   └── ClientIpResolver.java        — lấy IP client; chỉ tin X-Forwarded-For từ rate-limit.trusted-proxies
+│
+├── filter/                          — servlet filter chạy quanh mọi request (thứ tự: xem LIFECYCLE.md mục 1)
+│   ├── ApiTrafficFilter.java        — đo mọi /api/** cho dashboard lưu lượng; chạy ngoài cùng
+│   ├── RateLimitFilter.java         — quota theo IP, trước Spring Security
+│   ├── AuthenticatedRateLimitFilter.java — quota theo userId, sau BearerTokenAuthenticationFilter
+│   ├── IdempotencyFilter.java       — chống tạo đơn trùng (header Idempotency-Key)
+│   ├── RateLimitService.java        — trừ/xem token trên bucket Redis; fallback bucket cục bộ khi Redis lỗi
+│   ├── RateLimitResponseWriter.java — ghi response 429 + header Retry-After / RateLimit-*
+│   └── RateLimitMetrics.java        — metric Prometheus rate_limit_requests_total
 │
 ├── repository/                      — JpaRepository; custom @Query với JOIN FETCH
 │
@@ -72,6 +87,7 @@ com.quiktech.pos
 └── exception/
     ├── ForbiddenException.java
     ├── ResourceNotFoundException.java
+    ├── RateLimitExceededException.java — 429 cho quota kiểm tra trong service (đăng nhập sai)
     └── GlobalExceptionHandler.java  — @RestControllerAdvice; xem ERROR_LIFECYCLE.md
 ```
 
