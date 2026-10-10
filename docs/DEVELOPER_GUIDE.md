@@ -54,7 +54,7 @@ List<Order> findByStoreIdAndIdLessThan(Long storeId, Long cursorId, Pageable pag
 
 ### JOIN FETCH khi dựng memberships
 
-`AuthResponseAssembler.resolveMemberships` (gọi từ `AuthService` sau register/login/refresh) dùng 2 query có JOIN FETCH để tránh N+1 khi load store memberships:
+`AuthResponseAssembler.resolveMemberships` (gọi từ `AuthService` sau register/login/refresh, và từ `UserService.getMemberships` cho `GET /api/users/me/memberships`) dùng 2 query có JOIN FETCH để tránh N+1 khi load store memberships:
 
 ```java
 storeMemberRepository.findByUserIdAndDeletedAtIsNullWithStore(userId)    // JOIN FETCH sm.store
@@ -261,4 +261,7 @@ throw new ForbiddenException(ErrorCode.FORBIDDEN, "Cannot remove the OWNER from 
 
 // Vi phạm business rule (trùng tên, trùng mã...)
 throw new IllegalArgumentException("SKU already exists in this store");
+
+// Vi phạm business rule mà client cần mã lỗi riêng để dịch (400 + error.code từ exception)
+throw new BusinessRuleException(ErrorCode.EMAIL_TAKEN, "Email already registered");
 ```

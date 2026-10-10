@@ -31,6 +31,8 @@
 ## 2. Hồ sơ người dùng (User)
 
 - Xem / cập nhật hồ sơ của chính mình (`GET/PATCH /api/users/me`) — username/email không được trùng
+- Lấy memberships mới nhất (`GET /api/users/me/memberships`) — cùng format response login, để client
+  đồng bộ store switcher khi quyền thay đổi sau lúc đăng nhập
 - Đổi mật khẩu (`PATCH /api/users/me/password`) — phải nhập đúng mật khẩu hiện tại; đổi xong
   thu hồi toàn bộ refresh token (access token cũ vẫn sống tới khi hết hạn)
 - Tra cứu user theo username (`GET /api/users/lookup`) — dùng khi thêm thành viên

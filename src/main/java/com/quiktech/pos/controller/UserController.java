@@ -2,6 +2,7 @@ package com.quiktech.pos.controller;
 
 import com.quiktech.pos.dto.request.user.ChangePasswordRequest;
 import com.quiktech.pos.dto.request.user.UpdateProfileRequest;
+import com.quiktech.pos.dto.response.auth.BusinessMembershipResponse;
 import com.quiktech.pos.dto.response.auth.UserSummaryResponse;
 import com.quiktech.pos.dto.response.common.ApiResult;
 import com.quiktech.pos.dto.response.user.UserLookupResponse;
@@ -12,6 +13,8 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
+
+import java.util.List;
 
 @RestController
 @RequestMapping("/api/users")
@@ -24,6 +27,16 @@ public class UserController {
     public ResponseEntity<ApiResult<UserSummaryResponse>> getProfile(
             @AuthenticationPrincipal UserPrincipal currentUser) {
         return ResponseEntity.ok(ApiResult.ok(userService.getProfile(currentUser)));
+    }
+
+    /**
+     * Memberships mới nhất (cùng format response login) — client gọi khi mở app / sau khi
+     * tạo store để store switcher không phụ thuộc dữ liệu cũ lưu từ lúc đăng nhập.
+     */
+    @GetMapping("/me/memberships")
+    public ResponseEntity<ApiResult<List<BusinessMembershipResponse>>> getMemberships(
+            @AuthenticationPrincipal UserPrincipal currentUser) {
+        return ResponseEntity.ok(ApiResult.ok(userService.getMemberships(currentUser)));
     }
 
     /**

@@ -88,7 +88,7 @@ public class AuthResponseAssembler {
      * @return danh sách membership — mỗi phần tử là 1 business kèm các store của nó; rỗng nếu
      *         user chưa thuộc business nào (VD vừa đăng ký, hoặc chỉ là SUPER_ADMIN)
      */
-    private List<BusinessMembershipResponse> resolveMemberships(User user) {
+    public List<BusinessMembershipResponse> resolveMemberships(User user) {
         List<BusinessMembershipResponse> memberships = new ArrayList<>();
 
         // Business OWNER / BUSINESS_MANAGER entries — role + business eagerly fetched

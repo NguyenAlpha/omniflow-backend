@@ -94,7 +94,7 @@ Lấy danh sách người dùng với tìm kiếm và phân trang. Yêu cầu ro
 
 | HTTP | `error.code` | Nguyên nhân |
 |:----:|:------------|:-----------|
-| 403 | `ACCESS_DENIED` | Không phải SUPER_ADMIN |
+| 403 | `FORBIDDEN` | Không phải SUPER_ADMIN |
 
 ---
 
@@ -110,8 +110,14 @@ Cập nhật thông tin profile của người dùng. Yêu cầu role **SUPER_AD
 
 ### Request
 
+Dùng chung DTO `UpdateProfileRequest` với `PATCH /api/users/me` — **ghi đè toàn bộ**, không phải
+partial update: phải gửi đủ các field bắt buộc (giữ nguyên giá trị cũ nếu không muốn đổi);
+`phone` bỏ trống/null sẽ xóa số điện thoại.
+
 ```json
 {
+  "username": "nguyen.an",
+  "email": "nguyen.an@example.com",
   "fullName": "Nguyễn Văn An (Updated)",
   "phone": "0907654321"
 }
@@ -119,8 +125,10 @@ Cập nhật thông tin profile của người dùng. Yêu cầu role **SUPER_AD
 
 | Field | Type | Bắt buộc | Ràng buộc |
 |:------|:-----|:--------:|:----------|
-| `fullName` | string | ❌ | — |
-| `phone` | string | ❌ | — |
+| `username` | string | ✅ | Không được để trống, tối đa 50 ký tự, chỉ chứa `a-z A-Z 0-9 . _ -` (không cho `@`) |
+| `email` | string | ✅ | Không được để trống, format email hợp lệ, tối đa 100 ký tự |
+| `fullName` | string | ✅ | Không được để trống, tối đa 200 ký tự |
+| `phone` | string | ❌ | Tối đa 20 ký tự |
 
 ### Response `200 OK`
 
@@ -131,7 +139,8 @@ Trả về `UserAdminResponse` sau khi cập nhật.
 | HTTP | `error.code` | Nguyên nhân |
 |:----:|:------------|:-----------|
 | 400 | `VALIDATION_ERROR` | Field không hợp lệ |
-| 403 | `ACCESS_DENIED` | Không phải SUPER_ADMIN |
+| 400 | `USERNAME_TAKEN` / `EMAIL_TAKEN` | Username / email đã được tài khoản khác sử dụng |
+| 403 | `FORBIDDEN` | Không phải SUPER_ADMIN |
 | 404 | `USER_NOT_FOUND` | User không tồn tại |
 
 ---
@@ -169,7 +178,7 @@ Trả về `UserAdminResponse` với `isActive` đã được cập nhật.
 | HTTP | `error.code` | Nguyên nhân |
 |:----:|:------------|:-----------|
 | 400 | `VALIDATION_ERROR` | `isActive` bị thiếu |
-| 403 | `ACCESS_DENIED` | Không phải SUPER_ADMIN |
+| 403 | `FORBIDDEN` | Không phải SUPER_ADMIN |
 | 404 | `USER_NOT_FOUND` | User không tồn tại |
 
 ---
@@ -200,5 +209,5 @@ Xóa tài khoản người dùng. Yêu cầu role **SUPER_ADMIN**.
 
 | HTTP | `error.code` | Nguyên nhân |
 |:----:|:------------|:-----------|
-| 403 | `ACCESS_DENIED` | Không phải SUPER_ADMIN |
+| 403 | `FORBIDDEN` | Không phải SUPER_ADMIN |
 | 404 | `USER_NOT_FOUND` | User không tồn tại |

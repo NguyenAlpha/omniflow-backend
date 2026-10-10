@@ -78,6 +78,42 @@ Lấy thông tin profile của người dùng hiện tại.
 
 ---
 
+## GET `/api/users/me/memberships`
+
+Lấy danh sách business/store hiện tại của người dùng — **cùng logic và format** với trường
+`memberships` trong response đăng nhập (xem [AUTH.md](AUTH.md#trường-memberships-theo-từng-loại-role)).
+Dùng để client đồng bộ lại sau khi quyền thay đổi kể từ lúc login (tạo store mới, được thêm/bỏ khỏi
+store, đổi role, store bị xóa...) mà không phải gọi `refresh` (refresh xoay vòng token).
+
+### Response `200 OK`
+
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "businessId": 5,
+      "businessName": "Coffee An",
+      "stores": [
+        { "storeId": 10, "storeName": "Chi nhánh 1", "role": "ROLE_OWNER", "positionTitle": null },
+        { "storeId": 11, "storeName": "Chi nhánh 2", "role": "ROLE_OWNER", "positionTitle": null }
+      ]
+    }
+  ],
+  "error": null
+}
+```
+
+> Mảng rỗng nếu user chưa thuộc business nào (VD vừa đăng ký, hoặc chỉ là SUPER_ADMIN).
+
+### Lỗi
+
+| HTTP | `error.code` | Nguyên nhân |
+|:----:|:------------|:-----------|
+| 401 | `UNAUTHORIZED` | Không có hoặc JWT hết hạn |
+
+---
+
 ## GET `/api/users/lookup`
 
 Tra cứu user theo `username` (khớp chính xác) để lấy `userId` — dùng khi owner thêm
@@ -158,7 +194,9 @@ Cập nhật thông tin profile của người dùng hiện tại.
 |:----:|:------------|:-----------|
 | 400 | `VALIDATION_ERROR` | Field không hợp lệ — `error.field` chỉ rõ field nào |
 | 401 | `UNAUTHORIZED` | Không có hoặc JWT hết hạn |
-| 409 | `CONFLICT` | Username hoặc email đã được sử dụng bởi tài khoản khác |
+| 400 | `USERNAME_TAKEN` | Username đã được tài khoản khác sử dụng |
+| 400 | `EMAIL_TAKEN` | Email đã được tài khoản khác sử dụng |
+| 400 | `VALIDATION_ERROR` | Hiếm: 2 request song song cùng lọt bước kiểm tra trùng → unique index DB chặn (message `Username or email already taken`, không phân biệt được field nào) |
 
 ---
 
@@ -199,5 +237,5 @@ Cập nhật thông tin profile của người dùng hiện tại.
 |:----:|:------------|:-----------|
 | 400 | `VALIDATION_ERROR` | Field không hợp lệ — `error.field` chỉ rõ field nào |
 | 401 | `UNAUTHORIZED` | Không có hoặc JWT hết hạn |
-| 400 | `VALIDATION_ERROR` | `currentPassword` không đúng (message `Current password is incorrect`) |
+| 400 | `INVALID_CURRENT_PASSWORD` | `currentPassword` không đúng — refresh token **không** bị thu hồi |
 | 429 | `RATE_LIMIT_EXCEEDED` | Quá 5 lần đổi mật khẩu / 10 phút mỗi user (`RATE_LIMIT_CHANGE_PASSWORD_USER_*`) — kèm header `Retry-After` (giây phải chờ); xem [RATE_LIMITING.md](../RATE_LIMITING.md) |

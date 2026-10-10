@@ -26,6 +26,7 @@ response (cùng định dạng `ApiResult`) và không đi qua `GlobalExceptionH
 | `ResourceNotFoundException(ErrorCode, message)` | Entity không tồn tại trong DB |
 | `ForbiddenException(ErrorCode, message)` | User không đủ quyền thực hiện thao tác |
 | `IllegalArgumentException(message)` | Input vi phạm business rule (trùng SKU, trùng tên...) |
+| `BusinessRuleException(ErrorCode, message)` | Như trên nhưng client cần mã lỗi riêng để dịch thông báo (trùng username/email khi sửa hồ sơ, sai mật khẩu hiện tại) |
 | `SubscriptionLimitExceededException(ErrorCode, message)` | Vượt giới hạn của gói (số store, staff, product, warehouse) |
 | `RateLimitExceededException(message, retryAfter, limit, remaining)` | Hết quota rate limit ném từ service (hiện dùng cho đăng nhập sai theo tài khoản — `LoginAttemptLimiter`) |
 | `InvalidTokenException(ErrorCode, message)` | Refresh token không hợp lệ / đã dùng / hết hạn |
@@ -54,7 +55,8 @@ Nguồn: `exception/GlobalExceptionHandler.java`.
 |:---|:---:|:---|:---|
 | `MethodArgumentNotValidException` | 400 | `VALIDATION_ERROR` | `@Valid` fail trên request body; `field` được set |
 | `MethodArgumentTypeMismatchException` | 400 | `VALIDATION_ERROR` | Path/query param sai kiểu (VD chữ vào chỗ số); `field` = tên param |
-| `IllegalArgumentException` | 400 | `VALIDATION_ERROR` | Business rule vi phạm (trùng username, SKU...) |
+| `IllegalArgumentException` | 400 | `VALIDATION_ERROR` | Business rule vi phạm (trùng SKU, tên...) |
+| `BusinessRuleException` | 400 | _(từ exception)_ | `USERNAME_TAKEN` / `EMAIL_TAKEN` / `INVALID_CURRENT_PASSWORD` |
 | `IllegalStateException` | 400 | `INSUFFICIENT_STOCK` | ⚠️ Mọi `IllegalStateException` đều ra mã này — chỉ ném khi thật sự là thiếu tồn kho |
 | `BadCredentialsException` | 401 | `INVALID_CREDENTIALS` | Sai username/password khi login |
 | `DisabledException` | 401 | `INVALID_CREDENTIALS` | User bị deactivate (`isActive = false`) |
@@ -92,12 +94,22 @@ GlobalExceptionHandler.handleValidation()
 ### 3b. Business Rule Error (`IllegalArgumentException`)
 
 ```
-Service phát hiện vi phạm (VD: username trùng)
+Service phát hiện vi phạm (VD: SKU trùng)
     ↓
-throw new IllegalArgumentException("Username already taken")
+throw new IllegalArgumentException("SKU already exists in this store")
     ↓
 GlobalExceptionHandler.handleIllegalArgument()
     ├── ErrorDetail { code: "VALIDATION_ERROR", message: ex.message, field: null }
+    └── ResponseEntity 400
+```
+
+Cần mã lỗi riêng (VD: username/email trùng khi sửa hồ sơ, sai mật khẩu hiện tại) → dùng `BusinessRuleException`:
+
+```
+throw new BusinessRuleException(ErrorCode.EMAIL_TAKEN, "Email already registered")
+    ↓
+GlobalExceptionHandler.handleBusinessRule()
+    ├── ErrorDetail { code: "EMAIL_TAKEN", message: ex.message, field: null }
     └── ResponseEntity 400
 ```
 
@@ -206,6 +218,7 @@ Tình huống                                    Exception cần throw
 Entity không tìm thấy trong DB               ResourceNotFoundException(ErrorCode.X_NOT_FOUND, "...")
 User không đủ quyền (business rule)          ForbiddenException(ErrorCode.FORBIDDEN, "...")
 Input vi phạm rule (trùng tên, trùng mã...)  IllegalArgumentException("...")
+Như trên nhưng client cần mã lỗi riêng       BusinessRuleException(ErrorCode.X, "...")
 Input thiếu / sai format                     Dùng @Valid trên DTO — không throw thủ công
 Vượt giới hạn gói                            SubscriptionLimitExceededException(...)
 Hết quota tự kiểm tra trong service          RateLimitExceededException(...) — quota theo IP/user ở filter thì không cần

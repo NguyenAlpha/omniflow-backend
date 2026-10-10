@@ -278,7 +278,8 @@ thu hồi, response trả về một refresh token mới — client phải lưu 
 
 Cùng cấu trúc với response của `login` (access token mới, `memberships` tính lại theo quyền
 hiện tại, `refreshToken` mới). Vì vậy `refresh` cũng là cách lấy lại `memberships` sau khi
-quyền thay đổi (VD: vừa tạo business mặc định).
+quyền thay đổi (VD: vừa tạo business mặc định). Nếu chỉ cần đọc lại `memberships` mà không xoay
+vòng token, dùng `GET /api/users/me/memberships` (xem [USER.md](USER.md)).
 
 ### Phát hiện dùng lại token (reuse detection)
 
@@ -346,4 +347,5 @@ localStorage.setItem("auth_store_id",    firstStore.storeId);
 ```
 
 Sau đó mọi API catalog dùng `businessId`, mọi API transactional dùng `storeId`.
+`memberships` lưu từ lúc login có thể cũ dần — gọi `GET /api/users/me/memberships` để đồng bộ lại.
 Xem chi tiết tại [web/docs](../../../apps/web/docs).

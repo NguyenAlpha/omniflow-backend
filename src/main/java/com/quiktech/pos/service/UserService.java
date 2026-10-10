@@ -3,6 +3,7 @@ package com.quiktech.pos.service;
 import com.quiktech.pos.dto.request.user.ChangePasswordRequest;
 import com.quiktech.pos.dto.request.user.SetUserStatusRequest;
 import com.quiktech.pos.dto.request.user.UpdateProfileRequest;
+import com.quiktech.pos.dto.response.auth.BusinessMembershipResponse;
 import com.quiktech.pos.dto.response.auth.UserSummaryResponse;
 import com.quiktech.pos.dto.response.common.ErrorCode;
 import com.quiktech.pos.dto.response.common.PagedResult;
@@ -10,6 +11,7 @@ import com.quiktech.pos.dto.response.user.UserAdminResponse;
 import com.quiktech.pos.dto.response.user.UserLookupResponse;
 import com.quiktech.pos.entity.User;
 import com.quiktech.pos.entity.UserRole;
+import com.quiktech.pos.exception.BusinessRuleException;
 import com.quiktech.pos.exception.ResourceNotFoundException;
 import com.quiktech.pos.repository.UserRepository;
 import com.quiktech.pos.repository.UserRoleRepository;
@@ -41,11 +43,22 @@ public class UserService {
     private final StoreAccessEvaluator storeAccessEvaluator;
     private final BusinessAccessEvaluator businessAccessEvaluator;
     private final AdminAuditService adminAuditService;
+    private final AuthResponseAssembler authResponseAssembler;
 
     @Transactional(readOnly = true)
     public UserSummaryResponse getProfile(UserPrincipal currentUser) {
         User user = findOrThrow(currentUser.userId());
         return toResponse(user);
+    }
+
+    /**
+     * Danh sách business/store hiện tại của user — cùng logic với memberships trong response
+     * đăng nhập, để client đồng bộ lại khi có thay đổi sau lúc login (tạo store mới, được thêm
+     * vào store khác, đổi role, store bị xóa...).
+     */
+    @Transactional(readOnly = true)
+    public List<BusinessMembershipResponse> getMemberships(UserPrincipal currentUser) {
+        return authResponseAssembler.resolveMemberships(findOrThrow(currentUser.userId()));
     }
 
     @Transactional
@@ -71,7 +84,7 @@ public class UserService {
     public void changePassword(UserPrincipal currentUser, ChangePasswordRequest request) {
         User user = findOrThrow(currentUser.userId());
         if (!passwordEncoder.matches(request.currentPassword(), user.getPasswordHash())) {
-            throw new IllegalArgumentException("Current password is incorrect");
+            throw new BusinessRuleException(ErrorCode.INVALID_CURRENT_PASSWORD, "Current password is incorrect");
         }
         user.setPasswordHash(passwordEncoder.encode(request.newPassword()));
         user.setUpdatedAt(Instant.now());
@@ -187,10 +200,10 @@ public class UserService {
     private void checkUsernameAndEmailUnique(String username, String email, Long excludeId) {
         userRepository.findByUsername(username)
                 .filter(u -> !u.getId().equals(excludeId))
-                .ifPresent(u -> { throw new IllegalArgumentException("Username already taken"); });
+                .ifPresent(u -> { throw new BusinessRuleException(ErrorCode.USERNAME_TAKEN, "Username already taken"); });
         userRepository.findByEmail(email)
                 .filter(u -> !u.getId().equals(excludeId))
-                .ifPresent(u -> { throw new IllegalArgumentException("Email already registered"); });
+                .ifPresent(u -> { throw new BusinessRuleException(ErrorCode.EMAIL_TAKEN, "Email already registered"); });
     }
 
     private User findOrThrow(Long userId) {

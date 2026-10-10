@@ -52,6 +52,13 @@ public class GlobalExceptionHandler {
         );
     }
 
+    @ExceptionHandler(BusinessRuleException.class)
+    public ResponseEntity<ApiResult<?>> handleBusinessRule(BusinessRuleException ex) {
+        return ResponseEntity.badRequest().body(
+                ApiResult.fail(ErrorDetail.of(ex.getErrorCode(), ex.getMessage()))
+        );
+    }
+
     @ExceptionHandler(IllegalStateException.class)
     public ResponseEntity<ApiResult<?>> handleIllegalState(IllegalStateException ex) {
         return ResponseEntity.badRequest().body(

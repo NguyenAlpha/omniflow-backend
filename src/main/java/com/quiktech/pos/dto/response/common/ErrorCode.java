@@ -8,6 +8,7 @@ public enum ErrorCode {
 
     // User
     USER_NOT_FOUND,
+    INVALID_CURRENT_PASSWORD,
 
     // Business
     BUSINESS_NOT_FOUND,
