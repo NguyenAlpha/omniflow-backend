@@ -5,6 +5,7 @@ import com.quiktech.pos.dto.request.subscription.ConfirmInvoiceRequest;
 import com.quiktech.pos.dto.request.subscription.RejectInvoiceRequest;
 import com.quiktech.pos.dto.response.admin.AdminStatsResponse;
 import com.quiktech.pos.dto.response.common.ApiResult;
+import com.quiktech.pos.dto.response.common.PagedResult;
 import com.quiktech.pos.dto.response.subscription.SubscriptionInvoiceResponse;
 import com.quiktech.pos.dto.response.subscription.SubscriptionResponse;
 import com.quiktech.pos.security.UserPrincipal;
@@ -13,7 +14,6 @@ import com.quiktech.pos.service.AdminStatsService;
 import com.quiktech.pos.service.SubscriptionService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
-import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.web.PageableDefault;
 import org.springframework.http.ResponseEntity;
@@ -48,18 +48,18 @@ public class SubscriptionController {
     }
 
     @GetMapping("/invoices/pending")
-    public ResponseEntity<ApiResult<Page<SubscriptionInvoiceResponse>>> listPendingInvoices(
+    public ResponseEntity<ApiResult<PagedResult<SubscriptionInvoiceResponse>>> listPendingInvoices(
             @PageableDefault(size = 20) Pageable pageable) {
-        return ResponseEntity.ok(ApiResult.ok(subscriptionService.listPendingInvoices(pageable)));
+        return ResponseEntity.ok(ApiResult.ok(PagedResult.of(subscriptionService.listPendingInvoices(pageable))));
     }
 
     @GetMapping("/invoices")
-    public ApiResult<Page<SubscriptionInvoiceResponse>> searchInvoices(
+    public ApiResult<PagedResult<SubscriptionInvoiceResponse>> searchInvoices(
             @RequestParam(required = false) InvoiceStatus status,
             @RequestParam(required = false) Long businessId,
             @RequestParam(required = false) String q,
             @PageableDefault(size = 20) Pageable pageable) {
-        return ApiResult.ok(subscriptionService.searchInvoices(status, businessId, q, pageable));
+        return ApiResult.ok(PagedResult.of(subscriptionService.searchInvoices(status, businessId, q, pageable)));
     }
 
     @GetMapping("/invoices/pending/count")

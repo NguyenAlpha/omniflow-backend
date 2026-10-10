@@ -14,6 +14,7 @@ import org.springframework.web.bind.MethodArgumentNotValidException;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.context.request.async.AsyncRequestNotUsableException;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
 
@@ -93,6 +94,13 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(HttpStatus.NOT_FOUND).body(
                 ApiResult.fail(ErrorDetail.of(ErrorCode.RESOURCE_NOT_FOUND, "Resource not found"))
         );
+    }
+
+    // Client ngắt kết nối giữa chừng (đóng tab, hủy tải ảnh QR...) — response không còn ghi được,
+    // không phải lỗi server nên không log ERROR và không cố ghi body
+    @ExceptionHandler(AsyncRequestNotUsableException.class)
+    public void handleClientAbort(AsyncRequestNotUsableException ex) {
+        log.debug("Client aborted request: {}", ex.getMessage());
     }
 
     @ExceptionHandler(ForbiddenException.class)

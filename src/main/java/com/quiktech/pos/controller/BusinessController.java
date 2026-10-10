@@ -8,6 +8,7 @@ import com.quiktech.pos.dto.request.subscription.UpgradeRequest;
 import com.quiktech.pos.dto.response.business.BusinessDefaultResponse;
 import com.quiktech.pos.dto.response.business.BusinessResponse;
 import com.quiktech.pos.dto.response.common.ApiResult;
+import com.quiktech.pos.dto.response.common.PagedResult;
 import com.quiktech.pos.dto.response.subscription.BankTransferInfoResponse;
 import com.quiktech.pos.dto.response.subscription.SubscriptionInvoiceResponse;
 import com.quiktech.pos.dto.response.subscription.SubscriptionResponse;
@@ -18,7 +19,6 @@ import com.quiktech.pos.service.SubscriptionService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.core.io.Resource;
-import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.web.PageableDefault;
 import org.springframework.http.HttpStatus;
@@ -105,10 +105,10 @@ public class BusinessController {
 
     @GetMapping("/{businessId}/subscription/invoices")
     @PreAuthorize("@businessAccess.isMember(#businessId, authentication)")
-    public ResponseEntity<ApiResult<Page<SubscriptionInvoiceResponse>>> getInvoices(
+    public ResponseEntity<ApiResult<PagedResult<SubscriptionInvoiceResponse>>> getInvoices(
             @PathVariable Long businessId,
             @PageableDefault(size = 20) Pageable pageable) {
-        return ResponseEntity.ok(ApiResult.ok(subscriptionService.getInvoices(businessId, pageable)));
+        return ResponseEntity.ok(ApiResult.ok(PagedResult.of(subscriptionService.getInvoices(businessId, pageable))));
     }
 
     @GetMapping("/{businessId}/subscription/invoices/{invoiceId}")
