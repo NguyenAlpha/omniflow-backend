@@ -19,6 +19,25 @@ import org.springframework.web.util.UrlPathHelper;
 import java.io.IOException;
 import java.time.Duration;
 
+/**
+ * Rate limit theo IP, chạy ở lớp servlet <b>trước</b> Spring Security (ngay sau CORS filter,
+ * vốn có order {@code HIGHEST_PRECEDENCE}).
+ *
+ * <p>Chạy trước xác thực nên chặn được cả request chưa có JWT — brute-force đăng nhập,
+ * spam đăng ký, flood — trước khi tốn công validate token hay chạm DB. Quota:
+ * <ul>
+ *   <li>{@code POST /api/auth/login}, {@code /register}, {@code /refresh}: quota riêng, chặt
+ *       (bucket {@code rl:login|register|refresh:<ip>}).</li>
+ *   <li>Mọi {@code /api/**} khác: trần chung rộng (mặc định 1.200/phút, bucket
+ *       {@code rl:ip:api:<ip>}) — đủ cho nhiều máy cùng mạng một cửa hàng. Request đã xác
+ *       thực còn qua thêm quota theo user ở {@link AuthenticatedRateLimitFilter}.</li>
+ * </ul>
+ *
+ * <p>IP lấy qua {@link ClientIpResolver}: chỉ tin {@code X-Forwarded-For} khi request đến từ
+ * proxy nằm trong {@code rate-limit.trusted-proxies}, tránh client tự giả IP để né quota.
+ * Preflight {@code OPTIONS} của CORS không bị tính. Vượt quota → 429 qua
+ * {@link RateLimitResponseWriter}; Redis lỗi → cho qua (xem {@link RateLimitService}).
+ */
 @Component
 @Order(Ordered.HIGHEST_PRECEDENCE + 1)
 @RequiredArgsConstructor
@@ -56,6 +75,12 @@ public class RateLimitFilter extends OncePerRequestFilter {
     private BucketConfiguration refreshConfig;
     private BucketConfiguration apiIpConfig;
 
+    /**
+     * Dựng cấu hình bucket một lần sau khi Spring inject các giá trị {@code @Value}.
+     * Mỗi quota là bucket có {@code capacity = max-requests}, nạp lại đủ {@code max-requests}
+     * token một lượt sau mỗi {@code window-seconds} ({@code refillIntervally}) — tương đương
+     * "tối đa N request mỗi cửa sổ thời gian".
+     */
     @PostConstruct
     void initBucketConfigs() {
         loginConfig = BucketConfiguration.builder()
@@ -87,6 +112,10 @@ public class RateLimitFilter extends OncePerRequestFilter {
                 .build();
     }
 
+    /**
+     * Chọn quota theo method + path, trừ 1 token; hết quota thì trả 429 và dừng chain.
+     * Path không thuộc {@code /api/} (VD actuator, swagger) không bị giới hạn ở đây.
+     */
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain chain)
             throws ServletException, IOException {

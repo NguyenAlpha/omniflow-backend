@@ -27,6 +27,24 @@ import java.time.Duration;
  *
  * <p>Không đánh rate limit request chưa xác thực tại đây. Chúng được xử lý bởi
  * {@link RateLimitFilter}, chạy ở lớp servlet trước Spring Security.
+ *
+ * <p><b>Đăng ký:</b> class không có {@code @Component}. {@code SecurityConfig} tạo bean, gắn
+ * vào chuỗi filter của Spring Security bằng {@code addFilterAfter(..., BearerTokenAuthenticationFilter)}
+ * và tắt đăng ký servlet tự động ({@code FilterRegistrationBean.setEnabled(false)}) — nếu không,
+ * Spring Boot sẽ chạy thêm filter này một lần nữa trước khi JWT được xác thực.
+ *
+ * <p><b>Quota:</b> mỗi request khớp đúng một rule ({@link #resolveRule}); rule riêng thay thế
+ * hoàn toàn quota chung chứ không cộng dồn:
+ * <ul>
+ *   <li>{@code import-products}: {@code POST /api/businesses/{id}/products/import} — 5 / 10 phút</li>
+ *   <li>{@code export}: {@code GET}/{@code HEAD /api/stores/{id}/export/**} — 10 / 10 phút</li>
+ *   <li>{@code inventory-bulk}: {@code POST /api/stores/{id}/inventory/adjust/bulk} và
+ *       {@code /transfer/bulk}, chung một bucket — 10 / 10 phút</li>
+ *   <li>{@code change-password}: {@code PATCH /api/users/me/password} — 5 / 10 phút</li>
+ *   <li>{@code api}: mọi API còn lại — 300 / phút</li>
+ * </ul>
+ * Con số trên là mặc định, chỉnh qua {@code rate-limit.<rule>.user.*}. Bucket key:
+ * {@code rl:user:<rule>:<userId>}.
  */
 public class AuthenticatedRateLimitFilter extends OncePerRequestFilter {
 
@@ -65,6 +83,7 @@ public class AuthenticatedRateLimitFilter extends OncePerRequestFilter {
         this.rateLimitService = rateLimitService;
     }
 
+    /** Dựng cấu hình bucket cho từng rule một lần, sau khi các giá trị {@code @Value} đã được inject. */
     @PostConstruct
     void initBucketConfig() {
         apiConfig = bucketConfig(maxRequests, windowSeconds);
@@ -74,6 +93,7 @@ public class AuthenticatedRateLimitFilter extends OncePerRequestFilter {
         changePasswordConfig = bucketConfig(changePasswordMaxRequests, changePasswordWindowSeconds);
     }
 
+    /** Bucket tối đa {@code capacity} request, nạp lại đủ {@code capacity} token một lượt sau mỗi {@code refillSeconds}. */
     private BucketConfiguration bucketConfig(int capacity, int refillSeconds) {
         return BucketConfiguration.builder()
                 .addLimit(Bandwidth.builder()
@@ -83,6 +103,11 @@ public class AuthenticatedRateLimitFilter extends OncePerRequestFilter {
                 .build();
     }
 
+    /**
+     * Bỏ qua preflight {@code OPTIONS}, path ngoài {@code /api/} và request chưa xác thực
+     * (endpoint công khai như {@code /api/auth/login}, {@code GET /api/plans} chỉ chịu quota IP).
+     * Còn lại: trừ 1 token của bucket theo rule + userId; hết quota thì trả 429 và dừng chain.
+     */
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain chain)
             throws ServletException, IOException {
@@ -109,6 +134,11 @@ public class AuthenticatedRateLimitFilter extends OncePerRequestFilter {
         chain.doFilter(request, response);
     }
 
+    /**
+     * Chọn rule theo method + path đã decode (dùng {@link UrlPathHelper} để {@code %xx} không
+     * né được rule). Thứ tự kiểm tra là thứ tự ưu tiên; không khớp rule riêng nào thì dùng
+     * quota chung {@code api}.
+     */
     private RateLimitRule resolveRule(HttpServletRequest request) {
         String path = PATH_HELPER.getPathWithinApplication(request);
         String method = request.getMethod();
@@ -129,6 +159,7 @@ public class AuthenticatedRateLimitFilter extends OncePerRequestFilter {
         return new RateLimitRule("api", apiConfig);
     }
 
+    /** {@code name} vừa là phần giữa của bucket key vừa là tag {@code policy} của metric. */
     private record RateLimitRule(String name, BucketConfiguration config) {
     }
 }
