@@ -72,6 +72,46 @@ for failed actions, concurrent confirmation applying exactly once, and complete
 subscription rollback on forced audit-insert failure. The temporary constraint
 was removed after verification. No real business records were changed.
 
+## API traffic dashboard
+
+Both endpoints require `SUPER_ADMIN`.
+
+### How traffic is recorded
+
+`ApiTrafficFilter` (outermost servlet filter, before rate limiting and Spring Security)
+measures every `/api/**` request except CORS preflight, so 401/429 responses are counted
+too. It records the Spring **route pattern** (e.g. `/api/stores/{storeId}/orders`) rather
+than the raw URL; requests rejected before reaching a controller are stored as
+`(unmatched)`. The business is taken from the `businessId`/`storeId` path variable
+(stores resolved to their business); `/api/admin/**` routes are not attributed to a
+business.
+
+`ApiTrafficRecorder` aggregates in memory and once a minute UPSERTs completed minutes into
+`api_traffic_minutely` (kept 2 days), `api_traffic_hourly` and
+`api_traffic_business_hourly` (kept 30 days) — see V11. Upserts add to existing rows, so
+several instances can write the same bucket. A failed write is logged and dropped; it never
+affects the request. The current minute is not persisted yet, so the dashboard lags by
+about 1–2 minutes. Response time is counted in buckets (≤50, ≤100, ≤250, ≤500, ≤1000,
+≤2500, ≤5000, >5000 ms); p50/p95/p99 are the upper bound of the bucket holding the
+percentile, `null` above 5000 ms.
+
+### GET `/api/admin/traffic?range=1h|24h|7d|30d`
+
+Default `24h`. `1h`/`24h` read the minute table (points of 1 / 15 minutes); `7d`/`30d`
+read the hourly table (points of 2 / 6 hours). Returns `summary` (requests, average per
+minute, 5xx, 4xx, 429, avg/p50/p95/p99/max ms), `series` (zero-filled points with
+requests, 4xx, 5xx, avg and p95), `statuses` (count per HTTP status), `endpoints` (top 50
+by requests, with 4xx/5xx, avg, p95, max) and `businesses` (top 20 by requests; for `1h`
+and `24h` the window starts at the top of the hour). An unknown `range` returns 400
+`VALIDATION_ERROR`.
+
+### GET `/api/admin/traffic/system`
+
+Live values of the instance that answered: overall health and per-component status
+(`db`, `redis`, …), uptime, heap used/max, process and machine CPU (0–1), live threads and
+Hikari pool active/idle/max/pending. Fields that cannot be measured are `null`. No history
+is kept; with several instances each call may hit a different one.
+
 ## Live verification (2026-10-06)
 
 The web repository contains `scripts/check-admin-live.mjs`. Set `ADMIN_USERNAME`

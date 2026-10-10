@@ -618,6 +618,28 @@
 
 > Không cho phép xoá — lịch sử billing.
 
+### `api_traffic_minutely`, `api_traffic_hourly` — Lưu lượng API (V11)
+| Tên cột | Kiểu | Ý nghĩa |
+|---|---|---|
+| `bucket_start` | TIMESTAMPTZ | Đầu phút (minutely) / đầu giờ (hourly) — PK cùng 3 cột dưới |
+| `method` | VARCHAR(10) | HTTP method |
+| `route` | VARCHAR(200) | Mẫu route Spring, hoặc `(unmatched)` khi request không tới controller |
+| `status` | SMALLINT | HTTP status |
+| `request_count`, `total_duration_ms`, `max_duration_ms` | BIGINT | Số request, tổng và lớn nhất thời gian xử lý |
+| `le_50` … `le_5000`, `gt_5000` | BIGINT | Số request theo khoảng thời gian xử lý (không chồng nhau) để ước lượng phân vị |
+
+> Ghi bằng UPSERT cộng dồn mỗi phút. Minutely giữ 2 ngày, hourly giữ 30 ngày (xóa bởi
+> `ApiTrafficRecorder.deleteExpired`, chạy mỗi giờ).
+
+### `api_traffic_business_hourly` — Lưu lượng API theo business (V11)
+| Tên cột | Kiểu | Ý nghĩa |
+|---|---|---|
+| `bucket_start` | TIMESTAMPTZ | Đầu giờ — PK cùng `business_id` |
+| `business_id` | BIGINT | Business (không FK — giữ số liệu kể cả khi business bị xóa) |
+| `request_count`, `error_count`, `total_duration_ms` | BIGINT | Số request, số 5xx, tổng thời gian xử lý |
+
+> Giữ 30 ngày. Không tính request `/api/admin/**`.
+
 ### `sync_change_log` — Nhật ký sync delta
 | Tên cột | Kiểu | Ràng buộc | Ý nghĩa |
 |---|---|---|---|
