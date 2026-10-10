@@ -2,6 +2,14 @@
 
 Giải thích cơ chế cache Redis dùng để tăng tốc kiểm tra quyền truy cập.
 
+> **Phạm vi:** doc này chỉ nói về cache phân quyền. Redis còn được dùng cho:
+> - **Rate limit** — bucket Bucket4j, key `rl:*` (VD `rl:login:<ip>`, `rl:user:api:<userId>`,
+>   `rl:login-account:user:<userId>`) — xem [RATE_LIMITING.md](RATE_LIMITING.md)
+> - **Idempotency khi tạo đơn** — key `idem:<userId>:<storeId>:<Idempotency-Key>`, lưu response 24h —
+>   xem [FEATURES.md](FEATURES.md) mục Idempotency Key
+>
+> Các key đó có TTL và cơ chế lỗi Redis riêng, không theo các quy tắc bên dưới.
+
 ---
 
 ## 1. Vấn đề không có cache
@@ -28,7 +36,7 @@ Có 4 loại key đang được cache:
 
 | Key | Giá trị | Ý nghĩa |
 |:----|:--------|:--------|
-| `business:role:{userId}:{businessId}` | `"ROLE_OWNER"` | User có phải OWNER của business này không |
+| `business:role:{userId}:{businessId}` | `"ROLE_OWNER"` hoặc `"ROLE_BUSINESS_MANAGER"` | Role cấp business của user (chủ hoặc trợ lý) |
 | `business:member:{userId}:{businessId}` | `"ROLE_MANAGER"` hoặc `"ROLE_STAFF"` | Role cao nhất của user qua store membership trong business |
 | `store:role:{userId}:{storeId}` | `"ROLE_MANAGER"` hoặc `"ROLE_STAFF"` | Role của user trong store cụ thể này |
 | `store:business:{storeId}` | `"42"` (businessId dạng string) | Store này thuộc business nào |
