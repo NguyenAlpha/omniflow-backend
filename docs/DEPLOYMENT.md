@@ -292,6 +292,9 @@ kịch bản dọn dữ liệu rõ ràng.
 - [ ] Frontend origin hợp lệ gọi được API; origin lạ bị CORS chặn.
 - [ ] Login và refresh token hoạt động với test account.
 - [ ] Rate limit trả header đúng và không tin cậy `X-Forwarded-For` từ client trực tiếp.
+- [ ] Dashboard lưu lượng (`/api/admin/traffic`) có số liệu sau ~2 phút. Bảng `api_traffic_*` (V11) tự dọn
+      theo lịch (`api-traffic.cleanup-cron`: theo phút giữ 2 ngày, theo giờ giữ 30 ngày) — không cần job ngoài;
+      nhiều instance ghi cùng bucket thời gian được cộng dồn (UPSERT), không bị ghi đè.
 - [ ] Email hoạt động nếu SMTP đã được cấu hình.
 - [ ] Seed đã được tắt.
 - [ ] Dashboard/alert theo dõi CPU, memory, disk và HTTP 5xx đã được bật.
