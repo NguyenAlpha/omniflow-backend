@@ -122,6 +122,35 @@ class RateLimitServiceTest {
     }
 
     @Test
+    void peekReportsQuotaWithoutConsumingIt() {
+        var service = new RateLimitService(manager, metrics, 1, 5000);
+        for (int peek = 0; peek < 3; peek++) {
+            assertThat(service.peek("peek", config(1), "account", "login-account", false).probe().isConsumed()).isTrue();
+        }
+        assertThat(service.check("peek", config(1), "account", "login-account").probe().isConsumed()).isTrue();
+        var exhausted = service.peek("peek", config(1), "account", "login-account", false);
+        assertThat(exhausted.probe().isConsumed()).isFalse();
+        assertThat(exhausted.probe().getNanosToWaitForRefill()).isPositive();
+    }
+
+    @Test
+    @Timeout(5)
+    void localFallbackKeepsLimitingAuthQuotasWhileRedisIsDown() {
+        var clock = new AtomicLong(1000);
+        var service = new RateLimitService(manager, metrics, 1, 5000, clock::get);
+        redis.pause();
+
+        // Lần đầu Redis lỗi → chuyển sang bucket cục bộ ngay trong cùng request
+        assertThat(service.check("rl:login:ip", config(1), "ip", "login", true).probe().isConsumed()).isTrue();
+        // Đang cooldown → vẫn dùng bucket cục bộ, đã hết token nên chặn
+        assertThat(service.check("rl:login:ip", config(1), "ip", "login", true).probe().isConsumed()).isFalse();
+        assertThat(registry.get("rate_limit_requests_total").tag("outcome", "fallback_blocked").counter().count()).isEqualTo(1);
+        // Quota không bật fallback vẫn fail-open như cũ
+        assertThat(service.check("rl:ip:api:ip", config(1), "ip", "api")).isNull();
+        redis.resume();
+    }
+
+    @Test
     void rejectsInvalidOperationalSettings() {
         assertThatThrownBy(() -> new RateLimiterConfig().rateLimitProxyManager(redis.connection(), 0))
                 .isInstanceOf(IllegalArgumentException.class);

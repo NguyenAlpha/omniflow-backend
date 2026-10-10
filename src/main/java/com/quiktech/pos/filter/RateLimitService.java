@@ -1,7 +1,10 @@
 package com.quiktech.pos.filter;
 
+import io.github.bucket4j.Bandwidth;
+import io.github.bucket4j.Bucket;
 import io.github.bucket4j.BucketConfiguration;
 import io.github.bucket4j.ConsumptionProbe;
+import io.github.bucket4j.EstimationProbe;
 import io.github.bucket4j.TokensInheritanceStrategy;
 import io.github.bucket4j.redis.lettuce.cas.LettuceBasedProxyManager;
 import lombok.extern.slf4j.Slf4j;
@@ -11,6 +14,8 @@ import org.springframework.stereotype.Component;
 import org.springframework.util.Assert;
 
 import java.nio.charset.StandardCharsets;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.LongSupplier;
 
@@ -23,6 +28,10 @@ import java.util.function.LongSupplier;
  * trong {@code rate-limit.redis.cooldown-millis} (mặc định 5 giây) — giống một circuit
  * breaker đơn giản, tránh mọi request đều phải chờ timeout khi Redis đang sập. Cảnh báo
  * chỉ được log một lần cho mỗi đợt cooldown.
+ *
+ * <p>Ngoại lệ: caller có thể bật {@code localFallback} cho quota chống brute-force (login,
+ * register, refresh, đăng nhập sai theo tài khoản). Khi Redis lỗi, các quota này chuyển
+ * sang bucket trong bộ nhớ của từng instance thay vì cho qua toàn bộ.
  *
  * <p><b>Đổi cấu hình quota:</b> bucket đã có trong Redis giữ cấu hình cũ. Tăng
  * {@code rate-limit.config-version} để Bucket4j thay cấu hình của bucket cũ ở lần dùng kế
@@ -41,6 +50,18 @@ public class RateLimitService {
     private final LongSupplier clock;
     /** Mốc thời gian (ms) tới khi nào còn bỏ qua Redis; 0 = Redis đang hoạt động bình thường. */
     private final AtomicLong unavailableUntil = new AtomicLong();
+    /**
+     * Bucket cục bộ cho {@code localFallback} khi Redis lỗi. LRU có giới hạn: trong lúc Redis sập,
+     * request từ nhiều IP lạ không được làm phình bộ nhớ vô hạn (bucket cũ nhất bị loại).
+     * Truy cập phải {@code synchronized} vì LinkedHashMap access-order không thread-safe.
+     */
+    private final Map<String, Bucket> localBuckets = new LinkedHashMap<>(16, 0.75f, true) {
+        @Override
+        protected boolean removeEldestEntry(Map.Entry<String, Bucket> eldest) {
+            return size() > MAX_LOCAL_BUCKETS;
+        }
+    };
+    private static final int MAX_LOCAL_BUCKETS = 10_000;
 
     @Autowired
     public RateLimitService(LettuceBasedProxyManager<byte[]> proxyManager, RateLimitMetrics metrics,
@@ -73,18 +94,51 @@ public class RateLimitService {
      *         cooldown) — caller phải coi {@code null} là cho phép request đi tiếp
      */
     public Decision check(String key, BucketConfiguration config, String scope, String policy) {
+        return check(key, config, scope, policy, false);
+    }
+
+    /**
+     * Như {@link #check(String, BucketConfiguration, String, String)}, nhưng nếu
+     * {@code localFallback = true} thì khi Redis lỗi/cooldown vẫn giới hạn bằng bucket trong
+     * bộ nhớ của instance này thay vì cho qua. Dùng cho quota chống brute-force (login,
+     * register, refresh, số lần đăng nhập sai) — nơi fail-open để lộ lỗ hổng. Bucket cục bộ
+     * không chia sẻ giữa các instance nên quota thực tế là {@code capacity × số instance}.
+     *
+     * @return {@code null} chỉ khi bỏ qua kiểm tra và {@code localFallback = false}
+     */
+    public Decision check(String key, BucketConfiguration config, String scope, String policy, boolean localFallback) {
+        return run(key, config, scope, policy, localFallback, true);
+    }
+
+    /**
+     * Xem bucket còn token không mà <b>không trừ</b> — dùng cho quota chỉ trừ khi thao tác thất
+     * bại (VD đăng nhập sai: peek trước, sai mật khẩu mới gọi {@link #check}). Chỉ ghi metric
+     * khi bị chặn để counter {@code allowed} không bị đếm hai lần.
+     */
+    public Decision peek(String key, BucketConfiguration config, String scope, String policy, boolean localFallback) {
+        return run(key, config, scope, policy, localFallback, false);
+    }
+
+    private Decision run(String key, BucketConfiguration config, String scope, String policy,
+                         boolean localFallback, boolean consume) {
         if (clock.getAsLong() < unavailableUntil.get()) {
             metrics.record(scope, policy, "bypassed");
-            return null;
+            return localFallback ? local(key, config, scope, policy, consume) : null;
         }
 
         Decision decision;
         try {
             var bucket = proxyManager.builder()
                     .withImplicitConfigurationReplacement(configVersion, TokensInheritanceStrategy.PROPORTIONALLY)
-                    .build(key.getBytes(StandardCharsets.UTF_8), () -> config);
-            var result = bucket.asVerbose().tryConsumeAndReturnRemaining(1);
-            decision = new Decision(result.getValue(), result.getConfiguration().getBandwidths()[0].getCapacity());
+                    .build(key.getBytes(StandardCharsets.UTF_8), () -> config)
+                    .asVerbose();
+            if (consume) {
+                var result = bucket.tryConsumeAndReturnRemaining(1);
+                decision = new Decision(result.getValue(), capacity(result.getConfiguration()));
+            } else {
+                var result = bucket.estimateAbilityToConsume(1);
+                decision = new Decision(toProbe(result.getValue()), capacity(result.getConfiguration()));
+            }
         } catch (Exception failure) {
             long now = clock.getAsLong();
             long previous = unavailableUntil.getAndAccumulate(now + cooldownMillis, Math::max);
@@ -92,11 +146,48 @@ public class RateLimitService {
                 log.warn("Rate limit Redis check failed; bypassing checks for {} ms", cooldownMillis, failure);
             }
             metrics.record(scope, policy, "error");
-            return null;
+            return localFallback ? local(key, config, scope, policy, consume) : null;
         }
 
-        metrics.record(scope, policy, decision.probe().isConsumed() ? "allowed" : "blocked");
+        if (consume || !decision.probe().isConsumed()) {
+            metrics.record(scope, policy, decision.probe().isConsumed() ? "allowed" : "blocked");
+        }
         return decision;
+    }
+
+    // Bucket trong bộ nhớ khi Redis không dùng được — chỉ cho policy bật localFallback
+    private Decision local(String key, BucketConfiguration config, String scope, String policy, boolean consume) {
+        Bucket bucket;
+        synchronized (localBuckets) {
+            bucket = localBuckets.computeIfAbsent(key, ignored -> newLocalBucket(config));
+        }
+        ConsumptionProbe probe = consume
+                ? bucket.tryConsumeAndReturnRemaining(1)
+                : toProbe(bucket.estimateAbilityToConsume(1));
+        if (!probe.isConsumed()) {
+            metrics.record(scope, policy, "fallback_blocked");
+        }
+        return new Decision(probe, capacity(config));
+    }
+
+    private static Bucket newLocalBucket(BucketConfiguration config) {
+        var builder = Bucket.builder();
+        for (Bandwidth bandwidth : config.getBandwidths()) {
+            builder.addLimit(bandwidth);
+        }
+        return builder.build();
+    }
+
+    private static long capacity(BucketConfiguration config) {
+        return config.getBandwidths()[0].getCapacity();
+    }
+
+    // estimateAbilityToConsume trả EstimationProbe — đổi sang ConsumptionProbe để caller dùng chung Decision
+    private static ConsumptionProbe toProbe(EstimationProbe estimation) {
+        return estimation.canBeConsumed()
+                ? ConsumptionProbe.consumed(estimation.getRemainingTokens(), 0)
+                : ConsumptionProbe.rejected(estimation.getRemainingTokens(),
+                        estimation.getNanosToWaitForRefill(), estimation.getNanosToWaitForRefill());
     }
 
     /**

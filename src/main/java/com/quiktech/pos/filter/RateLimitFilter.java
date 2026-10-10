@@ -40,7 +40,8 @@ import java.util.Arrays;
  * <p>IP lấy qua {@link ClientIpResolver}: chỉ tin {@code X-Forwarded-For} khi request đến từ
  * proxy nằm trong {@code rate-limit.trusted-proxies}, tránh client tự giả IP để né quota.
  * Preflight {@code OPTIONS} của CORS không bị tính. Vượt quota → 429 qua
- * {@link RateLimitResponseWriter}; Redis lỗi → cho qua (xem {@link RateLimitService}).
+ * {@link RateLimitResponseWriter}. Redis lỗi → quota chung {@code /api/**} cho qua, còn
+ * login/register/refresh chuyển sang bucket cục bộ (xem {@link RateLimitService}).
  */
 @Component
 @Order(Ordered.HIGHEST_PRECEDENCE + 1)
@@ -136,19 +137,24 @@ public class RateLimitFilter extends OncePerRequestFilter {
         String bucketKey = null;
         BucketConfiguration config = null;
         String policy = null;
+        // Quota chống brute-force vẫn chặn bằng bucket cục bộ khi Redis lỗi (xem RateLimitService)
+        boolean localFallback = false;
 
         if ("POST".equals(request.getMethod()) && "/api/auth/login".equals(path)) {
             bucketKey = "rl:login:" + ip;
             config = loginConfig;
             policy = "login";
+            localFallback = true;
         } else if ("POST".equals(request.getMethod()) && "/api/auth/register".equals(path)) {
             bucketKey = "rl:register:" + ip;
             config = registerConfig;
             policy = "register";
+            localFallback = true;
         } else if ("POST".equals(request.getMethod()) && "/api/auth/refresh".equals(path)) {
             bucketKey = "rl:refresh:" + ip;
             config = refreshConfig;
             policy = "refresh";
+            localFallback = true;
         } else if (path.startsWith("/api/")) {
             // Coarse per-IP ceiling for every application API request. Authenticated
             // traffic receives a second, fairer per-user limit after JWT validation.
@@ -158,7 +164,7 @@ public class RateLimitFilter extends OncePerRequestFilter {
         }
 
         if (bucketKey != null) {
-            RateLimitService.Decision decision = rateLimitService.check(bucketKey, config, "ip", policy);
+            RateLimitService.Decision decision = rateLimitService.check(bucketKey, config, "ip", policy, localFallback);
             if (decision != null && !decision.probe().isConsumed()) {
                 RateLimitResponseWriter.write(response, decision.probe(), decision.limit());
                 return;

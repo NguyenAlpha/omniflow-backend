@@ -12,9 +12,11 @@ import org.springframework.stereotype.Component;
  *   <li>{@code scope}: {@code ip} hoặc {@code user}</li>
  *   <li>{@code policy}: tên quota, VD {@code login}, {@code api}, {@code export}</li>
  *   <li>{@code outcome}: {@code allowed} (còn quota), {@code blocked} (trả 429),
- *       {@code error} (lệnh Redis lỗi), {@code bypassed} (bỏ qua vì đang cooldown sau lỗi Redis)</li>
+ *       {@code error} (lệnh Redis lỗi), {@code bypassed} (bỏ qua vì đang cooldown sau lỗi Redis),
+ *       {@code fallback_blocked} (Redis lỗi nhưng bucket cục bộ vẫn chặn — chỉ quota bật localFallback)</li>
  * </ul>
- * {@code error}/{@code bypassed} tăng nghĩa là rate limit đang tạm tắt (fail-open) — nên đặt cảnh báo.
+ * {@code error}/{@code bypassed} tăng nghĩa là Redis không dùng được: quota thường đang tạm tắt
+ * (fail-open), quota xác thực chạy bằng bucket cục bộ của từng instance — nên đặt cảnh báo.
  *
  * <p>Tuyệt đối không thêm user ID, IP, path chứa ID hay header của request làm tag: vừa lộ
  * dữ liệu, vừa tạo ra số time series Prometheus không giới hạn.
