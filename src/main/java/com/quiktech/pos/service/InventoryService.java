@@ -1,6 +1,8 @@
 package com.quiktech.pos.service;
 
 import com.quiktech.pos.dto.request.inventory.InventoryAdjustRequest;
+import com.quiktech.pos.dto.request.inventory.InventoryBulkAdjustRequest;
+import com.quiktech.pos.dto.request.inventory.InventoryBulkTransferRequest;
 import com.quiktech.pos.dto.request.inventory.InventoryTransferRequest;
 import com.quiktech.pos.dto.response.common.ErrorCode;
 import com.quiktech.pos.dto.response.inventory.InventoryResponse;
@@ -17,7 +19,10 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 
 @Service
@@ -69,6 +74,54 @@ public class InventoryService {
 
         User userRef = userRepository.getReferenceById(currentUser.userId());
 
+        return toTxResponse(applyAdjustment(store, product, warehouse, request.quantity(), request.note(), userRef));
+    }
+
+    /**
+     * Điều chỉnh nhiều product trong một kho, all-or-nothing: một dòng lỗi (product không
+     * thuộc business, tồn kho âm) → exception rollback cả lô, không có dòng nào được ghi.
+     */
+    @Auditable(action = "BULK_ADJUST_INVENTORY", entityType = "INVENTORY")
+    @Transactional
+    public List<InventoryTransactionResponse> bulkAdjust(Long storeId, InventoryBulkAdjustRequest request, UserPrincipal currentUser) {
+        Store store = findStoreOrThrow(storeId);
+
+        Warehouse warehouse = warehouseRepository.findByPublicIdAndStoreId(request.warehousePublicId(), storeId)
+                .orElseThrow(() -> new ResourceNotFoundException(ErrorCode.WAREHOUSE_NOT_FOUND, "Warehouse not found"));
+
+        // Validate cả lô trước khi ghi. Trùng product → dòng sau tính trên previousQuantity
+        // đã bị dòng trước đổi, khó hiểu cho user
+        Set<UUID> seen = new HashSet<>();
+        for (InventoryBulkAdjustRequest.Item item : request.items()) {
+            if (!seen.add(item.productPublicId())) {
+                throw new IllegalArgumentException("Duplicate product in adjustment: " + item.productPublicId());
+            }
+            // DB có CHECK quantity <> 0 — chặn ở đây để trả 400 thay vì lỗi constraint 500
+            if (item.quantity().signum() == 0) {
+                throw new IllegalArgumentException("Adjustment quantity must not be zero: " + item.productPublicId());
+            }
+        }
+
+        User userRef = userRepository.getReferenceById(currentUser.userId());
+
+        List<InventoryTransactionResponse> result = new ArrayList<>();
+        for (InventoryBulkAdjustRequest.Item item : request.items()) {
+            // Product thuộc scope business → lookup scoped để chống IDOR
+            Product product = productRepository.findByBusinessIdAndPublicId(store.getBusiness().getId(), item.productPublicId())
+                    .orElseThrow(() -> new ResourceNotFoundException(ErrorCode.PRODUCT_NOT_FOUND, "Product not found: " + item.productPublicId()));
+            try {
+                result.add(toTxResponse(applyAdjustment(store, product, warehouse, item.quantity(), request.note(), userRef)));
+            } catch (IllegalArgumentException e) {
+                // Gắn tên product để UI chỉ ra được dòng nào sai
+                throw new IllegalArgumentException(product.getName() + " (" + product.getSku() + "): " + e.getMessage());
+            }
+        }
+        return result;
+    }
+
+    // Logic điều chỉnh 1 dòng dùng chung cho adjust và bulkAdjust — caller đã lookup scoped product/warehouse
+    private InventoryTransaction applyAdjustment(Store store, Product product, Warehouse warehouse,
+                                                 BigDecimal quantity, String note, User userRef) {
         Inventory inv = inventoryRepository
                 .findByProductIdAndWarehouseId(product.getId(), warehouse.getId())
                 .orElseGet(() -> Inventory.builder()
@@ -81,7 +134,7 @@ public class InventoryService {
                         .build());
 
         BigDecimal previousQuantity = inv.getQuantity();
-        BigDecimal newQuantity = previousQuantity.add(request.quantity());
+        BigDecimal newQuantity = previousQuantity.add(quantity);
         // Delta âm không được đẩy tồn kho xuống dưới 0 — kho âm phá invariant của deduct/transfer
         if (newQuantity.compareTo(BigDecimal.ZERO) < 0) {
             throw new IllegalArgumentException("Adjustment would result in negative stock");
@@ -98,14 +151,14 @@ public class InventoryService {
                 .product(product)
                 .warehouse(warehouse)
                 .type(InventoryTransactionType.ADJUSTMENT)
-                .quantity(request.quantity())
+                .quantity(quantity)
                 .previousQuantity(previousQuantity)
-                .note(request.note())
+                .note(note)
                 .createdBy(userRef)
                 .build();
         inventoryTransactionRepository.save(tx);
 
-        return toTxResponse(tx);
+        return tx;
     }
 
     @Auditable(action = "TRANSFER_INVENTORY", entityType = "INVENTORY")
@@ -133,15 +186,71 @@ public class InventoryService {
 
         User userRef = userRepository.getReferenceById(currentUser.userId());
 
+        return applyTransfer(store, product, fromWarehouse, toWarehouse, request.quantity(), request.note(), userRef)
+                .stream().map(this::toTxResponse).toList();
+    }
+
+    /**
+     * Chuyển nhiều product từ một kho sang một kho khác, all-or-nothing: một dòng lỗi (product
+     * không thuộc business, không đủ tồn kho nguồn) → exception rollback cả lô.
+     */
+    @Auditable(action = "BULK_TRANSFER_INVENTORY", entityType = "INVENTORY")
+    @Transactional
+    public List<InventoryTransactionResponse> bulkTransfer(Long storeId, InventoryBulkTransferRequest request, UserPrincipal currentUser) {
+        Store store = findStoreOrThrow(storeId);
+
+        if (request.fromWarehousePublicId().equals(request.toWarehousePublicId())) {
+            throw new IllegalArgumentException("Source and destination warehouse must be different");
+        }
+
+        Warehouse fromWarehouse = warehouseRepository.findByPublicIdAndStoreId(request.fromWarehousePublicId(), storeId)
+                .orElseThrow(() -> new ResourceNotFoundException(ErrorCode.WAREHOUSE_NOT_FOUND, "Source warehouse not found"));
+
+        Warehouse toWarehouse = warehouseRepository.findByPublicIdAndStoreId(request.toWarehousePublicId(), storeId)
+                .orElseThrow(() -> new ResourceNotFoundException(ErrorCode.WAREHOUSE_NOT_FOUND, "Destination warehouse not found"));
+        // Không chuyển hàng vào kho inactive; chuyển RA vẫn cho phép để rút hàng trước khi xóa kho
+        if (!toWarehouse.getIsActive()) {
+            throw new IllegalArgumentException("Destination warehouse is inactive");
+        }
+
+        Set<UUID> seen = new HashSet<>();
+        for (InventoryBulkTransferRequest.Item item : request.items()) {
+            if (!seen.add(item.productPublicId())) {
+                throw new IllegalArgumentException("Duplicate product in transfer: " + item.productPublicId());
+            }
+        }
+
+        User userRef = userRepository.getReferenceById(currentUser.userId());
+
+        List<InventoryTransactionResponse> result = new ArrayList<>();
+        for (InventoryBulkTransferRequest.Item item : request.items()) {
+            // Product thuộc scope business → lookup scoped để chống IDOR
+            Product product = productRepository.findByBusinessIdAndPublicId(store.getBusiness().getId(), item.productPublicId())
+                    .orElseThrow(() -> new ResourceNotFoundException(ErrorCode.PRODUCT_NOT_FOUND, "Product not found: " + item.productPublicId()));
+            try {
+                applyTransfer(store, product, fromWarehouse, toWarehouse, item.quantity(), request.note(), userRef)
+                        .forEach(tx -> result.add(toTxResponse(tx)));
+            } catch (IllegalStateException e) {
+                // Gắn tên product để chỉ ra được dòng nào không đủ tồn kho
+                throw new IllegalStateException(product.getName() + " (" + product.getSku() + "): " + e.getMessage());
+            }
+        }
+        return result;
+    }
+
+    // Logic chuyển 1 product dùng chung cho transfer và bulkTransfer — caller đã lookup scoped
+    // product/warehouse và kiểm tra kho đích active. Trả về [chân xuất, chân nhập].
+    private List<InventoryTransaction> applyTransfer(Store store, Product product, Warehouse fromWarehouse, Warehouse toWarehouse,
+                                                     BigDecimal quantity, String note, User userRef) {
         Inventory fromInv = inventoryRepository.findByProductIdAndWarehouseId(product.getId(), fromWarehouse.getId())
                 .orElseThrow(() -> new ResourceNotFoundException(ErrorCode.INVENTORY_NOT_FOUND, "No inventory found in source warehouse"));
 
-        if (fromInv.getQuantity().compareTo(request.quantity()) < 0) {
+        if (fromInv.getQuantity().compareTo(quantity) < 0) {
             throw new IllegalStateException("Insufficient stock in source warehouse");
         }
 
         BigDecimal fromPrev = fromInv.getQuantity();
-        fromInv.setQuantity(fromPrev.subtract(request.quantity()));
+        fromInv.setQuantity(fromPrev.subtract(quantity));
         fromInv.setLastModifiedAt(Instant.now());
         fromInv.setUpdatedAt(Instant.now());
         fromInv.setLastModifiedByUser(userRef);
@@ -159,7 +268,7 @@ public class InventoryService {
                         .build());
 
         BigDecimal toPrev = toInv.getQuantity();
-        toInv.setQuantity(toPrev.add(request.quantity()));
+        toInv.setQuantity(toPrev.add(quantity));
         toInv.setLastModifiedAt(Instant.now());
         toInv.setUpdatedAt(Instant.now());
         toInv.setLastModifiedByUser(userRef);
@@ -167,21 +276,20 @@ public class InventoryService {
 
         productRepository.recalculateTotalStock(product.getId());
 
-        String note = request.note();
         InventoryTransaction outTx = InventoryTransaction.builder()
                 .store(store).product(product).warehouse(fromWarehouse)
-                .type(InventoryTransactionType.TRANSFER).quantity(request.quantity().negate()).previousQuantity(fromPrev)
+                .type(InventoryTransactionType.TRANSFER).quantity(quantity.negate()).previousQuantity(fromPrev)
                 .note(note).createdBy(userRef).build();
 
         InventoryTransaction inTx = InventoryTransaction.builder()
                 .store(store).product(product).warehouse(toWarehouse)
-                .type(InventoryTransactionType.TRANSFER).quantity(request.quantity()).previousQuantity(toPrev)
+                .type(InventoryTransactionType.TRANSFER).quantity(quantity).previousQuantity(toPrev)
                 .note(note).createdBy(userRef).build();
 
         inventoryTransactionRepository.save(outTx);
         inventoryTransactionRepository.save(inTx);
 
-        return List.of(toTxResponse(outTx), toTxResponse(inTx));
+        return List.of(outTx, inTx);
     }
 
     private Store findStoreOrThrow(Long storeId) {

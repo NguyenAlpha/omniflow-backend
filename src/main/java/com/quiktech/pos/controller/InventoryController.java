@@ -1,6 +1,8 @@
 package com.quiktech.pos.controller;
 
 import com.quiktech.pos.dto.request.inventory.InventoryAdjustRequest;
+import com.quiktech.pos.dto.request.inventory.InventoryBulkAdjustRequest;
+import com.quiktech.pos.dto.request.inventory.InventoryBulkTransferRequest;
 import com.quiktech.pos.dto.request.inventory.InventoryTransferRequest;
 import com.quiktech.pos.dto.response.common.ApiResult;
 import com.quiktech.pos.dto.response.inventory.InventoryResponse;
@@ -53,6 +55,15 @@ public class InventoryController {
         return ResponseEntity.ok(ApiResult.ok(inventoryService.adjust(storeId, request, currentUser)));
     }
 
+    @PostMapping("/adjust/bulk")
+    @PreAuthorize("@storeAccess.isOwnerOrManager(#storeId, authentication)")
+    public ResponseEntity<ApiResult<List<InventoryTransactionResponse>>> bulkAdjust(
+            @PathVariable Long storeId,
+            @Valid @RequestBody InventoryBulkAdjustRequest request,
+            @AuthenticationPrincipal UserPrincipal currentUser) {
+        return ResponseEntity.ok(ApiResult.ok(inventoryService.bulkAdjust(storeId, request, currentUser)));
+    }
+
     @PostMapping("/transfer")
     @PreAuthorize("@storeAccess.isOwnerOrManager(#storeId, authentication)")
     public ResponseEntity<ApiResult<List<InventoryTransactionResponse>>> transfer(
@@ -60,5 +71,14 @@ public class InventoryController {
             @Valid @RequestBody InventoryTransferRequest request,
             @AuthenticationPrincipal UserPrincipal currentUser) {
         return ResponseEntity.ok(ApiResult.ok(inventoryService.transfer(storeId, request, currentUser)));
+    }
+
+    @PostMapping("/transfer/bulk")
+    @PreAuthorize("@storeAccess.isOwnerOrManager(#storeId, authentication)")
+    public ResponseEntity<ApiResult<List<InventoryTransactionResponse>>> bulkTransfer(
+            @PathVariable Long storeId,
+            @Valid @RequestBody InventoryBulkTransferRequest request,
+            @AuthenticationPrincipal UserPrincipal currentUser) {
+        return ResponseEntity.ok(ApiResult.ok(inventoryService.bulkTransfer(storeId, request, currentUser)));
     }
 }
