@@ -68,6 +68,9 @@ public enum ErrorCode {
     // Rate limiting
     RATE_LIMIT_EXCEEDED,
 
+    // Idempotency-Key: request trùng key đang được xử lý
+    IDEMPOTENCY_REQUEST_IN_PROGRESS,
+
     // Validation
     VALIDATION_ERROR,
 

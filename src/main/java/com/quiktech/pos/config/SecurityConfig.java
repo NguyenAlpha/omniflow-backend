@@ -3,6 +3,7 @@ package com.quiktech.pos.config;
 import com.quiktech.pos.security.StoreAccessEvaluator;
 import com.quiktech.pos.security.UserPrincipalConverter;
 import com.quiktech.pos.filter.AuthenticatedRateLimitFilter;
+import com.quiktech.pos.filter.IdempotencyFilter;
 import com.quiktech.pos.filter.RateLimitService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
@@ -19,6 +20,7 @@ import org.springframework.security.oauth2.server.resource.web.authentication.Be
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.boot.web.servlet.FilterRegistrationBean;
 
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
 
@@ -68,7 +70,8 @@ public class SecurityConfig {
      */
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http,
-                                                   AuthenticatedRateLimitFilter authenticatedRateLimitFilter) throws Exception {
+                                                   AuthenticatedRateLimitFilter authenticatedRateLimitFilter,
+                                                   IdempotencyFilter idempotencyFilter) throws Exception {
         return http
                 .cors(AbstractHttpConfigurer::disable)
                 // CSRF không cần thiết với stateless JWT — không có cookie session để exploit
@@ -81,7 +84,10 @@ public class SecurityConfig {
                         .requestMatchers("/api/auth/login", "/api/auth/register", "/api/auth/refresh").permitAll()
                         // Bảng giá/giới hạn gói — trang landing hiển thị cho khách chưa đăng nhập
                         .requestMatchers(HttpMethod.GET, "/api/plans").permitAll()
+                        // /actuator/** chỉ còn trên management port (mạng nội bộ, xem management.server.port);
+                        // /livez, /readyz là health probe trên port chính cho Docker/load balancer
                         .requestMatchers("/actuator/**").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/livez", "/readyz").permitAll()
                         .requestMatchers("/swagger-ui/**", "/swagger-ui.html", "/v3/api-docs/**").permitAll()
                         // Mọi request còn lại bắt buộc phải có JWT hợp lệ
                         .anyRequest().authenticated()
@@ -113,6 +119,9 @@ public class SecurityConfig {
                 // Phải chạy sau BearerTokenAuthenticationFilter để quota theo userId đã
                 // được xác thực, không theo IP dùng chung của nhiều máy trong một store.
                 .addFilterAfter(authenticatedRateLimitFilter, BearerTokenAuthenticationFilter.class)
+                // Sau rate limit theo user: response đã lưu chỉ trả cho request có JWT hợp lệ,
+                // và request trùng vẫn bị tính quota
+                .addFilterAfter(idempotencyFilter, AuthenticatedRateLimitFilter.class)
 
                 .build();
     }
@@ -132,5 +141,18 @@ public class SecurityConfig {
     @Bean
     public AuthenticatedRateLimitFilter authenticatedRateLimitFilter(RateLimitService rateLimitService) {
         return new AuthenticatedRateLimitFilter(rateLimitService);
+    }
+
+    /** Giống AuthenticatedRateLimitFilter: chỉ chạy trong Spring Security chain, sau khi xác thực JWT. */
+    @Bean
+    public static FilterRegistrationBean<IdempotencyFilter> idempotencyFilterRegistration(IdempotencyFilter filter) {
+        FilterRegistrationBean<IdempotencyFilter> registration = new FilterRegistrationBean<>(filter);
+        registration.setEnabled(false);
+        return registration;
+    }
+
+    @Bean
+    public IdempotencyFilter idempotencyFilter(StringRedisTemplate stringRedisTemplate) {
+        return new IdempotencyFilter(stringRedisTemplate);
     }
 }

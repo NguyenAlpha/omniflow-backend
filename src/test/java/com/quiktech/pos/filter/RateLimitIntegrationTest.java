@@ -5,6 +5,7 @@ import com.quiktech.pos.config.RateLimiterConfig;
 import com.quiktech.pos.config.SecurityConfig;
 import com.quiktech.pos.controller.ExportController;
 import com.quiktech.pos.repository.UserRepository;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import com.quiktech.pos.security.ClientIpResolver;
 import com.quiktech.pos.security.StoreAccessEvaluator;
 import com.quiktech.pos.service.ExportService;
@@ -221,6 +222,10 @@ class RateLimitIntegrationTest {
 
         @Bean
         UserRepository userRepository() { return mock(UserRepository.class); }
+
+        // SecurityConfig cần IdempotencyFilter; test này không gửi Idempotency-Key nên Redis không được gọi
+        @Bean
+        StringRedisTemplate stringRedisTemplate() { return mock(StringRedisTemplate.class); }
 
         @Bean
         ExportService exportService() {
