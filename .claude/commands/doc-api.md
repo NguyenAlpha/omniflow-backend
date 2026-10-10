@@ -14,7 +14,7 @@ Ví dụ: `/doc-api BusinessController`
 
 ## Quy trình thực hiện
 
-1. Đọc file controller: `src/main/java/com/quiktech/backend/controller/<ControllerName>.java`
+1. Đọc file controller: `src/main/java/com/quiktech/pos/controller/<ControllerName>.java`
 2. Đọc tất cả DTO liên quan:
    - `dto/request/**` — các request class được dùng trong controller
    - `dto/response/**` — các response class được trả về
