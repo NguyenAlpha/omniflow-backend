@@ -45,8 +45,9 @@ public class LoginAttemptLimiter {
      * <b>toàn bộ</b> lượt cùng một lúc ({@code refillIntervally}) — không nạp dần từng lượt. Vì vậy
      * khi đã hết lượt, phải chờ tới mốc nạp kế tiếp (thời gian chờ trả về trong header {@code Retry-After}).
      *
-     * <p>Hai property này hiện <b>không khai báo</b> trong {@code application.properties} — giá trị
-     * đang dùng là giá trị mặc định ghi trong {@code @Value} bên dưới.
+     * <p>Ghi đè qua biến môi trường {@code RATE_LIMIT_LOGIN_ACCOUNT_MAX_FAILURES} /
+     * {@code RATE_LIMIT_LOGIN_ACCOUNT_WINDOW_SECONDS} (xem {@code .env.example}); không có thì dùng
+     * giá trị mặc định trong {@code @Value} bên dưới.
      *
      * @param rateLimitService service đếm/trừ lượt trên Redis, dùng chung với các rate limit khác
      * @param maxFailures      số lần đăng nhập sai tối đa ({@code rate-limit.login-account.max-failures})

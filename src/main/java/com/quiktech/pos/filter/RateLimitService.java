@@ -88,7 +88,7 @@ public class RateLimitService {
      * @param key    key Redis của bucket, VD {@code rl:login:<ip>}, {@code rl:user:api:<userId>}
      * @param config capacity và chu kỳ nạp lại — chỉ dùng khi tạo bucket hoặc khi
      *               {@code configVersion} tăng
-     * @param scope  tag metric: {@code ip} hoặc {@code user}
+     * @param scope  tag metric: {@code ip}, {@code user} hoặc {@code account} (đăng nhập sai theo tài khoản)
      * @param policy tag metric: tên quota, VD {@code login}, {@code api}, {@code export}
      * @return kết quả trừ token; {@code null} khi bỏ qua kiểm tra (Redis lỗi hoặc đang
      *         cooldown) — caller phải coi {@code null} là cho phép request đi tiếp
