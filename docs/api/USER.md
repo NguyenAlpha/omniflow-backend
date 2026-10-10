@@ -39,7 +39,6 @@ Dùng chung cho các endpoint trả về thông tin người dùng.
 ```json
 {
   "id": 2,
-  "publicId": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
   "username": "nguyen.an",
   "email": "an@coffee.vn",
   "fullName": "Nguyễn Văn An",
@@ -61,7 +60,6 @@ Lấy thông tin profile của người dùng hiện tại.
   "success": true,
   "data": {
     "id": 2,
-    "publicId": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
     "username": "nguyen.an",
     "email": "an@coffee.vn",
     "fullName": "Nguyễn Văn An",
@@ -144,7 +142,6 @@ Cập nhật thông tin profile của người dùng hiện tại.
   "success": true,
   "data": {
     "id": 2,
-    "publicId": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
     "username": "nguyen.an",
     "email": "an@coffee.vn",
     "fullName": "Nguyễn Văn An",

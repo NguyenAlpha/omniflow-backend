@@ -69,9 +69,8 @@ public class AuthResponseAssembler {
                 "roles", globalRoles
         ));
 
-        // publicId truyền null vì entity User chưa có cột publicId
         UserSummaryResponse userSummary = new UserSummaryResponse(
-                user.getId(), null, user.getUsername(), user.getEmail(),
+                user.getId(), user.getUsername(), user.getEmail(),
                 user.getFullName(), user.getPhone(), user.getIsActive()
         );
 

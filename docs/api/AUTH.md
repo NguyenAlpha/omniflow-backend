@@ -68,7 +68,6 @@ Tạo tài khoản mới. Trả về access token, refresh token và thông tin 
     "expiresIn": 3600,
     "user": {
       "id": 2,
-      "publicId": null,
       "username": "nguyen.an",
       "email": "an@coffee.vn",
       "fullName": "Nguyễn Văn An",
@@ -126,7 +125,6 @@ Tạo tài khoản mới. Trả về access token, refresh token và thông tin 
     "expiresIn": 3600,
     "user": {
       "id": 2,
-      "publicId": null,
       "username": "nguyen.an",
       "email": "an@coffee.vn",
       "fullName": "Nguyễn Văn An",
@@ -158,8 +156,6 @@ Tạo tài khoản mới. Trả về access token, refresh token và thông tin 
   "error": null
 }
 ```
-
-> `user.publicId` hiện luôn là `null` trong response của nhóm Auth — dùng `user.id`.
 
 ### Trường `memberships` theo từng loại role
 

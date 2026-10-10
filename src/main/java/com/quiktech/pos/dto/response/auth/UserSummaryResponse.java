@@ -1,10 +1,7 @@
 package com.quiktech.pos.dto.response.auth;
 
-import java.util.UUID;
-
 public record UserSummaryResponse(
     Long id,
-    UUID publicId,
     String username,
     String email,
     String fullName,
@@ -12,4 +9,3 @@ public record UserSummaryResponse(
     Boolean isActive
 ) {
 }
-

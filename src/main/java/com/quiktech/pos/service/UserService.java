@@ -212,7 +212,6 @@ public class UserService {
     private UserSummaryResponse toResponse(User user) {
         return new UserSummaryResponse(
                 user.getId(),
-                null,
                 user.getUsername(),
                 user.getEmail(),
                 user.getFullName(),
