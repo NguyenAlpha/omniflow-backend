@@ -181,6 +181,10 @@ List<Product> findByStoreId(Long storeId);
 □ Pagination: controller size param có @Max(100) @Min(1) và class có @Validated
 □ String column có tập giá trị cố định → dùng enum với @Enumerated(EnumType.STRING)
 □ Entity có syncVersion → phải có @Version annotation
+□ Endpoint nặng (import, export, ghi hàng loạt) → thêm quota riêng trong AuthenticatedRateLimitFilter
+  (mặc định chỉ chịu quota chung 300/phút/user) — xem RATE_LIMITING.md
+□ Path variable đặt đúng tên {businessId} / {storeId} → dashboard lưu lượng (ApiTrafficFilter)
+  mới gán được request cho business; route được ghi tự động theo pattern, không cần code thêm
 ```
 
 ---
