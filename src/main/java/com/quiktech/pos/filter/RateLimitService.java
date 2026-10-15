@@ -8,6 +8,7 @@ import io.github.bucket4j.EstimationProbe;
 import io.github.bucket4j.TokensInheritanceStrategy;
 import io.github.bucket4j.redis.lettuce.cas.LettuceBasedProxyManager;
 import lombok.extern.slf4j.Slf4j;
+import org.jspecify.annotations.Nullable;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
@@ -33,6 +34,9 @@ import java.util.function.LongSupplier;
  * register, refresh, đăng nhập sai theo tài khoản). Khi Redis lỗi, các quota này chuyển
  * sang bucket trong bộ nhớ của từng instance thay vì cho qua toàn bộ.
  *
+ * <p><b>Redis tắt</b> ({@code redis.enabled=false}): không có {@code proxyManager}, mọi quota
+ * dùng bucket trong bộ nhớ — chỉ giới hạn đúng khi chạy một instance.
+ *
  * <p><b>Đổi cấu hình quota:</b> bucket đã có trong Redis giữ cấu hình cũ. Tăng
  * {@code rate-limit.config-version} để Bucket4j thay cấu hình của bucket cũ ở lần dùng kế
  * tiếp, giữ số token còn lại theo tỉ lệ ({@code PROPORTIONALLY}) — không reset quota
@@ -42,7 +46,8 @@ import java.util.function.LongSupplier;
 @Component
 public class RateLimitService {
 
-    private final LettuceBasedProxyManager<byte[]> proxyManager;
+    /** {@code null} khi {@code redis.enabled=false}. */
+    private final @Nullable LettuceBasedProxyManager<byte[]> proxyManager;
     private final RateLimitMetrics metrics;
     private final long configVersion;
     private final long cooldownMillis;
@@ -64,14 +69,14 @@ public class RateLimitService {
     private static final int MAX_LOCAL_BUCKETS = 10_000;
 
     @Autowired
-    public RateLimitService(LettuceBasedProxyManager<byte[]> proxyManager, RateLimitMetrics metrics,
+    public RateLimitService(@Nullable LettuceBasedProxyManager<byte[]> proxyManager, RateLimitMetrics metrics,
                             @Value("${rate-limit.config-version:1}") long configVersion,
                             @Value("${rate-limit.redis.cooldown-millis:5000}") long cooldownMillis) {
         this(proxyManager, metrics, configVersion, cooldownMillis, System::currentTimeMillis);
     }
 
     /** Constructor cho test — nhận {@code clock} giả để kiểm tra cooldown mà không phải chờ thật. */
-    RateLimitService(LettuceBasedProxyManager<byte[]> proxyManager, RateLimitMetrics metrics,
+    RateLimitService(@Nullable LettuceBasedProxyManager<byte[]> proxyManager, RateLimitMetrics metrics,
                      long configVersion, long cooldownMillis, LongSupplier clock) {
         Assert.isTrue(configVersion > 0, "rate-limit.config-version must be positive");
         Assert.isTrue(cooldownMillis > 0, "rate-limit.redis.cooldown-millis must be positive");
@@ -121,6 +126,9 @@ public class RateLimitService {
 
     private Decision run(String key, BucketConfiguration config, String scope, String policy,
                          boolean localFallback, boolean consume) {
+        if (proxyManager == null) {
+            return local(key, config, scope, policy, consume);
+        }
         if (clock.getAsLong() < unavailableUntil.get()) {
             metrics.record(scope, policy, "bypassed");
             return localFallback ? local(key, config, scope, policy, consume) : null;

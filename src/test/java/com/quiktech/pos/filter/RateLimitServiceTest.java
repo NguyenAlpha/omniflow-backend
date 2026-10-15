@@ -42,6 +42,15 @@ class RateLimitServiceTest {
     }
 
     @Test
+    void limitsInMemoryWhenRedisDisabled() {
+        var service = new RateLimitService(null, metrics, 1, 5000);
+
+        assertThat(service.check("ip", config(2), "ip", "api").probe().isConsumed()).isTrue();
+        assertThat(service.check("ip", config(2), "ip", "api").probe().isConsumed()).isTrue();
+        assertThat(service.check("ip", config(2), "ip", "api").probe().isConsumed()).isFalse();
+    }
+
+    @Test
     void updatesQuotaProportionallyAndOldInstanceCannotDowngradeIt() {
         var oldInstance = new RateLimitService(manager, metrics, 1, 5000);
         for (int count = 0; count < 5; count++) {

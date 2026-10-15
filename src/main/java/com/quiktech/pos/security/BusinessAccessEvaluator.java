@@ -33,6 +33,10 @@ public class BusinessAccessEvaluator {
     @Value("${store.role.cache.ttl:300}")
     private long cacheTtlSeconds;
 
+    /** {@code false} (env {@code REDIS_ENABLED=false}): bỏ qua cache, luôn đọc DB. */
+    @Value("${redis.enabled:true}")
+    private boolean redisEnabled;
+
     /**
      * Kiểm tra user có thuộc business không — OWNER hoặc MANAGER/STAFF của bất kỳ store trong business.
      */
@@ -81,10 +85,12 @@ public class BusinessAccessEvaluator {
      * business membership đã commit.
      */
     public void evictBusinessRoleCache(Long userId, Long businessId) {
-        try {
-            redisTemplate.delete(businessRoleCacheKey(userId, businessId));
-        } catch (Exception ignored) {
-            // Redis down — cache sẽ expire tự nhiên sau TTL
+        if (redisEnabled) {
+            try {
+                redisTemplate.delete(businessRoleCacheKey(userId, businessId));
+            } catch (Exception ignored) {
+                // Redis down — cache sẽ expire tự nhiên sau TTL
+            }
         }
     }
 
@@ -93,10 +99,12 @@ public class BusinessAccessEvaluator {
      * store membership (add/update/remove store member) đã commit.
      */
     public void evictBusinessMemberCache(Long userId, Long businessId) {
-        try {
-            redisTemplate.delete(businessMemberCacheKey(userId, businessId));
-        } catch (Exception ignored) {
-            // Redis down — cache sẽ expire tự nhiên sau TTL
+        if (redisEnabled) {
+            try {
+                redisTemplate.delete(businessMemberCacheKey(userId, businessId));
+            } catch (Exception ignored) {
+                // Redis down — cache sẽ expire tự nhiên sau TTL
+            }
         }
     }
 
@@ -109,11 +117,13 @@ public class BusinessAccessEvaluator {
     private RoleName resolveBusinessRoleWithCache(Long userId, Long businessId) {
         String key = businessRoleCacheKey(userId, businessId);
 
-        try {
-            String cached = redisTemplate.opsForValue().get(key);
-            if (cached != null) return RoleName.valueOf(cached);
-        } catch (Exception ignored) {
-            // Redis down — tiếp tục xuống DB
+        if (redisEnabled) {
+            try {
+                String cached = redisTemplate.opsForValue().get(key);
+                if (cached != null) return RoleName.valueOf(cached);
+            } catch (Exception ignored) {
+                // Redis down — tiếp tục xuống DB
+            }
         }
 
         RoleName role = userRoleRepository.findActiveBusinessRole(userId, businessId)
@@ -121,10 +131,12 @@ public class BusinessAccessEvaluator {
                 .orElse(null);
 
         if (role != null) {
-            try {
-                redisTemplate.opsForValue().set(key, role.name(), Duration.ofSeconds(cacheTtlSeconds));
-            } catch (Exception ignored) {
-                // Redis down — bỏ qua
+            if (redisEnabled) {
+                try {
+                    redisTemplate.opsForValue().set(key, role.name(), Duration.ofSeconds(cacheTtlSeconds));
+                } catch (Exception ignored) {
+                    // Redis down — bỏ qua
+                }
             }
         }
 
@@ -139,11 +151,13 @@ public class BusinessAccessEvaluator {
     private String resolveBusinessMemberRoleWithCache(Long userId, Long businessId) {
         String key = businessMemberCacheKey(userId, businessId);
 
-        try {
-            String cached = redisTemplate.opsForValue().get(key);
-            if (cached != null) return cached;
-        } catch (Exception ignored) {
-            // Redis down — tiếp tục xuống DB
+        if (redisEnabled) {
+            try {
+                String cached = redisTemplate.opsForValue().get(key);
+                if (cached != null) return cached;
+            } catch (Exception ignored) {
+                // Redis down — tiếp tục xuống DB
+            }
         }
 
         List<UserRole> roles = userRoleRepository.findActiveStoreRolesInBusiness(userId, businessId);
@@ -153,10 +167,12 @@ public class BusinessAccessEvaluator {
                 ? RoleName.ROLE_MANAGER.name()
                 : RoleName.ROLE_STAFF.name();
 
-        try {
-            redisTemplate.opsForValue().set(key, highest, Duration.ofSeconds(cacheTtlSeconds));
-        } catch (Exception ignored) {
-            // Redis down — bỏ qua
+        if (redisEnabled) {
+            try {
+                redisTemplate.opsForValue().set(key, highest, Duration.ofSeconds(cacheTtlSeconds));
+            } catch (Exception ignored) {
+                // Redis down — bỏ qua
+            }
         }
 
         return highest;

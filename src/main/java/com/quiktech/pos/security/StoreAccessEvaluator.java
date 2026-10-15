@@ -67,6 +67,10 @@ public class StoreAccessEvaluator {
     @Value("${store.role.cache.ttl:300}")
     private long cacheTtlSeconds;
 
+    /** {@code false} (env {@code REDIS_ENABLED=false}): bỏ qua cache, luôn đọc DB. */
+    @Value("${redis.enabled:true}")
+    private boolean redisEnabled;
+
     /**
      * Kiểm tra user có thuộc store không — business OWNER hoặc MANAGER/STAFF của store.
      */
@@ -108,10 +112,12 @@ public class StoreAccessEvaluator {
      * @param storeId ID của store liên quan
      */
     public void evictStoreRoleCache(Long userId, Long storeId) {
-        try {
-            redisTemplate.delete(storeRoleCacheKey(userId, storeId));
-        } catch (Exception ignored) {
-            // Redis down — cache sẽ expire tự nhiên sau TTL
+        if (redisEnabled) {
+            try {
+                redisTemplate.delete(storeRoleCacheKey(userId, storeId));
+            } catch (Exception ignored) {
+                // Redis down — cache sẽ expire tự nhiên sau TTL
+            }
         }
     }
 
@@ -148,11 +154,13 @@ public class StoreAccessEvaluator {
     private RoleName resolveStoreRoleWithCache(Long userId, Long storeId) {
         String key = storeRoleCacheKey(userId, storeId);
 
-        try {
-            String cached = redisTemplate.opsForValue().get(key);
-            if (cached != null) return RoleName.valueOf(cached);
-        } catch (Exception ignored) {
-            // Redis down — tiếp tục xuống DB
+        if (redisEnabled) {
+            try {
+                String cached = redisTemplate.opsForValue().get(key);
+                if (cached != null) return RoleName.valueOf(cached);
+            } catch (Exception ignored) {
+                // Redis down — tiếp tục xuống DB
+            }
         }
 
         var ur = userRoleRepository.findActiveStoreRole(userId, storeId);
@@ -160,10 +168,12 @@ public class StoreAccessEvaluator {
 
         RoleName role = ur.get().getRole().getName();
 
-        try {
-            redisTemplate.opsForValue().set(key, role.name(), Duration.ofSeconds(cacheTtlSeconds));
-        } catch (Exception ignored) {
-            // Redis down — bỏ qua
+        if (redisEnabled) {
+            try {
+                redisTemplate.opsForValue().set(key, role.name(), Duration.ofSeconds(cacheTtlSeconds));
+            } catch (Exception ignored) {
+                // Redis down — bỏ qua
+            }
         }
         return role;
     }
@@ -175,20 +185,24 @@ public class StoreAccessEvaluator {
     private Long resolveBusinessId(Long storeId) {
         String key = "store:business:" + storeId;
 
-        try {
-            String cached = redisTemplate.opsForValue().get(key);
-            if (cached != null) return Long.parseLong(cached);
-        } catch (Exception ignored) {
-            // Redis down — tiếp tục xuống DB
+        if (redisEnabled) {
+            try {
+                String cached = redisTemplate.opsForValue().get(key);
+                if (cached != null) return Long.parseLong(cached);
+            } catch (Exception ignored) {
+                // Redis down — tiếp tục xuống DB
+            }
         }
 
         Long businessId = storeRepository.findBusinessIdByStoreId(storeId).orElse(null);
 
         if (businessId != null) {
-            try {
-                redisTemplate.opsForValue().set(key, businessId.toString(), Duration.ofSeconds(cacheTtlSeconds));
-            } catch (Exception ignored) {
-                // Redis down — bỏ qua
+            if (redisEnabled) {
+                try {
+                    redisTemplate.opsForValue().set(key, businessId.toString(), Duration.ofSeconds(cacheTtlSeconds));
+                } catch (Exception ignored) {
+                    // Redis down — bỏ qua
+                }
             }
         }
         return businessId;
@@ -214,10 +228,12 @@ public class StoreAccessEvaluator {
     private boolean hasBusinessRoleWithCache(Long userId, Long businessId) {
         String key = businessRoleCacheKey(userId, businessId);
 
-        try {
-            if (redisTemplate.opsForValue().get(key) != null) return true;
-        } catch (Exception ignored) {
-            // Redis down — tiếp tục xuống DB
+        if (redisEnabled) {
+            try {
+                if (redisTemplate.opsForValue().get(key) != null) return true;
+            } catch (Exception ignored) {
+                // Redis down — tiếp tục xuống DB
+            }
         }
 
         RoleName role = userRoleRepository.findActiveBusinessRole(userId, businessId)
@@ -225,10 +241,12 @@ public class StoreAccessEvaluator {
                 .orElse(null);
 
         if (role != null) {
-            try {
-                redisTemplate.opsForValue().set(key, role.name(), Duration.ofSeconds(cacheTtlSeconds));
-            } catch (Exception ignored) {
-                // Redis down — bỏ qua
+            if (redisEnabled) {
+                try {
+                    redisTemplate.opsForValue().set(key, role.name(), Duration.ofSeconds(cacheTtlSeconds));
+                } catch (Exception ignored) {
+                    // Redis down — bỏ qua
+                }
             }
         }
 

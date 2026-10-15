@@ -6,6 +6,7 @@ import com.quiktech.pos.filter.AuthenticatedRateLimitFilter;
 import com.quiktech.pos.filter.IdempotencyFilter;
 import com.quiktech.pos.filter.RateLimitService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.convert.converter.Converter;
@@ -71,8 +72,9 @@ public class SecurityConfig {
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http,
                                                    AuthenticatedRateLimitFilter authenticatedRateLimitFilter,
-                                                   IdempotencyFilter idempotencyFilter) throws Exception {
-        return http
+                                                   IdempotencyFilter idempotencyFilter,
+                                                   @Value("${redis.enabled:true}") boolean redisEnabled) throws Exception {
+        http
                 .cors(AbstractHttpConfigurer::disable)
                 // CSRF không cần thiết với stateless JWT — không có cookie session để exploit
                 .csrf(AbstractHttpConfigurer::disable)
@@ -118,12 +120,15 @@ public class SecurityConfig {
 
                 // Phải chạy sau BearerTokenAuthenticationFilter để quota theo userId đã
                 // được xác thực, không theo IP dùng chung của nhiều máy trong một store.
-                .addFilterAfter(authenticatedRateLimitFilter, BearerTokenAuthenticationFilter.class)
-                // Sau rate limit theo user: response đã lưu chỉ trả cho request có JWT hợp lệ,
-                // và request trùng vẫn bị tính quota
-                .addFilterAfter(idempotencyFilter, AuthenticatedRateLimitFilter.class)
+                .addFilterAfter(authenticatedRateLimitFilter, BearerTokenAuthenticationFilter.class);
 
-                .build();
+        // Sau rate limit theo user: response đã lưu chỉ trả cho request có JWT hợp lệ,
+        // và request trùng vẫn bị tính quota. Idempotency lưu trên Redis — tắt Redis thì bỏ filter.
+        if (redisEnabled) {
+            http.addFilterAfter(idempotencyFilter, AuthenticatedRateLimitFilter.class);
+        }
+
+        return http.build();
     }
 
     /**

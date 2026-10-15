@@ -8,6 +8,7 @@ import io.lettuce.core.api.StatefulRedisConnection;
 import io.lettuce.core.codec.ByteArrayCodec;
 import org.springframework.context.annotation.Bean;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.util.Assert;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.data.redis.connection.RedisConnectionFactory;
@@ -23,8 +24,12 @@ import java.time.Duration;
  * dựng kết nối và {@link LettuceBasedProxyManager}; quota cụ thể nằm ở
  * {@code RateLimitFilter} / {@code AuthenticatedRateLimitFilter}, còn logic kiểm tra
  * và fail-open nằm ở {@code RateLimitService}.
+ *
+ * <p>{@code redis.enabled=false} (env {@code REDIS_ENABLED}): không tạo bean nào ở đây —
+ * {@code RateLimitService} chuyển sang bucket trong bộ nhớ.
  */
 @Configuration
+@ConditionalOnProperty(name = "redis.enabled", havingValue = "true", matchIfMissing = true)
 public class RateLimiterConfig {
 
     /**

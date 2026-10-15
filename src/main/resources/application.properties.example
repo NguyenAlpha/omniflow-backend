@@ -42,6 +42,10 @@ jwt.refresh-token-expiration-days=30
 spring.data.redis.host=${REDIS_HOST:localhost}
 spring.data.redis.port=${REDIS_PORT:6379}
 spring.data.redis.password=${REDIS_PASSWORD:}
+# Tắt Redis (REDIS_ENABLED=false) khi deploy 1 instance không có Redis: rate limit dùng bucket
+# trong bộ nhớ, cache phân quyền đọc thẳng DB, bỏ idempotency đơn hàng. Nhiều instance thì phải bật.
+redis.enabled=${REDIS_ENABLED:true}
+management.health.redis.enabled=${REDIS_ENABLED:true}
 
 # Email (SMTP) — để trống để tắt tính năng gửi email
 spring.mail.host=${MAIL_HOST:}
