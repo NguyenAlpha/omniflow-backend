@@ -1,7 +1,7 @@
 # Deployment Guide
 
-Hướng dẫn triển khai backend QuikTech POS dưới dạng Spring Boot executable JAR.
-Quy trình này phù hợp với máy chủ Linux, VM hoặc dịch vụ cloud có hỗ trợ Java 21.
+Hướng dẫn triển khai backend QuikTech POS (Spring Boot 4) dưới dạng executable JAR.
+Quy trình này phù hợp với máy chủ Linux, VM hoặc dịch vụ cloud có hỗ trợ Java 25.
 
 ---
 
@@ -14,7 +14,7 @@ Client
 Reverse proxy / Load balancer (HTTPS)
   |
   v
-QuikTech POS API (Java 21, port 8080)
+QuikTech POS API (Java 25, Spring Boot 4, port 8080)
   |-- PostgreSQL 16
   |-- Redis 7
   `-- SMTP server (không bắt buộc)
@@ -32,15 +32,15 @@ QuikTech POS API (Java 21, port 8080)
 
 Máy build:
 
-- JDK 21.
+- JDK 25.
 - Git.
 - Không cần cài Maven toàn hệ thống vì repository có Maven Wrapper.
 
 Môi trường chạy:
 
-- Java Runtime 21.
+- Java Runtime 25.
 - PostgreSQL 16 hoặc phiên bản tương thích.
-- Redis 7 hoặc dịch vụ Redis tương thích.
+- Redis 7 hoặc dịch vụ Redis tương thích (có thể bỏ qua khi chạy 1 instance, xem `REDIS_ENABLED`).
 - Tối thiểu 1 GB RAM cho API; điều chỉnh theo tải thực tế.
 - HTTPS ở reverse proxy hoặc load balancer.
 
@@ -59,8 +59,9 @@ file chỉ cho service account đọc.
 | `DB_PASSWORD` | Có | Mật khẩu của user PostgreSQL |
 | `JWT_SECRET` | Có | Base64 của ít nhất 32 byte ngẫu nhiên |
 | `JWT_EXPIRATION` | Không | Thời gian sống access token, đơn vị millisecond |
-| `REDIS_HOST` | Có | Hostname của Redis production |
-| `REDIS_PORT` | Có | Cổng Redis |
+| `REDIS_ENABLED` | Không | Mặc định `true`. `false` = chạy không cần Redis: rate limit trong bộ nhớ, cache phân quyền đọc thẳng DB, tắt idempotency đơn hàng. Chỉ dùng khi chạy 1 instance |
+| `REDIS_HOST` | Khi bật Redis | Hostname của Redis production |
+| `REDIS_PORT` | Khi bật Redis | Cổng Redis |
 | `REDIS_PASSWORD` | Tùy dịch vụ | Password/access key của Redis |
 | `CORS_ORIGINS` | Có | Danh sách origin frontend được phép, phân cách bằng dấu phẩy |
 | `MAIL_HOST` | Không | SMTP hostname; bỏ trống để tắt gửi email |
@@ -321,7 +322,7 @@ sudo systemctl status quiktech-pos
 sudo journalctl -u quiktech-pos -n 200 --no-pager
 ```
 
-Kiểm tra Java 21, quyền đọc JAR, quyền đọc file environment và các biến bắt buộc.
+Kiểm tra Java 25, quyền đọc JAR, quyền đọc file environment và các biến bắt buộc.
 
 ### Lỗi JWT secret
 
@@ -355,7 +356,7 @@ Trên Azure App Service, AWS Elastic Beanstalk, Google Cloud Run hoặc nền t�
 - Cấu hình health probe tới `/readyz` (readiness) và `/livez` (liveness) trên port chính;
   không public `MANAGEMENT_SERVER_PORT`.
 - Giữ PostgreSQL và Redis ngoài container/application instance.
-- Xác nhận Java 21 và cổng mà nền tảng cấp cho ứng dụng trước khi deploy.
+- Xác nhận Java 25 và cổng mà nền tảng cấp cho ứng dụng trước khi deploy.
 
 Quy trình Azure cụ thể sẽ được bổ sung riêng khi subscription, region, SKU và chiến lược
 quản lý secret đã được chốt.
