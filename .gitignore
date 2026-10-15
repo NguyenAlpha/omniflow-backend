@@ -40,3 +40,6 @@ src/main/resources/application.properties
 
 ### Runtime logs (logback-spring.xml) ###
 /logs/
+
+### Azure demo secrets (scripts/azure-deploy.sh) ###
+/.azure-demo.env
