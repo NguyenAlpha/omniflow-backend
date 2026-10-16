@@ -10,8 +10,8 @@ import java.util.UUID;
 
 public record ProductUpsertRequest(
     @NotBlank @Size(max = 50) String sku,
-    @NotBlank @Size(max = 200) String name,
-    @Size(max = 4000) String description,
+    @NotBlank @Size(max = 60) String name,
+    @Size(max = 100) String description,
     UUID categoryPublicId,
     @NotNull UUID unitPublicId,
     @NotNull @DecimalMin("0.00") BigDecimal costPrice,

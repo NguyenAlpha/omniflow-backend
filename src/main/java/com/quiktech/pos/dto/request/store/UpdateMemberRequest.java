@@ -6,7 +6,7 @@ import jakarta.validation.constraints.Size;
 
 public record UpdateMemberRequest(
     @NotNull RoleName role,
-    @Size(max = 100) String positionTitle,
+    @Size(max = 30) String positionTitle,
     @NotNull Boolean isActive
 ) {
 }

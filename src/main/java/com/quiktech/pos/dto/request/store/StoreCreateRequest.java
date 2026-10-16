@@ -6,10 +6,10 @@ import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 
 public record StoreCreateRequest(
-    @NotBlank @Size(max = 200) String name,
+    @NotBlank @Size(max = 30) String name,
     String address,
-    @Pattern(regexp = "^$|^[0-9+\\-() ]{8,20}$") String phone,
-    @Email @Size(max = 100) String email
+    @Pattern(regexp = "^$|^[0-9+\\-() ]{8,12}$") String phone,
+    @Email @Size(max = 30) String email
 ) {
 }
 
