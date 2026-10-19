@@ -73,9 +73,11 @@ fi
 # vì `server create` có thể lỗi giữa chừng sau khi server đã tạo nhưng trước khi tạo rule.
 az postgres flexible-server firewall-rule create -g "$RG" --server-name "$PG" \
     --name AllowAllAzureServices --start-ip-address 0.0.0.0 --end-ip-address 0.0.0.0 -o none
-# Azure chỉ cho CREATE EXTENSION với extension đã allow-list — migration V1 dùng unaccent
+# Azure chỉ cho CREATE EXTENSION với extension đã allow-list — migration V1 dùng unaccent.
+# BTREE_GIST: cho HRM chạy chung server này (hrm/api/scripts/azure-deploy-shared-quiktech.sh) — tham số
+# chung cả server và bị ghi đè cả danh sách, nên bỏ đi sẽ làm hỏng migration của HRM.
 az postgres flexible-server parameter set -g "$RG" --server-name "$PG" \
-    --name azure.extensions --value UNACCENT -o none
+    --name azure.extensions --value UNACCENT,BTREE_GIST -o none
 if ! az postgres flexible-server db show -g "$RG" --server-name "$PG" --name "$DB_NAME" -o none 2>/dev/null; then
     az postgres flexible-server db create -g "$RG" --server-name "$PG" --name "$DB_NAME" -o none
 fi
